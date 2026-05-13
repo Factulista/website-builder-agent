@@ -1,12 +1,18 @@
 'use client'
 
 import { useState, use, useRef, useEffect } from 'react'
+import { supabase } from '../../../lib/supabase'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string }
 
 function extractHtml(content: string): string | null {
-  const match = content.match(/```html\n([\s\S]*?)```/)
-  return match ? match[1] : null
+  // Match ```html ... ``` (with or without newlines)
+  const codeBlock = content.match(/```html\s*\n?([\s\S]*?)```/)
+  if (codeBlock) return codeBlock[1].trim()
+  // Match raw <!DOCTYPE html> ... </html>
+  const rawHtml = content.match(/<!DOCTYPE html[\s\S]*?<\/html>/i)
+  if (rawHtml) return rawHtml[0]
+  return null
 }
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,17 +21,47 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [projectName, setProjectName] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Load project state on mount
+  useEffect(() => {
+    const load = async () => {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('name, site_config')
+        .eq('id', id)
+        .single()
+      if (project) {
+        setProjectName(project.name)
+        const config = project.site_config as { html?: string; messages?: Message[] } | null
+        if (config?.html) setPreviewHtml(config.html)
+        if (config?.messages) setMessages(config.messages)
+      }
+    }
+    load()
+  }, [id])
+
+  const saveState = async (newMessages: Message[], html: string | null) => {
+    await supabase
+      .from('projects')
+      .update({
+        site_config: { html, messages: newMessages },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+  }
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || loading) return
 
-    const userMsg: Message = { id: `u_${Date.now()}`, role: 'user', content: input }
+    const userContent = input
+    const userMsg: Message = { id: `u_${Date.now()}`, role: 'user', content: userContent }
     const updatedMessages = [...messages, userMsg]
     setMessages(updatedMessages)
     setInput('')
@@ -55,6 +91,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let full = ''
+    let lastHtml: string | null = null
 
     while (true) {
       const { done, value } = await reader.read()
@@ -62,14 +99,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const lines = decoder.decode(value).split('\n')
       for (const line of lines) {
         if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-          const { text } = JSON.parse(line.slice(6))
-          full += text
-          setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: full } : m))
-          const html = extractHtml(full)
-          if (html) setPreviewHtml(html)
+          try {
+            const { text } = JSON.parse(line.slice(6))
+            full += text
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: full } : m))
+            const html = extractHtml(full)
+            if (html) {
+              setPreviewHtml(html)
+              lastHtml = html
+            }
+          } catch {}
         }
       }
     }
+
+    // Persist final results
+    const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: full }]
+    await saveState(finalMessages, lastHtml ?? previewHtml)
 
     setLoading(false)
   }
@@ -78,15 +124,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     <main style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', height: '100vh', gap: 0 }}>
       {/* Chat */}
       <div style={{ borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold', fontSize: '0.875rem' }}>
-          Progetto: {id}
+        <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{projectName || 'Progetto'}</span>
+          <a href="/projects" style={{ fontSize: '0.8rem', color: '#6b7280', textDecoration: 'none' }}>← Tutti i progetti</a>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', color: '#9ca3af', paddingTop: '2rem' }}>
               <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Descrivi il sito che vuoi creare</p>
-              <p style={{ fontSize: '0.875rem' }}>Es: "Un sito per il mio ristorante a Milano, elegante e moderno"</p>
+              <p style={{ fontSize: '0.875rem' }}>Es: &quot;Un sito per il mio ristorante a Milano, elegante e moderno&quot;</p>
             </div>
           )}
           {messages.map((msg) => (
@@ -111,7 +158,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         <form onSubmit={handleSend} style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem' }}>
           <input
             type="text"
-            placeholder="Descrivi il tuo sito..."
+            placeholder="Descrivi il tuo sito o chiedi modifiche..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}
@@ -125,14 +172,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
       {/* Preview */}
       <div style={{ display: 'flex', flexDirection: 'column', background: 'white' }}>
-        <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#6b7280' }}>
-          Preview
+        <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Preview</span>
+          {previewHtml && (
+            <button
+              onClick={() => {
+                const blob = new Blob([previewHtml], { type: 'text/html' })
+                window.open(URL.createObjectURL(blob), '_blank')
+              }}
+              style={{ background: 'transparent', color: '#2563eb', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+            >
+              Apri in nuova tab ↗
+            </button>
+          )}
         </div>
         {previewHtml ? (
           <iframe
             srcDoc={previewHtml}
             style={{ flex: 1, border: 'none', width: '100%' }}
             title="Preview"
+            sandbox="allow-scripts"
           />
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
