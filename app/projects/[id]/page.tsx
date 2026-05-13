@@ -214,13 +214,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   return (
     <main style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {/* Chat panel */}
-      <div style={{ width: `${chatWidth}%`, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fafaf9' }}>
-        <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e7e5e4', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+      <div style={{ width: `${chatWidth}%`, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#faf9f7' }}>
+        <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #ebe6df', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#faf9f7' }}>
           <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1c1917' }}>{projectName || 'Progetto'}</span>
           <a href="/projects" style={{ fontSize: '0.8rem', color: '#78716c', textDecoration: 'none' }}>← Tutti i progetti</a>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', color: '#a8a29e', paddingTop: '3rem' }}>
               <p style={{ fontSize: '1.05rem', marginBottom: '0.5rem', color: '#57534e' }}>Descrivi il sito che vuoi creare</p>
@@ -228,33 +228,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           )}
           {messages.map((msg) => (
-            <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <div style={{
-                fontSize: '0.7rem',
-                fontWeight: 600,
-                color: msg.role === 'user' ? '#0891b2' : '#9333ea',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}>
-                {msg.role === 'user' ? 'Tu' : 'Assistente'}
+            msg.role === 'user' ? (
+              <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{
+                  maxWidth: '85%',
+                  padding: '0.75rem 1rem',
+                  background: '#f0ebe1',
+                  color: '#1c1917',
+                  borderRadius: '1.25rem',
+                  fontSize: '0.9375rem',
+                  lineHeight: '1.55',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {msg.content}
+                </div>
               </div>
-              <div style={{
+            ) : (
+              <div key={msg.id} style={{
                 fontSize: '0.9375rem',
-                lineHeight: '1.6',
+                lineHeight: '1.65',
                 color: '#1c1917',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
+                paddingRight: '0.5rem',
               }}>
-                {msg.role === 'assistant'
-                  ? (stripHtmlFromChat(msg.content) || (loading ? '...' : ''))
-                  : msg.content}
+                {stripHtmlFromChat(msg.content) || (loading ? (
+                  <span style={{ color: '#a8a29e' }}>● ● ●</span>
+                ) : '')}
               </div>
-            </div>
+            )
           ))}
           <div ref={messagesEndRef} />
         </div>
 
-        <form onSubmit={handleSend} style={{ padding: '1rem 1.25rem', borderTop: '1px solid #e7e5e4', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'white' }}>
+        <form onSubmit={handleSend} style={{ padding: '0.75rem 1rem 1rem', background: '#faf9f7' }}>
           <input
             ref={fileInputRef}
             type="file"
@@ -262,26 +270,76 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             onChange={handleUpload}
             style={{ display: 'none' }}
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading || uploading}
-            title="Carica immagine"
-            style={{ background: 'transparent', color: '#78716c', border: '1px solid #e7e5e4', padding: '0.6rem 0.75rem', fontSize: '1rem', borderRadius: '0.5rem' }}
-          >
-            {uploading ? '⏳' : '📎'}
-          </button>
-          <input
-            type="text"
-            placeholder="Descrivi il tuo sito o chiedi modifiche..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={loading}
-            style={{ flex: 1, padding: '0.75rem 1rem', border: '1px solid #e7e5e4', borderRadius: '0.5rem', fontSize: '0.9375rem' }}
-          />
-          <button type="submit" disabled={loading || !input.trim()} style={{ padding: '0.6rem 1.25rem', borderRadius: '0.5rem' }}>
-            {loading ? '...' : 'Invia'}
-          </button>
+          <div style={{
+            background: 'white',
+            border: '1px solid #ebe6df',
+            borderRadius: '1.25rem',
+            padding: '0.875rem 1rem 0.5rem',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          }}>
+            <input
+              type="text"
+              placeholder="Descrivi il tuo sito o chiedi modifiche..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  if (input.trim() && !loading) handleSend(e as unknown as React.FormEvent)
+                }
+              }}
+              disabled={loading}
+              style={{
+                width: '100%',
+                border: 'none',
+                outline: 'none',
+                fontSize: '0.9375rem',
+                padding: 0,
+                background: 'transparent',
+                color: '#1c1917',
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || uploading}
+                title="Carica immagine"
+                style={{
+                  background: 'transparent',
+                  color: '#78716c',
+                  border: 'none',
+                  padding: '0.35rem 0.5rem',
+                  fontSize: '1.05rem',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {uploading ? '⏳' : '+'}
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
+                style={{
+                  padding: '0.4rem 0.65rem',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: input.trim() && !loading ? '#1c1917' : '#d6d3d1',
+                  color: 'white',
+                  border: 'none',
+                  cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+                  fontSize: '1rem',
+                }}
+                title="Invia"
+              >
+                {loading ? '⏳' : '↑'}
+              </button>
+            </div>
+          </div>
         </form>
       </div>
 
