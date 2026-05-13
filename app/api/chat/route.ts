@@ -7,6 +7,10 @@ export async function POST(req: NextRequest) {
   try {
     const { messages } = await req.json()
 
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -27,6 +31,11 @@ L'HTML deve essere: pagina completa, CSS inline, SEO ottimizzato, mobile-friendl
         })),
       }),
     })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      return Response.json({ error: `Anthropic API error: ${errorText}` }, { status: response.status })
+    }
 
     const encoder = new TextEncoder()
     const readable = new ReadableStream({

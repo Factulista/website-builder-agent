@@ -43,6 +43,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }),
     })
 
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      setMessages(prev => prev.map(m => m.id === assistantId
+        ? { ...m, content: `❌ Errore: ${err.error || 'unknown'}` }
+        : m))
+      setLoading(false)
+      return
+    }
+
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let full = ''
