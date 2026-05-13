@@ -71,9 +71,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const publicBaseUrl = projectSlug && typeof window !== 'undefined'
-    ? `${window.location.origin}/preview/${projectSlug}`
-    : ''
+  const ROOT_DOMAIN = 'factulista.com'
+
+  // Use subdomain on production (slug.factulista.com), fallback to /preview/slug on vercel.app/localhost
+  const publicBaseUrl = (() => {
+    if (!projectSlug || typeof window === 'undefined') return ''
+    const host = window.location.host
+    const isCustomDomain = host === ROOT_DOMAIN || host === `www.${ROOT_DOMAIN}` || host.endsWith(`.${ROOT_DOMAIN}`)
+    if (isCustomDomain) {
+      return `${window.location.protocol}//${projectSlug}.${ROOT_DOMAIN}`
+    }
+    return `${window.location.origin}/preview/${projectSlug}`
+  })()
 
   const publicUrl = publicBaseUrl
     ? (activeSlug === 'home' ? publicBaseUrl : `${publicBaseUrl}/${activeSlug}`)
