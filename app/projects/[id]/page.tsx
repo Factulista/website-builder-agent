@@ -287,17 +287,40 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
       {/* Resizable divider */}
       <div
-        onMouseDown={() => setIsDragging(true)}
+        onMouseDown={(e) => { e.preventDefault(); setIsDragging(true) }}
         style={{
-          width: '4px',
+          width: '8px',
           cursor: 'col-resize',
           background: isDragging ? '#2563eb' : '#e7e5e4',
           flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           transition: isDragging ? 'none' : 'background 0.15s',
+          position: 'relative',
+          zIndex: 10,
         }}
-        onMouseEnter={(e) => { if (!isDragging) (e.target as HTMLElement).style.background = '#a8a29e' }}
-        onMouseLeave={(e) => { if (!isDragging) (e.target as HTMLElement).style.background = '#e7e5e4' }}
-      />
+        onMouseEnter={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#a8a29e' }}
+        onMouseLeave={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#e7e5e4' }}
+      >
+        <div style={{
+          width: '2px',
+          height: '32px',
+          background: isDragging ? 'white' : '#78716c',
+          borderRadius: '1px',
+          pointerEvents: 'none',
+        }} />
+      </div>
+
+      {/* Iframe-blocking overlay while dragging */}
+      {isDragging && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          cursor: 'col-resize',
+          zIndex: 9999,
+        }} />
+      )}
 
       {/* Preview */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'white', overflow: 'hidden' }}>
