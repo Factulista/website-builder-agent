@@ -47,8 +47,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [projectSlug, setProjectSlug] = useState('')
   const [copied, setCopied] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [chatWidth, setChatWidth] = useState(40) // percentage
+  const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Resizable divider
+  useEffect(() => {
+    if (!isDragging) return
+    const handleMove = (e: MouseEvent) => {
+      const pct = (e.clientX / window.innerWidth) * 100
+      setChatWidth(Math.max(20, Math.min(80, pct)))
+    }
+    const handleUp = () => setIsDragging(false)
+    document.addEventListener('mousemove', handleMove)
+    document.addEventListener('mouseup', handleUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.removeEventListener('mousemove', handleMove)
+      document.removeEventListener('mouseup', handleUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isDragging])
 
   const publicUrl = projectSlug && typeof window !== 'undefined'
     ? `${window.location.origin}/preview/${projectSlug}`
@@ -190,32 +212,38 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   return (
-    <main style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', height: '100vh', gap: 0 }}>
-      {/* Chat */}
-      <div style={{ borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{projectName || 'Progetto'}</span>
-          <a href="/projects" style={{ fontSize: '0.8rem', color: '#6b7280', textDecoration: 'none' }}>← Tutti i progetti</a>
+    <main style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      {/* Chat panel */}
+      <div style={{ width: `${chatWidth}%`, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fafaf9' }}>
+        <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid #e7e5e4', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+          <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1c1917' }}>{projectName || 'Progetto'}</span>
+          <a href="/projects" style={{ fontSize: '0.8rem', color: '#78716c', textDecoration: 'none' }}>← Tutti i progetti</a>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {messages.length === 0 && (
-            <div style={{ textAlign: 'center', color: '#9ca3af', paddingTop: '2rem' }}>
-              <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Descrivi il sito che vuoi creare</p>
+            <div style={{ textAlign: 'center', color: '#a8a29e', paddingTop: '3rem' }}>
+              <p style={{ fontSize: '1.05rem', marginBottom: '0.5rem', color: '#57534e' }}>Descrivi il sito che vuoi creare</p>
               <p style={{ fontSize: '0.875rem' }}>Es: &quot;Un sito per il mio ristorante a Milano, elegante e moderno&quot;</p>
             </div>
           )}
           {messages.map((msg) => (
-            <div key={msg.id} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+            <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               <div style={{
-                maxWidth: '85%',
-                padding: '0.75rem 1rem',
-                borderRadius: '0.5rem',
-                background: msg.role === 'user' ? '#2563eb' : '#f3f4f6',
-                color: msg.role === 'user' ? 'white' : '#1f2937',
-                fontSize: '0.9rem',
-                lineHeight: '1.5',
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                color: msg.role === 'user' ? '#0891b2' : '#9333ea',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                {msg.role === 'user' ? 'Tu' : 'Assistente'}
+              </div>
+              <div style={{
+                fontSize: '0.9375rem',
+                lineHeight: '1.6',
+                color: '#1c1917',
                 whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
               }}>
                 {msg.role === 'assistant'
                   ? (stripHtmlFromChat(msg.content) || (loading ? '...' : ''))
@@ -226,7 +254,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <div ref={messagesEndRef} />
         </div>
 
-        <form onSubmit={handleSend} style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <form onSubmit={handleSend} style={{ padding: '1rem 1.25rem', borderTop: '1px solid #e7e5e4', display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'white' }}>
           <input
             ref={fileInputRef}
             type="file"
@@ -239,7 +267,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             onClick={() => fileInputRef.current?.click()}
             disabled={loading || uploading}
             title="Carica immagine"
-            style={{ background: 'transparent', color: '#6b7280', border: '1px solid #e5e7eb', padding: '0.6rem 0.75rem', fontSize: '1rem' }}
+            style={{ background: 'transparent', color: '#78716c', border: '1px solid #e7e5e4', padding: '0.6rem 0.75rem', fontSize: '1rem', borderRadius: '0.5rem' }}
           >
             {uploading ? '⏳' : '📎'}
           </button>
@@ -249,16 +277,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}
-            style={{ flex: 1, padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: '0.375rem' }}
+            style={{ flex: 1, padding: '0.75rem 1rem', border: '1px solid #e7e5e4', borderRadius: '0.5rem', fontSize: '0.9375rem' }}
           />
-          <button type="submit" disabled={loading || !input.trim()}>
+          <button type="submit" disabled={loading || !input.trim()} style={{ padding: '0.6rem 1.25rem', borderRadius: '0.5rem' }}>
             {loading ? '...' : 'Invia'}
           </button>
         </form>
       </div>
 
+      {/* Resizable divider */}
+      <div
+        onMouseDown={() => setIsDragging(true)}
+        style={{
+          width: '4px',
+          cursor: 'col-resize',
+          background: isDragging ? '#2563eb' : '#e7e5e4',
+          flexShrink: 0,
+          transition: isDragging ? 'none' : 'background 0.15s',
+        }}
+        onMouseEnter={(e) => { if (!isDragging) (e.target as HTMLElement).style.background = '#a8a29e' }}
+        onMouseLeave={(e) => { if (!isDragging) (e.target as HTMLElement).style.background = '#e7e5e4' }}
+      />
+
       {/* Preview */}
-      <div style={{ display: 'flex', flexDirection: 'column', background: 'white' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'white', overflow: 'hidden' }}>
         <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
           {previewHtml && publicUrl ? (
             <>
