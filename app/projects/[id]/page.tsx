@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, use } from 'react'
 
-export default function ProjectPage({ params }: { params: { id: string } }) {
+export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params)
   const [messages, setMessages] = useState<{ id: string; role: 'user' | 'assistant'; content: string }[]>([])
   const [input, setInput] = useState('')
 
@@ -33,7 +34,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     <main style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', height: '100vh', gap: 0 }}>
       <div style={{ borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold' }}>
-          Project: {params.id}
+          Project: {resolvedParams.id}
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -76,7 +77,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', background: 'white' }}>
         <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#6b7280' }}>
-          Preview: {params.id}.preview.tuapiattaforma.com
+          Preview: {resolvedParams.id}.preview.tuapiattaforma.com
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
           🔄 Preview coming soon...
