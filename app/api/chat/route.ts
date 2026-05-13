@@ -3,6 +3,44 @@ import { NextRequest } from 'next/server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
+const TOOLS = [
+  {
+    name: 'create_site',
+    description: 'Crea un sito web da zero. Usalo SOLO per il primo sito o quando l\'utente chiede una riscrittura completa (es: "rifai tutto", "cambia tipo di sito").',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        html: { type: 'string', description: 'HTML completo del sito (<!DOCTYPE html> ... </html>), con CSS inline e responsive.' },
+        summary: { type: 'string', description: 'Una breve frase (max 12 parole) che descrive cosa hai creato.' },
+      },
+      required: ['html', 'summary'],
+    },
+  },
+  {
+    name: 'edit_site',
+    description: 'Modifica un sito esistente facendo SOSTITUZIONI mirate. USA QUESTO TOOL per OGNI modifica al sito esistente (cambio colori, testo, layout, aggiungi sezioni). Molto più efficiente di rigenerare tutto.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        edits: {
+          type: 'array',
+          description: 'Lista di sostituzioni find/replace da applicare in ordine.',
+          items: {
+            type: 'object',
+            properties: {
+              find: { type: 'string', description: 'Testo ESATTO da trovare nell\'HTML attuale (deve essere unico nel documento). Includi abbastanza contesto per renderlo univoco.' },
+              replace: { type: 'string', description: 'Testo con cui sostituirlo.' },
+            },
+            required: ['find', 'replace'],
+          },
+        },
+        summary: { type: 'string', description: 'Una breve frase (max 12 parole) che descrive cosa hai modificato.' },
+      },
+      required: ['edits', 'summary'],
+    },
+  },
+]
+
 export async function POST(req: NextRequest) {
   try {
     const { messages, currentHtml } = await req.json()
@@ -10,6 +48,22 @@ export async function POST(req: NextRequest) {
     if (!process.env.ANTHROPIC_API_KEY) {
       return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
     }
+
+    const systemPrompt = `Sei un esperto web designer. Crei e modifichi siti web in HTML puro ottimizzati per SEO.
+
+REGOLE:
+- Se NON c'è un sito esistente, usa il tool \`create_site\` per crearlo da zero.
+- Se c'è già un sito, usa SEMPRE \`edit_site\` per modifiche (cambio colori, testo, sezioni). NON ricreare l'intero sito.
+- Usa \`create_site\` su sito esistente SOLO se l'utente chiede esplicitamente di rifare tutto.
+
+L'HTML deve essere: pagina completa, CSS inline nel <style>, SEO ottimizzato (title, meta description, h1, semantica), responsive mobile, design moderno e professionale.
+
+${currentHtml ? `SITO ATTUALE:
+\`\`\`html
+${currentHtml}
+\`\`\`
+
+Per modifiche piccole, identifica il testo ESATTO da cambiare nell'HTML sopra e usa edit_site con find/replace mirati.` : 'Nessun sito ancora generato.'}`
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -21,27 +75,9 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 16384,
-        stream: true,
-        system: `Sei un esperto web designer. Crea e modifica siti web in HTML puro ottimizzati per SEO.
-
-REGOLE DI RISPOSTA:
-1. Inizia SEMPRE con UNA sola frase breve (max 15 parole) che descrive cosa fai. Es: "Creo un sito moderno per il ristorante." o "Cambio i colori e aggiorno il menu."
-2. Poi vai SUBITO al codice HTML completo in un blocco \`\`\`html ... \`\`\`
-3. NON aggiungere spiegazioni o testo dopo il codice HTML.
-4. NON elencare cosa hai modificato.
-
-${currentHtml ? `SITO ATTUALE DA MODIFICARE:
-L'utente ha già un sito. Quando chiede modifiche, prendi questo HTML come base e apporta SOLO i cambiamenti richiesti, mantenendo tutto il resto identico:
-\`\`\`html
-${currentHtml}
-\`\`\`` : ''}
-
-L'HTML deve essere:
-- Pagina completa (<!DOCTYPE html> ... </html>)
-- CSS inline nel <style>
-- SEO ottimizzato (title, meta description, h1, struttura semantica)
-- Mobile-friendly (responsive)
-- Design moderno e professionale`,
+        system: systemPrompt,
+        tools: TOOLS,
+        tool_choice: { type: 'any' },
         messages: messages.map((m: { role: string; content: string }) => ({
           role: m.role,
           content: m.content,
@@ -54,35 +90,17 @@ L'HTML deve essere:
       return Response.json({ error: `Anthropic API error: ${errorText}` }, { status: response.status })
     }
 
-    const encoder = new TextEncoder()
-    const readable = new ReadableStream({
-      async start(controller) {
-        const reader = response.body!.getReader()
-        const decoder = new TextDecoder()
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const chunk = decoder.decode(value)
-          for (const line of chunk.split('\n')) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6)
-              if (data === '[DONE]') continue
-              try {
-                const parsed = JSON.parse(data)
-                if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`))
-                }
-              } catch {}
-            }
-          }
-        }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        controller.close()
-      },
-    })
+    const data = await response.json()
 
-    return new Response(readable, {
-      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+    const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+    if (!toolUse) {
+      return Response.json({ error: 'No tool use in response', raw: data }, { status: 500 })
+    }
+
+    return Response.json({
+      tool: toolUse.name,
+      input: toolUse.input,
+      usage: data.usage,
     })
   } catch (err) {
     console.error('Chat API error:', err)

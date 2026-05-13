@@ -116,43 +116,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }),
     })
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+    const result = await res.json()
+
+    if (!res.ok || result.error) {
       setMessages(prev => prev.map(m => m.id === assistantId
-        ? { ...m, content: `❌ Errore: ${err.error || 'unknown'}` }
+        ? { ...m, content: `❌ Errore: ${result.error || `HTTP ${res.status}`}` }
         : m))
       setLoading(false)
       return
     }
 
-    const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
-    let full = ''
-    let lastHtml: string | null = null
+    let newHtml: string | null = previewHtml
+    let summary = ''
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const lines = decoder.decode(value).split('\n')
-      for (const line of lines) {
-        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-          try {
-            const { text } = JSON.parse(line.slice(6))
-            full += text
-            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: full } : m))
-            const html = extractHtml(full)
-            if (html) {
-              setPreviewHtml(html)
-              lastHtml = html
-            }
-          } catch {}
+    if (result.tool === 'create_site') {
+      newHtml = result.input.html
+      summary = `✨ ${result.input.summary}`
+      setPreviewHtml(newHtml)
+    } else if (result.tool === 'edit_site') {
+      const edits = result.input.edits as { find: string; replace: string }[]
+      let html = previewHtml || ''
+      const skipped: string[] = []
+      for (const edit of edits) {
+        if (html.includes(edit.find)) {
+          html = html.replace(edit.find, edit.replace)
+        } else {
+          skipped.push(edit.find.slice(0, 40) + '...')
         }
       }
+      newHtml = html
+      summary = `✏️ ${result.input.summary}${skipped.length ? ` (${skipped.length} edit non applicate)` : ''}`
+      setPreviewHtml(newHtml)
     }
 
-    // Persist final results
-    const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: full }]
-    await saveState(finalMessages, lastHtml ?? previewHtml)
+    setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
+
+    const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
+    await saveState(finalMessages, newHtml)
 
     setLoading(false)
   }
