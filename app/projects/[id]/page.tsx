@@ -112,6 +112,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       body: JSON.stringify({
         projectId: id,
         messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
+        currentHtml: previewHtml,
       }),
     })
 

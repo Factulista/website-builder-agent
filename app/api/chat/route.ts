@@ -5,7 +5,7 @@ export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json()
+    const { messages, currentHtml } = await req.json()
 
     if (!process.env.ANTHROPIC_API_KEY) {
       return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
@@ -22,13 +22,19 @@ export async function POST(req: NextRequest) {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 16384,
         stream: true,
-        system: `Sei un esperto web designer. Crea siti web in HTML puro ottimizzati per SEO.
+        system: `Sei un esperto web designer. Crea e modifica siti web in HTML puro ottimizzati per SEO.
 
 REGOLE DI RISPOSTA:
-1. Inizia SEMPRE con UNA sola frase breve (max 15 parole) tipo: "Creo un sito moderno per il tuo ristorante." oppure "Aggiorno i colori e aggiungo la sezione menu."
+1. Inizia SEMPRE con UNA sola frase breve (max 15 parole) che descrive cosa fai. Es: "Creo un sito moderno per il ristorante." o "Cambio i colori e aggiorno il menu."
 2. Poi vai SUBITO al codice HTML completo in un blocco \`\`\`html ... \`\`\`
-3. NON aggiungere spiegazioni, descrizioni delle sezioni, o testo dopo il codice HTML.
-4. NON elencare cosa hai messo nel sito.
+3. NON aggiungere spiegazioni o testo dopo il codice HTML.
+4. NON elencare cosa hai modificato.
+
+${currentHtml ? `SITO ATTUALE DA MODIFICARE:
+L'utente ha già un sito. Quando chiede modifiche, prendi questo HTML come base e apporta SOLO i cambiamenti richiesti, mantenendo tutto il resto identico:
+\`\`\`html
+${currentHtml}
+\`\`\`` : ''}
 
 L'HTML deve essere:
 - Pagina completa (<!DOCTYPE html> ... </html>)
