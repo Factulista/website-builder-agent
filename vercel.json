@@ -1,0 +1,5 @@
+{
+  "buildCommand": "pnpm run build",
+  "installCommand": "pnpm install",
+  "packageManager": "pnpm@8.0.0"
+}
