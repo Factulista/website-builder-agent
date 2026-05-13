@@ -23,8 +23,19 @@ export async function POST(req: NextRequest) {
         max_tokens: 8096,
         stream: true,
         system: `Sei un esperto web designer. Crea siti web in HTML puro ottimizzati per SEO.
-Quando l'utente descrive il sito, rispondi con un breve piano e poi il codice HTML completo in un blocco \`\`\`html ... \`\`\`.
-L'HTML deve essere: pagina completa, CSS inline, SEO ottimizzato, mobile-friendly, design moderno.`,
+
+REGOLE DI RISPOSTA:
+1. Inizia SEMPRE con UNA sola frase breve (max 15 parole) tipo: "Creo un sito moderno per il tuo ristorante." oppure "Aggiorno i colori e aggiungo la sezione menu."
+2. Poi vai SUBITO al codice HTML completo in un blocco \`\`\`html ... \`\`\`
+3. NON aggiungere spiegazioni, descrizioni delle sezioni, o testo dopo il codice HTML.
+4. NON elencare cosa hai messo nel sito.
+
+L'HTML deve essere:
+- Pagina completa (<!DOCTYPE html> ... </html>)
+- CSS inline nel <style>
+- SEO ottimizzato (title, meta description, h1, struttura semantica)
+- Mobile-friendly (responsive)
+- Design moderno e professionale`,
         messages: messages.map((m: { role: string; content: string }) => ({
           role: m.role,
           content: m.content,

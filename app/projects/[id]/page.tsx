@@ -15,6 +15,21 @@ function extractHtml(content: string): string | null {
   return null
 }
 
+function stripHtmlFromChat(content: string, isStreaming: boolean): string {
+  // Replace ```html ... ``` blocks (closed or still open) with a status marker
+  let cleaned = content.replace(/```html[\s\S]*?```/g, '✨ Sito generato')
+  // If a code block is still open (streaming), replace the open block too
+  if (cleaned.includes('```html')) {
+    cleaned = cleaned.replace(/```html[\s\S]*$/, '✨ Sto generando il sito...')
+  }
+  // Replace raw doctype HTML if Claude skips the code fence
+  cleaned = cleaned.replace(/<!DOCTYPE html[\s\S]*?<\/html>/gi, '✨ Sito generato')
+  if (/<!DOCTYPE html/i.test(cleaned)) {
+    cleaned = cleaned.replace(/<!DOCTYPE html[\s\S]*$/i, '✨ Sto generando il sito...')
+  }
+  return cleaned.trim()
+}
+
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [messages, setMessages] = useState<Message[]>([])
@@ -148,7 +163,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 lineHeight: '1.5',
                 whiteSpace: 'pre-wrap',
               }}>
-                {msg.content || (loading && msg.role === 'assistant' ? '...' : '')}
+                {msg.role === 'assistant'
+                  ? (stripHtmlFromChat(msg.content, loading) || (loading ? '...' : ''))
+                  : msg.content}
               </div>
             </div>
           ))}
