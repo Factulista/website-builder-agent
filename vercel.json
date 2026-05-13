@@ -1,4 +1,4 @@
 {
-  "buildCommand": "cd apps/web && npm run build",
-  "installCommand": "cd apps/web && npm install"
+  "buildCommand": "npm run build --prefix apps/web",
+  "installCommand": "npm install"
 }
