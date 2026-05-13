@@ -44,7 +44,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [loading, setLoading] = useState(false)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('')
+  const [projectSlug, setProjectSlug] = useState('')
+  const [copied, setCopied] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const publicUrl = projectSlug && typeof window !== 'undefined'
+    ? `${window.location.origin}/preview/${projectSlug}`
+    : ''
+
+  const copyUrl = async () => {
+    if (!publicUrl) return
+    await navigator.clipboard.writeText(publicUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -55,11 +68,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const load = async () => {
       const { data: project } = await supabase
         .from('projects')
-        .select('name, site_config')
+        .select('name, slug, site_config')
         .eq('id', id)
         .single()
       if (project) {
         setProjectName(project.name)
+        setProjectSlug(project.slug)
         const config = project.site_config as { html?: string; messages?: Message[] } | null
         if (config?.html) setPreviewHtml(config.html)
         if (config?.messages) setMessages(config.messages)
@@ -196,18 +210,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
       {/* Preview */}
       <div style={{ display: 'flex', flexDirection: 'column', background: 'white' }}>
-        <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Preview</span>
-          {previewHtml && (
-            <button
-              onClick={() => {
-                const blob = new Blob([previewHtml], { type: 'text/html' })
-                window.open(URL.createObjectURL(blob), '_blank')
-              }}
-              style={{ background: 'transparent', color: '#2563eb', padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-            >
-              Apri in nuova tab ↗
-            </button>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+          {previewHtml && publicUrl ? (
+            <>
+              <a
+                href={publicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#2563eb', textDecoration: 'none', fontFamily: 'monospace', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
+              >
+                {publicUrl.replace(/^https?:\/\//, '')}
+              </a>
+              <button
+                onClick={copyUrl}
+                style={{ background: copied ? '#10b981' : '#2563eb', color: 'white', padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderRadius: '0.25rem' }}
+              >
+                {copied ? '✓ Copiato' : 'Copia URL'}
+              </button>
+            </>
+          ) : (
+            <span>Preview</span>
           )}
         </div>
         {previewHtml ? (
