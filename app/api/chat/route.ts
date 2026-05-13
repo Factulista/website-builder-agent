@@ -58,6 +58,15 @@ REGOLE:
 
 L'HTML deve essere: pagina completa, CSS inline nel <style>, SEO ottimizzato (title, meta description, h1, semantica), responsive mobile, design moderno e professionale.
 
+IMMAGINI:
+- Includi SEMPRE immagini di alta qualità nei siti che crei (hero image, immagini di sezione, ecc).
+- Usa questi servizi gratuiti per immagini realistiche (no API key richiesta):
+  * Hero/sfondi: \`https://images.unsplash.com/photo-{id}?w=1600&q=80\` — quando hai dubbi, usa: \`https://picsum.photos/seed/{parolachiave}/1600/900\`
+  * Foto generiche per categoria: \`https://picsum.photos/seed/{slug-univoco}/800/600\` (cambia lo "seed" per ogni immagine per averne di diverse)
+  * Avatar/people: \`https://i.pravatar.cc/300?u={username}\` (per testimonianze, team)
+- IMPORTANTE: usa sempre \`object-fit: cover\` nei CSS delle immagini e attributi \`alt\` descrittivi per SEO.
+- Per immagini Unsplash usa URL di foto che esistono. Se incerto, usa picsum.photos con un seed univoco.
+
 ${currentHtml ? `SITO ATTUALE:
 \`\`\`html
 ${currentHtml}

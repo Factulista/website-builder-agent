@@ -46,6 +46,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [projectName, setProjectName] = useState('')
   const [projectSlug, setProjectSlug] = useState('')
   const [copied, setCopied] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const publicUrl = projectSlug && typeof window !== 'undefined'
@@ -57,6 +59,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     await navigator.clipboard.writeText(publicUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setUploading(false); return }
+
+    const ext = file.name.split('.').pop() || 'png'
+    const path = `${session.user.id}/${id}/${Date.now()}.${ext}`
+
+    const { error } = await supabase.storage
+      .from('project-assets')
+      .upload(path, file, { contentType: file.type, upsert: false })
+
+    if (error) {
+      alert(`Errore upload: ${error.message}`)
+      setUploading(false)
+      return
+    }
+
+    const { data: { publicUrl: imageUrl } } = supabase.storage
+      .from('project-assets')
+      .getPublicUrl(path)
+
+    setInput(prev => `${prev}${prev ? ' ' : ''}Usa questa immagine: ${imageUrl}`)
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   useEffect(() => {
@@ -194,7 +226,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <div ref={messagesEndRef} />
         </div>
 
-        <form onSubmit={handleSend} style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem' }}>
+        <form onSubmit={handleSend} style={{ padding: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleUpload}
+            style={{ display: 'none' }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading || uploading}
+            title="Carica immagine"
+            style={{ background: 'transparent', color: '#6b7280', border: '1px solid #e5e7eb', padding: '0.6rem 0.75rem', fontSize: '1rem' }}
+          >
+            {uploading ? '⏳' : '📎'}
+          </button>
           <input
             type="text"
             placeholder="Descrivi il tuo sito o chiedi modifiche..."
