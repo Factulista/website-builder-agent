@@ -1,12 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { supabase } from '../../lib/supabase'
+
+type Project = {
+  id: string
+  name: string
+  slug: string
+  created_at: string
+}
 
 export default function ProjectsPage() {
-  const [projects] = useState([
-    { id: '1', name: 'My First Website', slug: 'my-first-site', created_at: '2026-05-13' },
-  ])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase
+      .from('projects')
+      .select('id, name, slug, created_at')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setProjects(data ?? [])
+        setLoading(false)
+      })
+  }, [])
 
   return (
     <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
@@ -17,7 +35,9 @@ export default function ProjectsPage() {
         </Link>
       </div>
 
-      {projects.length === 0 ? (
+      {loading ? (
+        <p style={{ textAlign: 'center', color: '#9ca3af' }}>Loading...</p>
+      ) : projects.length === 0 ? (
         <p style={{ textAlign: 'center', color: '#9ca3af' }}>No projects yet</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
