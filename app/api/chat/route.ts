@@ -3,76 +3,131 @@ import { NextRequest } from 'next/server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
+type Page = { slug: string; name: string; html: string }
+
 const TOOLS = [
   {
     name: 'create_site',
-    description: 'Crea un sito web da zero. Usalo SOLO per il primo sito o quando l\'utente chiede una riscrittura completa (es: "rifai tutto", "cambia tipo di sito").',
+    description: 'Crea un sito multi-pagina da zero. Usalo SOLO per il primo sito o quando l\'utente chiede di rifare tutto.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        html: { type: 'string', description: 'HTML completo del sito (<!DOCTYPE html> ... </html>), con CSS inline e responsive.' },
-        summary: { type: 'string', description: 'Una breve frase (max 12 parole) che descrive cosa hai creato.' },
-      },
-      required: ['html', 'summary'],
-    },
-  },
-  {
-    name: 'edit_site',
-    description: 'Modifica un sito esistente facendo SOSTITUZIONI mirate. USA QUESTO TOOL per OGNI modifica al sito esistente (cambio colori, testo, layout, aggiungi sezioni). Molto più efficiente di rigenerare tutto.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        edits: {
+        pages: {
           type: 'array',
-          description: 'Lista di sostituzioni find/replace da applicare in ordine.',
+          description: 'Pagine del sito. Devi includere almeno una pagina con slug "home". Slug aggiuntivi consigliati: "chi-siamo", "contatti", ecc.',
           items: {
             type: 'object',
             properties: {
-              find: { type: 'string', description: 'Testo ESATTO da trovare nell\'HTML attuale (deve essere unico nel documento). Includi abbastanza contesto per renderlo univoco.' },
+              slug: { type: 'string', description: 'Slug URL della pagina (es: home, chi-siamo, contatti). Solo minuscole, numeri, trattini.' },
+              name: { type: 'string', description: 'Nome leggibile della pagina (es: Home, Chi Siamo, Contatti).' },
+              html: { type: 'string', description: 'HTML completo della pagina (<!DOCTYPE html> ... </html>).' },
+            },
+            required: ['slug', 'name', 'html'],
+          },
+        },
+        summary: { type: 'string', description: 'Frase breve (max 12 parole) di cosa hai creato.' },
+      },
+      required: ['pages', 'summary'],
+    },
+  },
+  {
+    name: 'edit_page',
+    description: 'Modifica UNA pagina specifica del sito con find/replace mirati. USA QUESTO per ogni modifica a una pagina esistente.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pageSlug: { type: 'string', description: 'Slug della pagina da modificare (es: "home", "chi-siamo").' },
+        edits: {
+          type: 'array',
+          description: 'Sostituzioni find/replace da applicare.',
+          items: {
+            type: 'object',
+            properties: {
+              find: { type: 'string', description: 'Testo ESATTO da trovare (deve essere unico nella pagina).' },
               replace: { type: 'string', description: 'Testo con cui sostituirlo.' },
             },
             required: ['find', 'replace'],
           },
         },
-        summary: { type: 'string', description: 'Una breve frase (max 12 parole) che descrive cosa hai modificato.' },
+        summary: { type: 'string', description: 'Frase breve di cosa hai modificato.' },
       },
-      required: ['edits', 'summary'],
+      required: ['pageSlug', 'edits', 'summary'],
+    },
+  },
+  {
+    name: 'add_page',
+    description: 'Aggiunge una NUOVA pagina al sito esistente (es: blog, prodotti, FAQ).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slug: { type: 'string', description: 'Slug URL (minuscole, trattini).' },
+        name: { type: 'string', description: 'Nome leggibile della pagina.' },
+        html: { type: 'string', description: 'HTML completo della nuova pagina.' },
+        summary: { type: 'string', description: 'Frase breve.' },
+      },
+      required: ['slug', 'name', 'html', 'summary'],
+    },
+  },
+  {
+    name: 'delete_page',
+    description: 'Elimina una pagina dal sito. Non può eliminare la pagina "home".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pageSlug: { type: 'string', description: 'Slug della pagina da eliminare.' },
+        summary: { type: 'string', description: 'Frase breve.' },
+      },
+      required: ['pageSlug', 'summary'],
     },
   },
 ]
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, currentHtml } = await req.json()
+    const { messages, pages, activePageSlug } = await req.json() as {
+      messages: { role: string; content: string }[]
+      pages: Page[]
+      activePageSlug: string | null
+    }
 
     if (!process.env.ANTHROPIC_API_KEY) {
       return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
     }
 
-    const systemPrompt = `Sei un esperto web designer. Crei e modifichi siti web in HTML puro ottimizzati per SEO.
+    const hasPages = pages && pages.length > 0
+    const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
+
+    const pagesOverview = hasPages
+      ? pages.map(p => `- /${p.slug === 'home' ? '' : p.slug} ("${p.name}")`).join('\n')
+      : 'Nessuna pagina ancora.'
+
+    const systemPrompt = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro ottimizzati per SEO.
 
 REGOLE:
-- Se NON c'è un sito esistente, usa il tool \`create_site\` per crearlo da zero.
-- Se c'è già un sito, usa SEMPRE \`edit_site\` per modifiche (cambio colori, testo, sezioni). NON ricreare l'intero sito.
-- Usa \`create_site\` su sito esistente SOLO se l'utente chiede esplicitamente di rifare tutto.
+- Se NON c'è un sito esistente, usa \`create_site\` (crea almeno la pagina "home"; aggiungi altre pagine come "chi-siamo", "contatti" se ha senso per il sito richiesto).
+- Per modifiche a una pagina esistente, usa SEMPRE \`edit_page\` con find/replace mirati. NON ricreare l'intera pagina.
+- Per aggiungere una nuova pagina, usa \`add_page\`.
+- Per eliminare una pagina, usa \`delete_page\` (non puoi eliminare "home").
 
-L'HTML deve essere: pagina completa, CSS inline nel <style>, SEO ottimizzato (title, meta description, h1, semantica), responsive mobile, design moderno e professionale.
+LINK TRA PAGINE:
+- Nei menu di navigazione usa link RELATIVI: \`<a href="./">Home</a>\`, \`<a href="./chi-siamo">Chi Siamo</a>\`, \`<a href="./contatti">Contatti</a>\`.
+- NON usare \`.html\` nei link. Solo lo slug.
 
-IMMAGINI:
-- Includi SEMPRE immagini di alta qualità nei siti che crei (hero image, immagini di sezione, ecc).
-- Usa questi servizi gratuiti per immagini realistiche (no API key richiesta):
-  * Hero/sfondi: \`https://images.unsplash.com/photo-{id}?w=1600&q=80\` — quando hai dubbi, usa: \`https://picsum.photos/seed/{parolachiave}/1600/900\`
-  * Foto generiche per categoria: \`https://picsum.photos/seed/{slug-univoco}/800/600\` (cambia lo "seed" per ogni immagine per averne di diverse)
-  * Avatar/people: \`https://i.pravatar.cc/300?u={username}\` (per testimonianze, team)
-- IMPORTANTE: usa sempre \`object-fit: cover\` nei CSS delle immagini e attributi \`alt\` descrittivi per SEO.
-- Per immagini Unsplash usa URL di foto che esistono. Se incerto, usa picsum.photos con un seed univoco.
+OGNI PAGINA deve essere: HTML completo (<!DOCTYPE html> ... </html>), CSS inline, SEO ottimizzato, mobile-friendly, design moderno e coerente tra pagine (stessi colori, stesso menu navigazione).
 
-${currentHtml ? `SITO ATTUALE:
+IMMAGINI: usa \`https://picsum.photos/seed/{keyword-univoca}/{w}/{h}\` per foto generiche (cambia il seed per ogni immagine) o \`https://i.pravatar.cc/300?u={username}\` per persone.
+
+PAGINE ATTUALI DEL SITO:
+${pagesOverview}
+
+${activePage ? `PAGINA ATTIVA (su cui l'utente sta lavorando): "${activePage.name}" (slug: "${activePage.slug}")
+
+HTML ATTUALE DI QUESTA PAGINA:
 \`\`\`html
-${currentHtml}
+${activePage.html}
 \`\`\`
 
-Per modifiche piccole, identifica il testo ESATTO da cambiare nell'HTML sopra e usa edit_site con find/replace mirati.` : 'Nessun sito ancora generato.'}`
+Quando l'utente chiede modifiche generiche (senza specificare la pagina), modifica questa pagina attiva.` : ''}`
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -87,10 +142,7 @@ Per modifiche piccole, identifica il testo ESATTO da cambiare nell'HTML sopra e 
         system: systemPrompt,
         tools: TOOLS,
         tool_choice: { type: 'any' },
-        messages: messages.map((m: { role: string; content: string }) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
       }),
     })
 

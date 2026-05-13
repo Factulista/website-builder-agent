@@ -4,37 +4,30 @@ import { useState, use, useRef, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string }
-
-function extractHtml(content: string): string | null {
-  // Match ```html ... ``` (with or without newlines)
-  const codeBlock = content.match(/```html\s*\n?([\s\S]*?)```/)
-  if (codeBlock) return codeBlock[1].trim()
-  // Match raw <!DOCTYPE html> ... </html>
-  const rawHtml = content.match(/<!DOCTYPE html[\s\S]*?<\/html>/i)
-  if (rawHtml) return rawHtml[0]
-  return null
-}
+type Page = { slug: string; name: string; html: string }
 
 function stripHtmlFromChat(content: string): string {
   if (!content) return ''
-
-  // Cut at the FIRST occurrence of any of: ``` code fence, < HTML tag, <!-- HTML comment
   const codeMatch = content.indexOf('```')
   const htmlTagMatch = content.search(/<[a-zA-Z!]/)
   const candidates = [codeMatch, htmlTagMatch].filter(i => i >= 0)
   const cutAt = candidates.length > 0 ? Math.min(...candidates) : -1
-
   const prose = cutAt >= 0 ? content.slice(0, cutAt).trim() : content.trim()
-
-  // Detect if generation is complete
   const isComplete = /<\/html>\s*(```)?\s*$/i.test(content) || /```\s*$/.test(content.trim())
-
   if (cutAt >= 0) {
     const status = isComplete ? '✨ Sito generato' : '✨ Sto generando il sito...'
     return prose ? `${prose}\n\n${status}` : status
   }
-
   return prose
+}
+
+// Inject a <base> tag so relative links between pages resolve to /preview/{slug}/
+function injectBase(html: string, projectSlug: string): string {
+  const baseTag = `<base href="/preview/${projectSlug}/">`
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
+  }
+  return baseTag + html
 }
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -42,17 +35,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+  const [pages, setPages] = useState<Page[]>([])
+  const [activeSlug, setActiveSlug] = useState<string>('home')
   const [projectName, setProjectName] = useState('')
   const [projectSlug, setProjectSlug] = useState('')
   const [copied, setCopied] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [chatWidth, setChatWidth] = useState(40) // percentage
+  const [chatWidth, setChatWidth] = useState(40)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Resizable divider
+  const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
+
   useEffect(() => {
     if (!isDragging) return
     const handleMove = (e: MouseEvent) => {
@@ -72,8 +67,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }, [isDragging])
 
-  const publicUrl = projectSlug && typeof window !== 'undefined'
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const publicBaseUrl = projectSlug && typeof window !== 'undefined'
     ? `${window.location.origin}/preview/${projectSlug}`
+    : ''
+
+  const publicUrl = publicBaseUrl
+    ? (activeSlug === 'home' ? publicBaseUrl : `${publicBaseUrl}/${activeSlug}`)
     : ''
 
   const copyUrl = async () => {
@@ -87,37 +90,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
-
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setUploading(false); return }
-
     const ext = file.name.split('.').pop() || 'png'
     const path = `${session.user.id}/${id}/${Date.now()}.${ext}`
-
     const { error } = await supabase.storage
       .from('project-assets')
       .upload(path, file, { contentType: file.type, upsert: false })
-
     if (error) {
       alert(`Errore upload: ${error.message}`)
       setUploading(false)
       return
     }
-
     const { data: { publicUrl: imageUrl } } = supabase.storage
       .from('project-assets')
       .getPublicUrl(path)
-
     setInput(prev => `${prev}${prev ? ' ' : ''}Usa questa immagine: ${imageUrl}`)
     setUploading(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  // Load project state on mount
+  // Load project state on mount (with migration from legacy single-html)
   useEffect(() => {
     const load = async () => {
       const { data: project } = await supabase
@@ -125,22 +118,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         .select('name, slug, site_config')
         .eq('id', id)
         .single()
-      if (project) {
-        setProjectName(project.name)
-        setProjectSlug(project.slug)
-        const config = project.site_config as { html?: string; messages?: Message[] } | null
-        if (config?.html) setPreviewHtml(config.html)
-        if (config?.messages) setMessages(config.messages)
+      if (!project) return
+      setProjectName(project.name)
+      setProjectSlug(project.slug)
+      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[] } | null
+
+      let loadedPages: Page[] = []
+      if (config?.pages && config.pages.length > 0) {
+        loadedPages = config.pages
+      } else if (config?.html) {
+        loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
       }
+      setPages(loadedPages)
+      if (loadedPages.length > 0) setActiveSlug(loadedPages[0].slug)
+      if (config?.messages) setMessages(config.messages)
     }
     load()
   }, [id])
 
-  const saveState = async (newMessages: Message[], html: string | null) => {
+  const saveState = async (newMessages: Message[], newPages: Page[]) => {
     await supabase
       .from('projects')
       .update({
-        site_config: { html, messages: newMessages },
+        site_config: { pages: newPages, messages: newMessages },
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -166,7 +166,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       body: JSON.stringify({
         projectId: id,
         messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
-        currentHtml: previewHtml,
+        pages,
+        activePageSlug: activeSlug,
       }),
     })
 
@@ -180,35 +181,66 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return
     }
 
-    let newHtml: string | null = previewHtml
+    let newPages: Page[] = pages
     let summary = ''
+    let newActiveSlug = activeSlug
 
     if (result.tool === 'create_site') {
-      newHtml = result.input.html
+      newPages = result.input.pages as Page[]
       summary = `✨ ${result.input.summary}`
-      setPreviewHtml(newHtml)
-    } else if (result.tool === 'edit_site') {
+      if (newPages.length > 0) newActiveSlug = newPages[0].slug
+    } else if (result.tool === 'edit_page') {
+      const targetSlug = result.input.pageSlug as string
       const edits = result.input.edits as { find: string; replace: string }[]
-      let html = previewHtml || ''
-      const skipped: string[] = []
-      for (const edit of edits) {
-        if (html.includes(edit.find)) {
-          html = html.replace(edit.find, edit.replace)
-        } else {
-          skipped.push(edit.find.slice(0, 40) + '...')
+      let skipped = 0
+      newPages = pages.map(p => {
+        if (p.slug !== targetSlug) return p
+        let html = p.html
+        for (const edit of edits) {
+          if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
+          else skipped++
         }
+        return { ...p, html }
+      })
+      summary = `✏️ ${result.input.summary}${skipped ? ` (${skipped} edit non applicate)` : ''}`
+      newActiveSlug = targetSlug
+    } else if (result.tool === 'add_page') {
+      const newPage: Page = {
+        slug: result.input.slug,
+        name: result.input.name,
+        html: result.input.html,
       }
-      newHtml = html
-      summary = `✏️ ${result.input.summary}${skipped.length ? ` (${skipped.length} edit non applicate)` : ''}`
-      setPreviewHtml(newHtml)
+      newPages = [...pages, newPage]
+      summary = `➕ ${result.input.summary}`
+      newActiveSlug = newPage.slug
+    } else if (result.tool === 'delete_page') {
+      const targetSlug = result.input.pageSlug as string
+      if (targetSlug === 'home') {
+        summary = '⚠️ La pagina "home" non può essere eliminata'
+      } else {
+        newPages = pages.filter(p => p.slug !== targetSlug)
+        summary = `🗑 ${result.input.summary}`
+        if (activeSlug === targetSlug) newActiveSlug = newPages[0]?.slug || 'home'
+      }
     }
 
+    setPages(newPages)
+    setActiveSlug(newActiveSlug)
     setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
 
     const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
-    await saveState(finalMessages, newHtml)
+    await saveState(finalMessages, newPages)
 
     setLoading(false)
+  }
+
+  const handleDeletePage = async (slug: string) => {
+    if (slug === 'home') { alert('La pagina "home" non può essere eliminata'); return }
+    if (!confirm(`Eliminare la pagina "${slug}"?`)) return
+    const newPages = pages.filter(p => p.slug !== slug)
+    setPages(newPages)
+    if (activeSlug === slug) setActiveSlug(newPages[0]?.slug || 'home')
+    await saveState(messages, newPages)
   }
 
   return (
@@ -231,27 +263,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             msg.role === 'user' ? (
               <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <div style={{
-                  maxWidth: '85%',
-                  padding: '0.75rem 1rem',
-                  background: '#f0ebe1',
-                  color: '#1c1917',
-                  borderRadius: '1.25rem',
-                  fontSize: '0.9375rem',
-                  lineHeight: '1.55',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
+                  maxWidth: '85%', padding: '0.75rem 1rem', background: '#f0ebe1', color: '#1c1917',
+                  borderRadius: '1.25rem', fontSize: '0.9375rem', lineHeight: '1.55',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
                   {msg.content}
                 </div>
               </div>
             ) : (
               <div key={msg.id} style={{
-                fontSize: '0.9375rem',
-                lineHeight: '1.65',
-                color: '#1c1917',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                paddingRight: '0.5rem',
+                fontSize: '0.9375rem', lineHeight: '1.65', color: '#1c1917',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingRight: '0.5rem',
               }}>
                 {stripHtmlFromChat(msg.content) || (loading ? (
                   <span style={{ color: '#a8a29e' }}>● ● ●</span>
@@ -263,19 +285,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         </div>
 
         <form onSubmit={handleSend} style={{ padding: '0.75rem 1rem 1rem', background: '#faf9f7' }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleUpload}
-            style={{ display: 'none' }}
-          />
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleUpload} style={{ display: 'none' }} />
           <div style={{
-            background: 'white',
-            border: '1px solid #ebe6df',
-            borderRadius: '1.25rem',
-            padding: '0.875rem 1rem 0.5rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+            background: 'white', border: '1px solid #ebe6df', borderRadius: '1.25rem',
+            padding: '0.875rem 1rem 0.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
           }}>
             <input
               type="text"
@@ -289,15 +302,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 }
               }}
               disabled={loading}
-              style={{
-                width: '100%',
-                border: 'none',
-                outline: 'none',
-                fontSize: '0.9375rem',
-                padding: 0,
-                background: 'transparent',
-                color: '#1c1917',
-              }}
+              style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.9375rem', padding: 0, background: 'transparent', color: '#1c1917' }}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
               <button
@@ -305,15 +310,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading || uploading}
                 title="Carica immagine"
-                style={{
-                  background: 'transparent',
-                  color: '#78716c',
-                  border: 'none',
-                  padding: '0.35rem 0.5rem',
-                  fontSize: '1.05rem',
-                  borderRadius: '0.5rem',
-                  cursor: 'pointer',
-                }}
+                style={{ background: 'transparent', color: '#78716c', border: 'none', padding: '0.35rem 0.5rem', fontSize: '1.05rem', borderRadius: '0.5rem', cursor: 'pointer' }}
               >
                 {uploading ? '⏳' : '+'}
               </button>
@@ -321,18 +318,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 type="submit"
                 disabled={loading || !input.trim()}
                 style={{
-                  padding: '0.4rem 0.65rem',
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  padding: '0.4rem 0.65rem', borderRadius: '50%', width: '32px', height: '32px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: input.trim() && !loading ? '#1c1917' : '#d6d3d1',
-                  color: 'white',
-                  border: 'none',
-                  cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-                  fontSize: '1rem',
+                  color: 'white', border: 'none',
+                  cursor: input.trim() && !loading ? 'pointer' : 'not-allowed', fontSize: '1rem',
                 }}
                 title="Invia"
               >
@@ -347,56 +337,66 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       <div
         onMouseDown={(e) => { e.preventDefault(); setIsDragging(true) }}
         style={{
-          width: '8px',
-          cursor: 'col-resize',
-          background: isDragging ? '#2563eb' : '#e7e5e4',
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: isDragging ? 'none' : 'background 0.15s',
-          position: 'relative',
-          zIndex: 10,
+          width: '8px', cursor: 'col-resize', background: isDragging ? '#2563eb' : '#e7e5e4',
+          flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: isDragging ? 'none' : 'background 0.15s', position: 'relative', zIndex: 10,
         }}
         onMouseEnter={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#a8a29e' }}
         onMouseLeave={(e) => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = '#e7e5e4' }}
       >
-        <div style={{
-          width: '2px',
-          height: '32px',
-          background: isDragging ? 'white' : '#78716c',
-          borderRadius: '1px',
-          pointerEvents: 'none',
-        }} />
+        <div style={{ width: '2px', height: '32px', background: isDragging ? 'white' : '#78716c', borderRadius: '1px', pointerEvents: 'none' }} />
       </div>
 
-      {/* Iframe-blocking overlay while dragging */}
-      {isDragging && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          cursor: 'col-resize',
-          zIndex: 9999,
-        }} />
-      )}
+      {isDragging && <div style={{ position: 'fixed', inset: 0, cursor: 'col-resize', zIndex: 9999 }} />}
 
       {/* Preview */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'white', overflow: 'hidden' }}>
-        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-          {previewHtml && publicUrl ? (
+        {/* Page tabs */}
+        {pages.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.25rem',
+            padding: '0.5rem 0.75rem', borderBottom: '1px solid #e5e7eb',
+            background: '#fafaf9', overflowX: 'auto',
+          }}>
+            {pages.map(p => (
+              <div key={p.slug} style={{ display: 'flex', alignItems: 'center' }}>
+                <button
+                  onClick={() => setActiveSlug(p.slug)}
+                  style={{
+                    background: p.slug === activeSlug ? 'white' : 'transparent',
+                    color: p.slug === activeSlug ? '#1c1917' : '#78716c',
+                    border: p.slug === activeSlug ? '1px solid #e5e7eb' : '1px solid transparent',
+                    padding: '0.35rem 0.75rem', fontSize: '0.8rem', borderRadius: '0.375rem',
+                    fontWeight: p.slug === activeSlug ? 600 : 400, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {p.name}
+                </button>
+                {p.slug !== 'home' && p.slug === activeSlug && (
+                  <button
+                    onClick={() => handleDeletePage(p.slug)}
+                    title="Elimina pagina"
+                    style={{
+                      background: 'transparent', color: '#ef4444', border: 'none',
+                      padding: '0.25rem 0.4rem', fontSize: '0.8rem', cursor: 'pointer',
+                    }}
+                  >×</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* URL bar */}
+        <div style={{ padding: '0.5rem 1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.8rem', color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+          {activePage && publicUrl ? (
             <>
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: '#2563eb', textDecoration: 'none', fontFamily: 'monospace', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
-              >
+              <a href={publicUrl} target="_blank" rel="noopener noreferrer"
+                style={{ color: '#2563eb', textDecoration: 'none', fontFamily: 'monospace', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                 {publicUrl.replace(/^https?:\/\//, '')}
               </a>
-              <button
-                onClick={copyUrl}
-                style={{ background: copied ? '#10b981' : '#2563eb', color: 'white', padding: '0.35rem 0.75rem', fontSize: '0.75rem', borderRadius: '0.25rem' }}
-              >
+              <button onClick={copyUrl}
+                style={{ background: copied ? '#10b981' : '#2563eb', color: 'white', padding: '0.3rem 0.65rem', fontSize: '0.7rem', borderRadius: '0.25rem' }}>
                 {copied ? '✓ Copiato' : 'Copia URL'}
               </button>
             </>
@@ -404,12 +404,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             <span>Preview</span>
           )}
         </div>
-        {previewHtml ? (
+
+        {activePage ? (
           <iframe
-            srcDoc={previewHtml}
+            srcDoc={injectBase(activePage.html, projectSlug)}
             style={{ flex: 1, border: 'none', width: '100%' }}
             title="Preview"
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-same-origin"
           />
         ) : (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>

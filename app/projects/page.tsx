@@ -5,12 +5,21 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 
+type Page = { slug: string; name: string; html: string }
 type Project = {
   id: string
   name: string
   slug: string
   created_at: string
-  site_config?: { html?: string } | null
+  site_config?: { html?: string; pages?: Page[] } | null
+}
+
+function getHomeHtml(project: Project): string | undefined {
+  const config = project.site_config
+  if (config?.pages && config.pages.length > 0) {
+    return config.pages.find(p => p.slug === 'home')?.html ?? config.pages[0].html
+  }
+  return config?.html
 }
 
 export default function ProjectsPage() {
@@ -90,7 +99,8 @@ export default function ProjectsPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
           {projects.map((project) => {
-            const hasHtml = !!project.site_config?.html
+            const homeHtml = getHomeHtml(project)
+            const hasHtml = !!homeHtml
             const isRenaming = renamingId === project.id
             return (
               <div key={project.id} style={{
@@ -106,7 +116,7 @@ export default function ProjectsPage() {
                   <div style={{ height: '160px', borderBottom: '1px solid #e5e7eb', overflow: 'hidden', background: '#f9fafb', position: 'relative' }}>
                     {hasHtml ? (
                       <iframe
-                        srcDoc={project.site_config!.html}
+                        srcDoc={homeHtml}
                         style={{ width: '400%', height: '400%', border: 'none', transform: 'scale(0.25)', transformOrigin: 'top left', pointerEvents: 'none' }}
                         sandbox=""
                         title={project.name}
