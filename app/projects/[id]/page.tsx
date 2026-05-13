@@ -15,19 +15,34 @@ function extractHtml(content: string): string | null {
   return null
 }
 
-function stripHtmlFromChat(content: string, isStreaming: boolean): string {
-  // Replace ```html ... ``` blocks (closed or still open) with a status marker
-  let cleaned = content.replace(/```html[\s\S]*?```/g, '✨ Sito generato')
-  // If a code block is still open (streaming), replace the open block too
-  if (cleaned.includes('```html')) {
-    cleaned = cleaned.replace(/```html[\s\S]*$/, '✨ Sto generando il sito...')
+function stripHtmlFromChat(content: string): string {
+  if (!content) return ''
+
+  // Find first occurrence of anything that looks like code/HTML
+  const markers = [
+    content.indexOf('```'),
+    content.search(/<!DOCTYPE/i),
+    content.search(/<html/i),
+    content.search(/<head/i),
+    content.search(/<body/i),
+    content.search(/<div/i),
+    content.search(/<style/i),
+  ].filter(i => i >= 0)
+
+  const cutAt = markers.length > 0 ? Math.min(...markers) : -1
+
+  // If we found HTML content, keep only the prose before it
+  const prose = cutAt >= 0 ? content.slice(0, cutAt).trim() : content.trim()
+
+  // Check if content is "complete" (has closing tags or finished code block)
+  const isComplete = /<\/html>|```\s*$|```\n[^`]*$/i.test(content)
+
+  if (cutAt >= 0) {
+    const status = isComplete ? '\n\n✨ Sito generato' : '\n\n✨ Sto generando il sito...'
+    return (prose + status).trim()
   }
-  // Replace raw doctype HTML if Claude skips the code fence
-  cleaned = cleaned.replace(/<!DOCTYPE html[\s\S]*?<\/html>/gi, '✨ Sito generato')
-  if (/<!DOCTYPE html/i.test(cleaned)) {
-    cleaned = cleaned.replace(/<!DOCTYPE html[\s\S]*$/i, '✨ Sto generando il sito...')
-  }
-  return cleaned.trim()
+
+  return prose
 }
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -164,7 +179,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 whiteSpace: 'pre-wrap',
               }}>
                 {msg.role === 'assistant'
-                  ? (stripHtmlFromChat(msg.content, loading) || (loading ? '...' : ''))
+                  ? (stripHtmlFromChat(msg.content) || (loading ? '...' : ''))
                   : msg.content}
               </div>
             </div>
