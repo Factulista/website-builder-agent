@@ -18,28 +18,20 @@ function extractHtml(content: string): string | null {
 function stripHtmlFromChat(content: string): string {
   if (!content) return ''
 
-  // Find first occurrence of anything that looks like code/HTML
-  const markers = [
-    content.indexOf('```'),
-    content.search(/<!DOCTYPE/i),
-    content.search(/<html/i),
-    content.search(/<head/i),
-    content.search(/<body/i),
-    content.search(/<div/i),
-    content.search(/<style/i),
-  ].filter(i => i >= 0)
+  // Cut at the FIRST occurrence of any of: ``` code fence, < HTML tag, <!-- HTML comment
+  const codeMatch = content.indexOf('```')
+  const htmlTagMatch = content.search(/<[a-zA-Z!]/)
+  const candidates = [codeMatch, htmlTagMatch].filter(i => i >= 0)
+  const cutAt = candidates.length > 0 ? Math.min(...candidates) : -1
 
-  const cutAt = markers.length > 0 ? Math.min(...markers) : -1
-
-  // If we found HTML content, keep only the prose before it
   const prose = cutAt >= 0 ? content.slice(0, cutAt).trim() : content.trim()
 
-  // Check if content is "complete" (has closing tags or finished code block)
-  const isComplete = /<\/html>|```\s*$|```\n[^`]*$/i.test(content)
+  // Detect if generation is complete
+  const isComplete = /<\/html>\s*(```)?\s*$/i.test(content) || /```\s*$/.test(content.trim())
 
   if (cutAt >= 0) {
-    const status = isComplete ? '\n\n✨ Sito generato' : '\n\n✨ Sto generando il sito...'
-    return (prose + status).trim()
+    const status = isComplete ? '✨ Sito generato' : '✨ Sto generando il sito...'
+    return prose ? `${prose}\n\n${status}` : status
   }
 
   return prose

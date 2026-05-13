@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 8096,
+        max_tokens: 16384,
         stream: true,
         system: `Sei un esperto web designer. Crea siti web in HTML puro ottimizzati per SEO.
 
