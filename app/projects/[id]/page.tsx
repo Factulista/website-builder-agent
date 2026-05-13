@@ -43,6 +43,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [uploading, setUploading] = useState(false)
   const [chatWidth, setChatWidth] = useState(40)
   const [isDragging, setIsDragging] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [customDomain, setCustomDomain] = useState('')
+  const [customDomainStatus, setCustomDomainStatus] = useState<string | null>(null)
+  const [addingDomain, setAddingDomain] = useState(false)
+  const [dnsInstructions, setDnsInstructions] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -124,12 +129,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const load = async () => {
       const { data: project } = await supabase
         .from('projects')
-        .select('name, slug, site_config')
+        .select('name, slug, site_config, custom_domain, custom_domain_status')
         .eq('id', id)
         .single()
       if (!project) return
       setProjectName(project.name)
       setProjectSlug(project.slug)
+      if (project.custom_domain) {
+        setCustomDomain(project.custom_domain)
+        setCustomDomainStatus(project.custom_domain_status)
+      }
       const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[] } | null
 
       let loadedPages: Page[] = []
@@ -250,6 +259,44 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setPages(newPages)
     if (activeSlug === slug) setActiveSlug(newPages[0]?.slug || 'home')
     await saveState(messages, newPages)
+  }
+
+  const handleAddCustomDomain = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!customDomain.trim()) return
+
+    setAddingDomain(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const res = await fetch('/api/add-custom-domain', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          projectId: id,
+          domain: customDomain.trim(),
+        }),
+      })
+
+      const result = await res.json()
+      if (!res.ok) {
+        alert(`Errore: ${result.error}`)
+        setAddingDomain(false)
+        return
+      }
+
+      setCustomDomainStatus(result.status)
+      setDnsInstructions(result.message)
+      setAddingDomain(false)
+    } catch (error) {
+      console.error(error)
+      alert('Errore nella richiesta')
+      setAddingDomain(false)
+    }
   }
 
   return (
@@ -398,20 +445,28 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
         {/* URL bar */}
         <div style={{ padding: '0.5rem 1rem', borderBottom: '1px solid #e5e7eb', fontSize: '0.8rem', color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-          {activePage && publicUrl ? (
-            <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+            {activePage && publicUrl ? (
               <a href={publicUrl} target="_blank" rel="noopener noreferrer"
                 style={{ color: '#2563eb', textDecoration: 'none', fontFamily: 'monospace', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                 {publicUrl.replace(/^https?:\/\//, '')}
               </a>
+            ) : (
+              <span style={{ color: '#9ca3af' }}>Preview</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {activePage && publicUrl && (
               <button onClick={copyUrl}
                 style={{ background: copied ? '#10b981' : '#2563eb', color: 'white', padding: '0.3rem 0.65rem', fontSize: '0.7rem', borderRadius: '0.25rem' }}>
                 {copied ? '✓ Copiato' : 'Copia URL'}
               </button>
-            </>
-          ) : (
-            <span>Preview</span>
-          )}
+            )}
+            <button onClick={() => setShowSettingsModal(true)}
+              style={{ background: '#6b7280', color: 'white', padding: '0.3rem 0.65rem', fontSize: '0.7rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+              ⚙️ Impostazioni
+            </button>
+          </div>
         </div>
 
         {activePage ? (
@@ -427,6 +482,74 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
       </div>
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div style={{ background: 'white', borderRadius: '0.5rem', padding: '2rem', maxWidth: '500px', width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#1c1917' }}>Impostazioni Progetto</h2>
+              <button onClick={() => { setShowSettingsModal(false); setDnsInstructions('') }}
+                style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#78716c' }}>×</button>
+            </div>
+
+            {/* Current domain info */}
+            <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f9fafb', borderRadius: '0.375rem', borderLeft: '3px solid #3b82f6' }}>
+              <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>Dominio di preview (staging)</p>
+              <p style={{ margin: 0, fontSize: '0.9rem', fontFamily: 'monospace', color: '#1c1917', fontWeight: 500 }}>myweb.factulista.com/{projectSlug}</p>
+            </div>
+
+            {/* Custom domain form */}
+            {!customDomain || customDomainStatus !== 'verified' ? (
+              <form onSubmit={handleAddCustomDomain} style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#1c1917' }}>
+                  Dominio Personalizzato (Production)
+                </label>
+                <input
+                  type="text"
+                  placeholder="es: miodominio.com"
+                  value={customDomain}
+                  onChange={(e) => setCustomDomain(e.target.value)}
+                  disabled={addingDomain}
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.375rem', marginBottom: '1rem', fontSize: '0.9rem', boxSizing: 'border-box' }}
+                />
+                <button
+                  type="submit"
+                  disabled={addingDomain || !customDomain.trim()}
+                  style={{
+                    width: '100%', padding: '0.5rem', background: customDomain.trim() && !addingDomain ? '#1c1917' : '#d6d3d1',
+                    color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 500,
+                    cursor: customDomain.trim() && !addingDomain ? 'pointer' : 'not-allowed',
+                  }}>
+                  {addingDomain ? '⏳ Configurazione...' : 'Aggiungi Dominio'}
+                </button>
+              </form>
+            ) : (
+              <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0fdf4', borderRadius: '0.375rem', borderLeft: '3px solid #10b981' }}>
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>Dominio Personalizzato (Attivo)</p>
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontFamily: 'monospace', color: '#1c1917', fontWeight: 500 }}>{customDomain}</p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#059669' }}>✓ Verificato e attivo</p>
+              </div>
+            )}
+
+            {/* DNS Instructions */}
+            {dnsInstructions && (
+              <div style={{ padding: '1rem', background: '#fef3c7', borderRadius: '0.375rem', borderLeft: '3px solid #f59e0b', marginBottom: '1rem' }}>
+                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', fontWeight: 500, color: '#1c1917' }}>Configura il tuo DNS:</p>
+                <pre style={{ margin: 0, fontSize: '0.75rem', color: '#1c1917', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>
+                  {dnsInstructions}
+                </pre>
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#78716c' }}>La verifica può impiegare fino a 15 minuti.</p>
+              </div>
+            )}
+
+            <button onClick={() => { setShowSettingsModal(false); setDnsInstructions('') }}
+              style={{ width: '100%', padding: '0.5rem', background: '#e5e7eb', color: '#1c1917', border: 'none', borderRadius: '0.375rem', fontWeight: 500, cursor: 'pointer' }}>
+              Chiudi
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
