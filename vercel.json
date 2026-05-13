@@ -1,5 +1,4 @@
 {
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "root": "apps/web"
+  "buildCommand": "cd apps/web && npm run build",
+  "installCommand": "cd apps/web && npm install"
 }
