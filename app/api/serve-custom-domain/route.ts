@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { servePreview } from '../../../lib/preview'
+import { servePublished } from '../../../lib/preview'
 
 export const runtime = 'nodejs'
 
@@ -44,5 +44,5 @@ export async function GET(req: NextRequest) {
   pathname = pathname.replace(/^\/api\/serve-custom-domain/, '')
   const pageSlug = pathname === '' || pathname === '/' ? 'home' : pathname.slice(1)
 
-  return servePreview(project.slug, pageSlug)
+  return servePublished(project.slug, pageSlug, host)
 }

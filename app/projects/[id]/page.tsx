@@ -49,6 +49,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [addingDomain, setAddingDomain] = useState(false)
   const [dnsInstructions, setDnsInstructions] = useState<string>('')
   const [verifying, setVerifying] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [publishedAt, setPublishedAt] = useState<string | null>(null)
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -335,6 +337,28 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }, 15000)
   }
 
+  const handlePublish = async () => {
+    if (!confirm('Pubblicare il sito su ' + customDomain + '?')) return
+    setPublishing(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const res = await fetch('/api/publish-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ projectId: id }),
+      })
+      const result = await res.json()
+      if (!res.ok) { alert(`Errore: ${result.error}`); return }
+      setPublishedAt(result.publishedAt)
+    } catch (e) {
+      console.error(e)
+      alert('Errore nella pubblicazione')
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   // Start polling if domain is pending on load
   useEffect(() => {
     if (customDomainStatus === 'pending') {
@@ -548,11 +572,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
             {/* Custom domain form */}
             {customDomainStatus === 'verified' ? (
-              <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0fdf4', borderRadius: '0.375rem', borderLeft: '3px solid #10b981' }}>
-                <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.75rem', color: '#6b7280' }}>Dominio personalizzato attivo</p>
-                <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.9rem', fontFamily: 'monospace', color: '#1c1917', fontWeight: 500 }}>{customDomain}</p>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: '#059669' }}>✓ Verificato e attivo</p>
-              </div>
+              <>
+                <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0fdf4', borderRadius: '0.375rem', borderLeft: '3px solid #10b981' }}>
+                  <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.75rem', color: '#6b7280' }}>Dominio personalizzato attivo</p>
+                  <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.9rem', fontFamily: 'monospace', color: '#1c1917', fontWeight: 500 }}>{customDomain}</p>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#059669' }}>✓ Verificato e attivo</p>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <button
+                    onClick={handlePublish}
+                    disabled={publishing || pages.length === 0}
+                    style={{
+                      width: '100%', padding: '0.6rem', background: publishing ? '#d6d3d1' : '#2563eb',
+                      color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 600,
+                      fontSize: '0.9rem', cursor: publishing ? 'not-allowed' : 'pointer',
+                    }}>
+                    {publishing ? '⏳ Pubblicazione...' : `🚀 Pubblica su ${customDomain}`}
+                  </button>
+                  {publishedAt && (
+                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#059669', textAlign: 'center' }}>
+                      ✓ Pubblicato il {new Date(publishedAt).toLocaleString('it-IT')}
+                    </p>
+                  )}
+                </div>
+              </>
             ) : customDomainStatus === 'pending' ? (
               <div style={{ marginBottom: '1rem', padding: '1rem', background: '#fffbeb', borderRadius: '0.375rem', borderLeft: '3px solid #f59e0b' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
