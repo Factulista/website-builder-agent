@@ -434,11 +434,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             background: 'white', border: '1px solid #ebe6df', borderRadius: '1.25rem',
             padding: '0.875rem 1rem 0.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
           }}>
-            <input
-              type="text"
+            <textarea
               placeholder="Descrivi il tuo sito o chiedi modifiche..."
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = `${e.target.scrollHeight}px`
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -446,7 +449,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 }
               }}
               disabled={loading}
-              style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.9375rem', padding: 0, background: 'transparent', color: '#1c1917' }}
+              rows={1}
+              style={{
+                width: '100%', border: 'none', outline: 'none', fontSize: '0.9375rem',
+                padding: 0, background: 'transparent', color: '#1c1917',
+                resize: 'none', overflow: 'hidden', lineHeight: '1.5',
+                fontFamily: 'inherit', minHeight: '24px', maxHeight: '200px',
+              }}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
               <button
