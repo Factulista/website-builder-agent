@@ -25,6 +25,6 @@ export function loadTemplate(name: string): string | null {
 
 export function applyPlaceholders(html: string, values: Record<string, string>): string {
   return Object.entries(values).reduce((acc, [key, val]) => {
-    return acc.replaceAll(`{{${key}}}`, val ?? '')
+    return acc.split(`{{${key}}}`).join(val ?? '')
   }, html)
 }
