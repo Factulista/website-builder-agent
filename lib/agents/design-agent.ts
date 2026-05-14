@@ -99,3 +99,88 @@ REGOLE:
   if (!toolUse) throw new Error('No tool use in Design response')
   return toolUse.input as DesignOutput
 }
+
+type Page = { slug: string; name: string; html: string }
+
+const DESIGN_UPDATE_TOOLS = [
+  {
+    name: 'update_design',
+    description: 'Aggiorna il design di tutte le pagine del sito con find/replace CSS mirati.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              pageSlug: { type: 'string' },
+              edits: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    find: { type: 'string' },
+                    replace: { type: 'string' },
+                  },
+                  required: ['find', 'replace'],
+                },
+              },
+            },
+            required: ['pageSlug', 'edits'],
+          },
+        },
+        summary: { type: 'string' },
+      },
+      required: ['pages', 'summary'],
+    },
+  },
+]
+
+export async function runDesignAgentUpdate(
+  userRequest: string,
+  pages: Page[],
+  apiKey: string,
+  context: ProjectContext = {}
+): Promise<{ pages: Page[]; summary: string }> {
+  const pagesContext = pages.map(p => `=== ${p.slug} ===\n${p.html.slice(0, 3000)}`).join('\n\n')
+
+  const system = `Sei un UI designer esperto. Aggiorni il design di siti web esistenti tramite find/replace CSS mirati.
+
+${DESIGN_KNOWLEDGE}
+
+${buildContextPrompt(context)}
+
+REGOLE:
+- Usa update_design con find/replace precisi sullo stile CSS esistente.
+- Applica le modifiche a TUTTE le pagine in modo coerente.
+- Modifica solo CSS (colori, font, border-radius, spacing) — non il contenuto HTML.
+- I find devono essere stringhe ESATTE presenti nell'HTML.`
+
+  const res = await callClaude(
+    'design',
+    system,
+    [{ role: 'user', content: `Richiesta: ${userRequest}\n\nPAGINE ATTUALI:\n${pagesContext}` }],
+    DESIGN_UPDATE_TOOLS,
+    apiKey
+  )
+
+  if (!res.ok) throw new Error(`Design Update error: ${await res.text()}`)
+  const data = await res.json()
+  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+  if (!toolUse) throw new Error('No tool use in Design Update response')
+
+  const result = toolUse.input as { pages: { pageSlug: string; edits: { find: string; replace: string }[] }[]; summary: string }
+
+  const updatedPages = pages.map(page => {
+    const patch = result.pages?.find(p => p.pageSlug === page.slug)
+    if (!patch) return page
+    let html = page.html
+    for (const edit of patch.edits) {
+      if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
+    }
+    return { ...page, html }
+  })
+
+  return { pages: updatedPages, summary: result.summary }
+}

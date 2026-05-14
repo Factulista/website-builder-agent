@@ -112,3 +112,89 @@ REGOLE:
   if (!toolUse) throw new Error('No tool use in Content response')
   return toolUse.input as ContentOutput
 }
+
+type Page = { slug: string; name: string; html: string }
+
+const CONTENT_UPDATE_TOOLS = [
+  {
+    name: 'update_content',
+    description: 'Aggiorna i testi di tutte le pagine del sito con find/replace mirati.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              pageSlug: { type: 'string' },
+              edits: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    find: { type: 'string' },
+                    replace: { type: 'string' },
+                  },
+                  required: ['find', 'replace'],
+                },
+              },
+            },
+            required: ['pageSlug', 'edits'],
+          },
+        },
+        summary: { type: 'string' },
+      },
+      required: ['pages', 'summary'],
+    },
+  },
+]
+
+export async function runContentAgentUpdate(
+  userRequest: string,
+  pages: Page[],
+  apiKey: string,
+  context: ProjectContext = {}
+): Promise<{ pages: Page[]; summary: string }> {
+  const pagesContext = pages.map(p => `=== ${p.slug} ===\n${p.html.slice(0, 4000)}`).join('\n\n')
+
+  const system = `Sei un copywriter esperto in italiano. Aggiorni i testi di siti web esistenti tramite find/replace mirati.
+
+${CONTENT_KNOWLEDGE}
+
+${buildContextPrompt(context)}
+
+REGOLE:
+- Usa update_content con find/replace precisi sui testi esistenti.
+- Applica le modifiche a TUTTE le pagine in modo coerente (stesso tono, stesso stile).
+- Modifica solo testo — non CSS, classi HTML o attributi.
+- I find devono essere stringhe ESATTE presenti nell'HTML.
+- Mantieni la struttura HTML invariata.`
+
+  const res = await callClaude(
+    'content',
+    system,
+    [{ role: 'user', content: `Richiesta: ${userRequest}\n\nPAGINE ATTUALI:\n${pagesContext}` }],
+    CONTENT_UPDATE_TOOLS,
+    apiKey
+  )
+
+  if (!res.ok) throw new Error(`Content Update error: ${await res.text()}`)
+  const data = await res.json()
+  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+  if (!toolUse) throw new Error('No tool use in Content Update response')
+
+  const result = toolUse.input as { pages: { pageSlug: string; edits: { find: string; replace: string }[] }[]; summary: string }
+
+  const updatedPages = pages.map(page => {
+    const patch = result.pages?.find(p => p.pageSlug === page.slug)
+    if (!patch) return page
+    let html = page.html
+    for (const edit of patch.edits) {
+      if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
+    }
+    return { ...page, html }
+  })
+
+  return { pages: updatedPages, summary: result.summary }
+}

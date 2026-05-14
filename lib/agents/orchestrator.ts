@@ -1,6 +1,6 @@
 import { runPlanner } from './planner'
-import { runContentAgent } from './content-agent'
-import { runDesignAgent } from './design-agent'
+import { runContentAgent, runContentAgentUpdate } from './content-agent'
+import { runDesignAgent, runDesignAgentUpdate } from './design-agent'
 import { runHtmlAgentWithPlan, runHtmlAgent } from './html-agent'
 import { runSeoAgent } from './seo-agent'
 import { runImagesAgent } from './images-agent'
@@ -10,12 +10,11 @@ import { analyzeSite, extractUrls, type DesignBrief } from './site-analyzer'
 
 type Page = { slug: string; name: string; html: string }
 
-type AgentType = 'pipeline' | 'html' | 'seo'
+type AgentType = 'pipeline' | 'html' | 'seo' | 'design-update' | 'content-update'
 
 const SEO_KEYWORDS = [
-  'seo', 'meta', 'title tag', 'description', 'keywords', 'sitemap',
-  'robots', 'canonical', 'og:', 'open graph', 'indicizzazione', 'google',
-  'posizionamento', 'rank', 'ottimizza seo', 'migliora seo',
+  'seo', 'meta', 'title tag', 'keywords', 'sitemap', 'robots', 'canonical',
+  'og:', 'open graph', 'indicizzazione', 'posizionamento', 'ottimizza seo', 'migliora seo',
 ]
 
 const CREATE_KEYWORDS = [
@@ -23,20 +22,64 @@ const CREATE_KEYWORDS = [
   'rifai', 'ricrea', 'da zero',
 ]
 
+const DESIGN_UPDATE_KEYWORDS = [
+  'colore', 'palette', 'font', 'stile', 'tema', 'sfondo', 'tipografia',
+  'restyle', 'cambia aspetto', 'cambia design', 'cambia il colore', 'cambia i colori',
+  'cambia font', 'cambia lo stile', 'più moderno', 'più minimal', 'più elegante',
+]
+
+const CONTENT_UPDATE_KEYWORDS = [
+  'riscrivi', 'riscrivi i testi', 'tono di voce', 'tono più', 'linguaggio',
+  'più formale', 'più informale', 'più professionale', 'più amichevole',
+  'aggiorna i testi', 'cambia i testi', 'traduci', 'in inglese', 'in italiano',
+]
+
 export function classify(userMessage: string, hasPages: boolean): AgentType {
   const lower = userMessage.toLowerCase()
   if (SEO_KEYWORDS.some(k => lower.includes(k))) return 'seo'
   if (!hasPages || CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
+  if (hasPages && DESIGN_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'design-update'
+  if (hasPages && CONTENT_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'content-update'
   return 'html'
 }
 
 export type PipelineResult = {
   tool: 'create_site'
   input: { pages: Page[]; summary: string }
-  agent: 'pipeline'
+  agent: 'pipeline' | 'design-update' | 'content-update'
   steps: string[]
   updatedContext?: ProjectContext
   usage?: object
+}
+
+export async function runDesignUpdate(
+  userRequest: string,
+  pages: Page[],
+  apiKey: string,
+  context: ProjectContext = {}
+): Promise<PipelineResult> {
+  const result = await runDesignAgentUpdate(userRequest, pages, apiKey, context)
+  return {
+    tool: 'create_site',
+    input: { pages: result.pages, summary: `🎨 ${result.summary}` },
+    agent: 'design-update',
+    steps: [`🎨 Design aggiornato su ${result.pages.length} pagine`],
+  }
+}
+
+export async function runContentUpdate(
+  userRequest: string,
+  pages: Page[],
+  apiKey: string,
+  context: ProjectContext = {}
+): Promise<PipelineResult> {
+  const result = await runContentAgentUpdate(userRequest, pages, apiKey, context)
+  return {
+    tool: 'create_site',
+    input: { pages: result.pages, summary: `✍️ ${result.summary}` },
+    agent: 'content-update',
+    steps: [`✍️ Testi aggiornati su ${result.pages.length} pagine`],
+  }
 }
 
 export async function runFullPipeline(

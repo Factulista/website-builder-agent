@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { classify, runFullPipeline } from '../../../lib/agents/orchestrator'
+import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
@@ -42,14 +42,21 @@ export async function POST(req: NextRequest) {
 
     if (agent === 'pipeline') {
       const result = await runFullPipeline(lastUserMessage, pages ?? [], apiKey, context)
-
-      // Save updated context if changed
       if (result.updatedContext) {
         await supabase.from('projects').update({
           site_config: { ...siteConfig, context: result.updatedContext },
         }).eq('id', projectId)
       }
+      return Response.json(result)
+    }
 
+    if (agent === 'design-update') {
+      const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context)
+      return Response.json(result)
+    }
+
+    if (agent === 'content-update') {
+      const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
       return Response.json(result)
     }
 
