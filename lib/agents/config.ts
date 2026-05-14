@@ -93,17 +93,12 @@ export async function callClaude(
 
     if (res.ok) return res
 
-    // Retry on overload or server errors
-    if (attempt < maxRetries) {
-      const data = await res.json().catch(() => ({}))
-      const isRetryable = res.status === 529 || res.status === 500 || res.status === 503 ||
-        (data as { error?: { type?: string } })?.error?.type === 'overloaded_error'
-
-      if (isRetryable) {
-        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500
-        await new Promise(r => setTimeout(r, delay))
-        continue
-      }
+    // Retry on overload or server errors — check status only, never read body
+    const isRetryable = res.status === 529 || res.status === 500 || res.status === 503
+    if (isRetryable && attempt < maxRetries) {
+      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500
+      await new Promise(r => setTimeout(r, delay))
+      continue
     }
 
     return res
