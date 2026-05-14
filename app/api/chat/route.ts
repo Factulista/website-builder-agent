@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
           if (result.updatedContext) {
             await supabase.from('projects').update({
               site_config: { ...siteConfig, context: result.updatedContext },
-            }).eq('id', projectId).catch(() => null)
+            }).eq('id', projectId)
           }
           const done: DoneMessage = { type: 'done', result }
           streamController?.enqueue(encoder.encode(encodeMessage(done)))
