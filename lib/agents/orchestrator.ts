@@ -102,18 +102,20 @@ export async function runContentUpdate(
   }
 }
 
+type EmitFn = (step: string) => void
+
 export async function runFullPipeline(
   userRequest: string,
   existingPages: Page[],
   apiKey: string,
-  context: ProjectContext = {}
+  context: ProjectContext = {},
+  emit?: EmitFn
 ): Promise<PipelineResult> {
   const steps: string[] = []
 
   // Step 0a: Rileva lingua dal prompt
   const detectedLanguage = detectLanguage(userRequest)
   if (!detectedLanguage && existingPages.length === 0) {
-    // Prima run senza lingua specificata → chiedi all'utente
     return {
       tool: 'create_site',
       input: { pages: [], summary: 'Lingua non specificata' },
@@ -123,50 +125,44 @@ export async function runFullPipeline(
     }
   }
 
-  // Step 0b: Memory — aggiorna contesto dal messaggio utente
+  // Step 0b: Memory
   const updatedContext = await runMemoryAgent(
     [{ role: 'user', content: userRequest }],
     context,
     apiKey
   ).catch(() => null)
   const activeContext = {
-    ...( updatedContext ?? context),
+    ...(updatedContext ?? context),
     language: detectedLanguage || context.language || 'it',
   }
 
   // Step 1: Planner
-  steps.push('🗺️ Piano strutturale...')
+  emit?.('🗺️ Planner')
   const plan = await runPlanner(userRequest, existingPages, apiKey)
   if (!plan?.pages?.length) throw new Error('Planner non ha prodotto un piano valido')
   steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
 
-  // Step 2a: Site Analyzer — analizza URL di ispirazione se presenti
+  // Step 2a: Site Analyzer
   const urls = extractUrls(userRequest)
   let inspirationBriefs: DesignBrief[] = []
   if (urls.length > 0) {
-    steps.push(`🔍 Analisi ${urls.length} sito/i di ispirazione...`)
+    emit?.(`🔍 Analisi siti di ispirazione`)
     inspirationBriefs = (await Promise.all(urls.map(url => analyzeSite(url, apiKey)))).filter(Boolean) as DesignBrief[]
-    if (inspirationBriefs.length > 0) {
-      steps.push(`✅ Design brief estratti da: ${inspirationBriefs.map(b => b.sourceUrl).join(', ')}`)
-    }
   }
 
-  // Step 2b: Content + Design in parallelo (con contesto + ispirazione)
-  steps.push('✍️ Generazione contenuti e design in parallelo...')
+  // Step 2b: Content + Design in parallelo
+  emit?.('✍️ Content + Design')
   const [content, design] = await Promise.all([
     runContentAgent(userRequest, plan, apiKey, activeContext),
     runDesignAgent(userRequest, plan, apiKey, activeContext, inspirationBriefs),
   ])
   if (!content?.pages) throw new Error('Content agent non ha prodotto contenuti validi')
   if (!design?.tokens) throw new Error('Design agent non ha prodotto un design valido')
-  steps.push(`✅ Contenuti pronti | ✅ Design: ${design.tokens.colors?.primary ?? 'ok'}`)
 
-  // Step 3: HTML (seriale, dipende da Content + Design)
-  steps.push('🏗️ Generazione HTML...')
+  // Step 3: HTML
+  emit?.('🏗️ HTML')
   const htmlOutput = await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
-  steps.push(`✅ HTML: ${htmlOutput.pages.length} pagine generate`)
-  steps.push('✅ Sito creato')
 
   return {
     tool: 'create_site',

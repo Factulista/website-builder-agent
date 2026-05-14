@@ -65,56 +65,45 @@ export async function POST(req: NextRequest) {
 
     if (agent === 'pipeline') {
       const startTime = Date.now()
-      const result = await runFullPipeline(lastUserMessage, pages ?? [], apiKey, context)
-
-      // Streaming response con step progress
-      let totalTokens = 0
       const encoder = new TextEncoder()
-      const stream = new ReadableStream({
-        async start(controller) {
-          try {
-            // Emetti gli step come progress messages
-            if (result.steps) {
-              let step = 0
-              for (const stepText of result.steps) {
-                step++
-                const elapsedTime = formatTime(Date.now() - startTime)
-                totalTokens += Math.floor(Math.random() * 1500) // Simulazione token (verrà migliorato)
-                const progress: ProgressMessage = {
-                  type: 'progress',
-                  step: stepText,
-                  time: elapsedTime,
-                  tokens: totalTokens,
-                }
-                controller.enqueue(encoder.encode(encodeMessage(progress)))
-                await new Promise(r => setTimeout(r, 100)) // Piccolo delay per visibilità
-              }
-            }
 
-            // Emetti il risultato finale
-            const done: DoneMessage = {
-              type: 'done',
-              result,
-            }
-            controller.enqueue(encoder.encode(encodeMessage(done)))
-            controller.close()
-          } catch (err) {
-            controller.error(err)
-          }
-        },
+      let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) { streamController = controller },
       })
 
-      if (result.updatedContext) {
-        await supabase.from('projects').update({
-          site_config: { ...siteConfig, context: result.updatedContext },
-        }).eq('id', projectId)
+      const emit = (step: string) => {
+        if (!streamController) return
+        const msg: ProgressMessage = {
+          type: 'progress',
+          step,
+          time: formatTime(Date.now() - startTime),
+          tokens: 0,
+        }
+        streamController.enqueue(encoder.encode(encodeMessage(msg)))
       }
 
+      // Esegui il pipeline in background, emettendo progressi real-time
+      runFullPipeline(lastUserMessage, pages ?? [], apiKey, context, emit)
+        .then(async (result) => {
+          if (result.updatedContext) {
+            await supabase.from('projects').update({
+              site_config: { ...siteConfig, context: result.updatedContext },
+            }).eq('id', projectId).catch(() => null)
+          }
+          const done: DoneMessage = { type: 'done', result }
+          streamController?.enqueue(encoder.encode(encodeMessage(done)))
+          streamController?.close()
+        })
+        .catch((err) => {
+          const error = { type: 'error', error: String(err) }
+          streamController?.enqueue(encoder.encode(JSON.stringify(error) + '\n'))
+          streamController?.close()
+        })
+
       return new Response(stream, {
-        headers: {
-          'Content-Type': 'application/x-ndjson',
-          'Transfer-Encoding': 'chunked',
-        },
+        headers: { 'Content-Type': 'application/x-ndjson' },
       })
     }
 
