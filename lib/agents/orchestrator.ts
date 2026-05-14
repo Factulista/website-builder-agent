@@ -1,12 +1,13 @@
 import { runPlanner } from './planner'
 import { runContentAgent, runContentAgentUpdate } from './content-agent'
 import { runDesignAgent, runDesignAgentUpdate } from './design-agent'
-import { runHtmlAgentWithPlan, runHtmlAgent } from './html-agent'
+import { runHtmlAgentWithPlan, runHtmlAgent, runHtmlAgentFromTemplate } from './html-agent'
 import { runSeoAgent } from './seo-agent'
 import { runImagesAgent } from './images-agent'
 import { runAccessibilityAgent } from './accessibility-agent'
 import { runMemoryAgent, type ProjectContext } from './memory-agent'
 import { analyzeSite, extractUrls, type DesignBrief } from './site-analyzer'
+import { detectTemplate, loadTemplate } from '../templates/index'
 
 type Page = { slug: string; name: string; html: string }
 
@@ -159,9 +160,14 @@ export async function runFullPipeline(
   if (!content?.pages) throw new Error('Content agent non ha prodotto contenuti validi')
   if (!design?.tokens) throw new Error('Design agent non ha prodotto un design valido')
 
-  // Step 3: HTML
+  // Step 3: HTML — usa template se disponibile, altrimenti genera da zero
+  const templateName = detectTemplate(plan.businessType)
+  const templateHtml = templateName ? loadTemplate(templateName) : null
+
   emit?.('🏗️ HTML')
-  const htmlOutput = await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey)
+  const htmlOutput = templateHtml
+    ? await runHtmlAgentFromTemplate(userRequest, plan, content, design, templateHtml, apiKey)
+    : await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
 
   return {

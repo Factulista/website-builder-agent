@@ -159,6 +159,95 @@ Schema: ${p.schemaOrg ?? 'nessuno'}
   return toolUse.input as { pages: Page[]; summary: string }
 }
 
+export async function runHtmlAgentFromTemplate(
+  userRequest: string,
+  plan: import('./planner').SitePlan,
+  content: import('./content-agent').ContentOutput,
+  design: import('./design-agent').DesignOutput,
+  templateHtml: string,
+  apiKey: string
+) {
+  const pageContent = content.pages[0]
+
+  const system = `Sei un esperto sviluppatore HTML. Ricevi un template HTML con placeholder {{chiave}} e devi sostituirli con i contenuti forniti.
+
+REGOLE:
+- Sostituisci TUTTI i placeholder {{...}} con i valori appropriati dal contenuto fornito.
+- Adatta il colore primario (var(--accent)) a: ${design.tokens?.colors?.primary ?? '#6366f1'}
+- Adatta i font al design fornito.
+- Usa ESCLUSIVAMENTE i testi forniti — non inventarne altri.
+- Restituisci l'HTML completo con tutti i placeholder sostituiti.
+- Per i placeholder senza valore diretto (es: loghi, testimonial), usa valori plausibili coerenti col brand.`
+
+  const userMessage = `Richiesta originale: ${userRequest}
+
+CONTENUTO DA USARE:
+App name: ${plan.businessType}
+Title: ${pageContent?.title ?? ''}
+H1: ${pageContent?.h1 ?? ''}
+Meta: ${pageContent?.metaDescription ?? ''}
+Sezioni: ${JSON.stringify(pageContent?.sections ?? [])}
+Lingua: ${plan.pages[0]?.slug ?? 'home'}
+
+DESIGN:
+Colore primario: ${design.tokens?.colors?.primary ?? '#6366f1'}
+Font heading: ${design.tokens?.fonts?.heading ?? 'Inter'}
+CSS aggiuntivo: ${design.css?.slice(0, 500) ?? ''}
+
+TEMPLATE DA RIEMPIRE:
+${templateHtml}`
+
+  const tools = [{
+    name: 'create_site',
+    description: 'Ritorna le pagine HTML con i placeholder sostituiti.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              slug: { type: 'string' },
+              name: { type: 'string' },
+              html: { type: 'string' },
+            },
+            required: ['slug', 'name', 'html'],
+          },
+        },
+        summary: { type: 'string' },
+      },
+      required: ['pages', 'summary'],
+    },
+  }]
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 16384,
+      system: [
+        { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+      ],
+      tools,
+      tool_choice: { type: 'any' },
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  })
+
+  if (!res.ok) throw new Error(`HTML Template Agent error: ${await res.text()}`)
+  const data = await res.json()
+  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+  if (!toolUse) throw new Error('No tool use in HTML template response')
+  return toolUse.input as { pages: Page[]; summary: string }
+}
+
 export async function runHtmlAgent(
   messages: { role: string; content: string }[],
   pages: Page[],
