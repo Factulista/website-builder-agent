@@ -62,29 +62,52 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   },
 }
 
-export function callClaude(
+export async function callClaude(
   agentName: string,
   system: string,
   messages: { role: string; content: string }[],
   tools: object[],
-  apiKey: string
-) {
+  apiKey: string,
+  maxRetries = 3
+): Promise<Response> {
   const config = AGENT_CONFIGS[agentName] ?? AGENT_CONFIGS.html
-  return fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: config.maxTokens,
-      ...(config.temperature !== undefined && { temperature: config.temperature }),
-      system,
-      tools,
-      tool_choice: { type: 'any' },
-      messages,
-    }),
-  })
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: config.maxTokens,
+        ...(config.temperature !== undefined && { temperature: config.temperature }),
+        system,
+        tools,
+        tool_choice: { type: 'any' },
+        messages,
+      }),
+    })
+
+    if (res.ok) return res
+
+    // Retry on overload or server errors
+    if (attempt < maxRetries) {
+      const data = await res.json().catch(() => ({}))
+      const isRetryable = res.status === 529 || res.status === 500 || res.status === 503 ||
+        (data as { error?: { type?: string } })?.error?.type === 'overloaded_error'
+
+      if (isRetryable) {
+        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500
+        await new Promise(r => setTimeout(r, delay))
+        continue
+      }
+    }
+
+    return res
+  }
+
+  return new Response(JSON.stringify({ error: 'Max retries exceeded' }), { status: 503 })
 }
