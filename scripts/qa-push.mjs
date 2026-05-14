@@ -79,9 +79,9 @@ async function callAnthropic(messages, tools) {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      system: `You are a senior TypeScript developer working on a Next.js website-builder SaaS.
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      system: `You are a TypeScript developer working on a Next.js website-builder SaaS.
 A QA script tests the AI agent pipeline. When tests fail you must fix the source code.
 Be surgical: only change what needs fixing. Never change working code.
 When done, call the done tool with a brief summary of what you fixed.`,
