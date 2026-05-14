@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
-const MAX_ITERATIONS = 5
+const MAX_ITERATIONS = 3
 
 // ─── env ────────────────────────────────────────────────────────────────────
 
@@ -229,10 +229,10 @@ async function main() {
   let lastFix = null
 
   for (let i = 1; i <= MAX_ITERATIONS; i++) {
-    console.log(`\n${'─'.repeat(44)}`)
-    console.log(`QA run ${i}/${MAX_ITERATIONS}`)
+    console.log(`\n[QA run ${i}/${MAX_ITERATIONS}]`)
     const { passed, output } = runQA()
-    process.stdout.write(output)
+    if (!passed) console.error(output)
+    else process.stdout.write(output)
 
     if (passed) {
       console.log('\n✅ QA passed!')
@@ -256,7 +256,9 @@ async function main() {
     }
 
     if (i === MAX_ITERATIONS) {
-      console.error(`\n❌ QA still failing after ${MAX_ITERATIONS} iterations. Manual intervention needed.\n`)
+      console.error(`\n❌ QA failed after ${MAX_ITERATIONS} auto-fix attempts. Last error:\n`)
+      console.error(output.split('\n').slice(-15).join('\n'))
+      console.error('\n💬 Manual intervention needed. Check the error above and fix the code.\n')
       process.exit(1)
     }
 
