@@ -58,6 +58,7 @@ export async function runFullPipeline(
   // Step 1: Planner
   steps.push('🗺️ Piano strutturale...')
   const plan = await runPlanner(userRequest, existingPages, apiKey)
+  if (!plan?.pages?.length) throw new Error('Planner non ha prodotto un piano valido')
   steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
 
   // Step 2a: Site Analyzer — analizza URL di ispirazione se presenti
@@ -77,11 +78,14 @@ export async function runFullPipeline(
     runContentAgent(userRequest, plan, apiKey, activeContext),
     runDesignAgent(userRequest, plan, apiKey, activeContext, inspirationBriefs),
   ])
-  steps.push(`✅ Contenuti pronti | ✅ Design: ${design.tokens.colors.primary}`)
+  if (!content?.pages) throw new Error('Content agent non ha prodotto contenuti validi')
+  if (!design?.tokens) throw new Error('Design agent non ha prodotto un design valido')
+  steps.push(`✅ Contenuti pronti | ✅ Design: ${design.tokens.colors?.primary ?? 'ok'}`)
 
   // Step 3: HTML (seriale, dipende da Content + Design)
   steps.push('🏗️ Generazione HTML...')
   const htmlOutput = await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey)
+  if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
   steps.push(`✅ HTML: ${htmlOutput.pages.length} pagine generate`)
 
   // Step 4: Images + SEO + Accessibility in parallelo su tutte le pagine
