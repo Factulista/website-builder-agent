@@ -75,6 +75,88 @@ const HTML_TOOLS = [
   },
 ]
 
+export async function runHtmlAgentWithPlan(
+  userRequest: string,
+  plan: import('./planner').SitePlan,
+  content: import('./content-agent').ContentOutput,
+  design: import('./design-agent').DesignOutput,
+  apiKey: string
+) {
+  const system = `Sei un esperto sviluppatore HTML. Generi siti web HTML completi usando il contenuto e il design forniti.
+
+REGOLE:
+- Genera HTML completo (<!DOCTYPE html>...) per ogni pagina del piano.
+- Usa ESCLUSIVAMENTE i testi forniti nel contenuto — non inventarne altri.
+- Incorpora il CSS fornito nel <head> di ogni pagina (o link se è separato).
+- Includi Google Fonts: ${design.googleFontsUrl ?? 'nessuno'}
+- Link tra pagine con href relativi senza .html (es: ./chi-siamo).
+- Includi Schema.org JSON-LD nel <head> dove fornito.
+- Mobile-first, semantico, accessibile.`
+
+  const userMessage = `Richiesta: ${userRequest}
+
+PIANO:
+${plan.pages.map(p => `- ${p.slug}: sezioni ${p.sections.join(', ')}`).join('\n')}
+
+CSS:
+${design.css}
+
+CONTENUTO PER PAGINA:
+${content.pages.map(p => `
+=== ${p.slug} ===
+Title: ${p.title}
+Meta: ${p.metaDescription}
+H1: ${p.h1}
+Sezioni: ${JSON.stringify(p.sections)}
+Schema: ${p.schemaOrg ?? 'nessuno'}
+`).join('\n')}`
+
+  const tools = [
+    {
+      name: 'create_site',
+      description: 'Genera tutte le pagine HTML del sito.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          pages: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                slug: { type: 'string' },
+                name: { type: 'string' },
+                html: { type: 'string' },
+              },
+              required: ['slug', 'name', 'html'],
+            },
+          },
+          summary: { type: 'string' },
+        },
+        required: ['pages', 'summary'],
+      },
+    },
+  ]
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 16384,
+      system,
+      tools,
+      tool_choice: { type: 'any' },
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  })
+
+  if (!res.ok) throw new Error(`HTML Agent (pipeline) error: ${await res.text()}`)
+  const data = await res.json()
+  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+  if (!toolUse) throw new Error('No tool use in HTML pipeline response')
+  return toolUse.input as { pages: Page[]; summary: string }
+}
+
 export async function runHtmlAgent(
   messages: { role: string; content: string }[],
   pages: Page[],

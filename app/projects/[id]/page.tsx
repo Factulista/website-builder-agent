@@ -210,7 +210,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
     if (result.tool === 'create_site') {
       newPages = result.input.pages as Page[]
-      summary = `✨ ${result.input.summary}`
+      const steps = result.steps ? `\n${(result.steps as string[]).join('\n')}` : ''
+      summary = `✨ ${result.input.summary}${steps}`
       if (newPages.length > 0) newActiveSlug = newPages[0].slug
     } else if (result.tool === 'edit_page') {
       const targetSlug = result.input.pageSlug as string

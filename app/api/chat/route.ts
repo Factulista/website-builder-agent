@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server'
-import { classify } from '../../../lib/agents/orchestrator'
+import { classify, runFullPipeline } from '../../../lib/agents/orchestrator'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent } from '../../../lib/agents/seo-agent'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 type Page = { slug: string; name: string; html: string }
 
@@ -21,14 +21,19 @@ export async function POST(req: NextRequest) {
     if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
 
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
-    const agent = classify(lastUserMessage)
+    const agent = classify(lastUserMessage, pages?.length > 0)
+
+    if (agent === 'pipeline') {
+      const result = await runFullPipeline(lastUserMessage, pages ?? [], apiKey)
+      return Response.json(result)
+    }
 
     if (agent === 'seo') {
       const result = await runSeoAgent(messages, pages ?? [], customDomain ?? null, apiKey)
       return Response.json({ ...result, agent: 'seo' })
     }
 
-    // Default: HTML agent
+    // Default: HTML agent for edits
     const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey)
     return Response.json({ ...result, agent: 'html' })
 
