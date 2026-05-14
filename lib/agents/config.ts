@@ -32,7 +32,7 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   },
   html: {
     model: 'claude-haiku-4-5-20251001',
-    maxTokens: 16384,
+    maxTokens: 32768,
     temperature: 0.2,
     description: 'Genera e modifica HTML delle pagine',
   },

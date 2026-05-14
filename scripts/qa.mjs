@@ -199,7 +199,7 @@ async function testHtmlAgent() {
         required: ['pages', 'summary'],
       },
     }],
-    maxTokens: 4096,
+    maxTokens: 6144,
   })
 
   if (!input.pages?.length) return fail('HTML agent', 'pages array is empty or missing')

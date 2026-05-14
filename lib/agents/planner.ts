@@ -47,6 +47,7 @@ export async function runPlanner(
   apiKey: string
 ): Promise<SitePlan> {
   const hasPages = existingPages.length > 0
+  const isFirstRun = !hasPages
 
   const system = `Sei un information architect. Pianifichi la struttura di siti web prima che vengano creati.
 
@@ -55,10 +56,11 @@ Il tuo output è un piano strutturale: quali pagine servono e quali sezioni deve
 SEZIONI DISPONIBILI: hero, navbar, features, benefits, testimonials, pricing, faq, cta, gallery, team, contact-form, map, footer, blog-list, blog-post, about, stats, clients, portfolio
 
 REGOLE:
-- Includi sempre "home" come prima pagina.
+${isFirstRun ? `- PRIMA RUN: genera SOLO la pagina "home". L'utente aggiungerà altre pagine via chat successivamente.
+- Home deve avere sezioni essenziali: hero, features/benefits, cta, footer.` : `- Includi sempre "home" come prima pagina.
 - Suggerisci solo le pagine davvero utili per il tipo di business.
 - Scegli le sezioni più appropriate per ogni pagina, in ordine logico dall'alto al basso.
-- Non includere sezioni ridondanti.
+- Non includere sezioni ridondanti.`}
 ${hasPages ? `\nPAGINE ESISTENTI: ${existingPages.map(p => p.slug).join(', ')} — pianifica solo aggiunte o modifiche necessarie.` : ''}`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {

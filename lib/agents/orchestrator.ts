@@ -102,15 +102,7 @@ export async function runFullPipeline(
   steps.push('🗺️ Piano strutturale...')
   const plan = await runPlanner(userRequest, existingPages, apiKey)
   if (!plan?.pages?.length) throw new Error('Planner non ha prodotto un piano valido')
-
-  // Prima run: genera solo home, poi l'utente aggiunge pagine via chat
-  if (existingPages.length === 0) {
-    const homePage = plan.pages.find(p => p.slug === 'home') || plan.pages[0]
-    plan.pages = [homePage]
-    steps.push(`✅ Piano: home (altre pagine aggiunte via chat)`)
-  } else {
-    steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
-  }
+  steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
 
   // Step 2a: Site Analyzer — analizza URL di ispirazione se presenti
   const urls = extractUrls(userRequest)
@@ -139,8 +131,8 @@ export async function runFullPipeline(
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
   steps.push(`✅ HTML: ${htmlOutput.pages.length} pagine generate`)
 
-  // Step 4: Images + SEO + Accessibility in parallelo su tutte le pagine
-  steps.push('🔧 Ottimizzazione immagini, SEO e accessibilità...')
+  // Step 4: Images + Accessibility in parallelo su tutte le pagine
+  steps.push('🖼️ Ottimizzazione immagini e accessibilità...')
   const optimizedPages = await Promise.all(
     htmlOutput.pages.map(async (page) => {
       const [imagesResult, accessibilityResult] = await Promise.all([
@@ -168,33 +160,11 @@ export async function runFullPipeline(
     })
   )
 
-  // Apply SEO across all pages
-  const seoResult = await runSeoAgent(
-    [{ role: 'user', content: `Ottimizza SEO per tutte le pagine del sito: ${userRequest}` }],
-    optimizedPages,
-    null,
-    apiKey
-  ).catch(() => null)
-
-  let finalPages = optimizedPages
-  if (seoResult?.tool === 'update_seo' && seoResult.input?.pages) {
-    const seoPages = seoResult.input.pages as { pageSlug: string; edits: { find: string; replace: string }[] }[]
-    finalPages = optimizedPages.map(page => {
-      const seoPatch = seoPages.find(sp => sp.pageSlug === page.slug)
-      if (!seoPatch) return page
-      let html = page.html
-      for (const edit of seoPatch.edits) {
-        if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
-      }
-      return { ...page, html }
-    })
-  }
-
-  steps.push('✅ Ottimizzazione completata')
+  steps.push('✅ Sito creato')
 
   return {
     tool: 'create_site',
-    input: { pages: finalPages, summary: htmlOutput.summary },
+    input: { pages: optimizedPages, summary: htmlOutput.summary },
     agent: 'pipeline',
     steps,
     updatedContext: updatedContext ?? undefined,

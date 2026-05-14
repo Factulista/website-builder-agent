@@ -1,3 +1,5 @@
+import { callClaude } from './config'
+
 type Page = { slug: string; name: string; html: string }
 
 const HTML_TOOLS = [
