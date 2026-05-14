@@ -220,11 +220,70 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }),
     })
 
-    const result = await res.json()
-
-    if (!res.ok || result.error) {
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
       setMessages(prev => prev.map(m => m.id === assistantId
-        ? { ...m, content: `❌ Errore: ${result.error || `HTTP ${res.status}`}` }
+        ? { ...m, content: `❌ Errore: ${error.error || `HTTP ${res.status}`}` }
+        : m))
+      setLoading(false)
+      return
+    }
+
+    // Consuma lo stream newline-delimited JSON
+    const reader = res.body?.getReader()
+    if (!reader) {
+      setMessages(prev => prev.map(m => m.id === assistantId
+        ? { ...m, content: '❌ Errore: Impossibile leggere la risposta' }
+        : m))
+      setLoading(false)
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let result: any = null
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Ultimo elemento (incompleto) rimane nel buffer
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const msg = JSON.parse(line)
+
+            if (msg.type === 'progress') {
+              // Mostra il progresso: "✏️ Content Agent... 0m 5s · 1.2k tokens"
+              const tokenDisplay = msg.tokens > 1000 ? `${(msg.tokens / 1000).toFixed(1)}k` : msg.tokens
+              const progressText = `${msg.step} • ${msg.time} • ${tokenDisplay} tokens`
+              setMessages(prev => prev.map(m => m.id === assistantId
+                ? { ...m, content: progressText }
+                : m))
+            } else if (msg.type === 'done') {
+              result = msg.result
+            }
+          } catch (e) {
+            console.error('Errore parsing messaggio:', e)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Errore lettura stream:', err)
+      setMessages(prev => prev.map(m => m.id === assistantId
+        ? { ...m, content: '❌ Errore nella comunicazione' }
+        : m))
+      setLoading(false)
+      return
+    }
+
+    if (!result) {
+      setMessages(prev => prev.map(m => m.id === assistantId
+        ? { ...m, content: '❌ Nessun risultato ricevuto' }
         : m))
       setLoading(false)
       return
