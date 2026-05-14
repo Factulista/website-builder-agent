@@ -1,6 +1,7 @@
 import { callClaude } from './config'
 import { DESIGN_KNOWLEDGE } from './knowledge/design'
 import { buildContextPrompt, type ProjectContext } from './memory-agent'
+import { buildInspirationPrompt, type DesignBrief } from './site-analyzer'
 import type { SitePlan } from './planner'
 
 const DESIGN_TOOLS = [
@@ -66,13 +67,16 @@ export async function runDesignAgent(
   userRequest: string,
   plan: SitePlan,
   apiKey: string,
-  context: ProjectContext = {}
+  context: ProjectContext = {},
+  inspirationBriefs: DesignBrief[] = []
 ): Promise<DesignOutput> {
   const system = `Sei un UI designer esperto. Crei design system coerenti e moderni per siti web.
 
 ${DESIGN_KNOWLEDGE}
 
 ${buildContextPrompt(context)}
+
+${buildInspirationPrompt(inspirationBriefs)}
 
 PIANO DEL SITO:
 Business: ${plan.businessType}

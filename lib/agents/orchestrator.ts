@@ -6,6 +6,7 @@ import { runSeoAgent } from './seo-agent'
 import { runImagesAgent } from './images-agent'
 import { runAccessibilityAgent } from './accessibility-agent'
 import { runMemoryAgent, type ProjectContext } from './memory-agent'
+import { analyzeSite, extractUrls, type DesignBrief } from './site-analyzer'
 
 type Page = { slug: string; name: string; html: string }
 
@@ -59,11 +60,22 @@ export async function runFullPipeline(
   const plan = await runPlanner(userRequest, existingPages, apiKey)
   steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
 
-  // Step 2: Content + Design in parallelo (con contesto)
+  // Step 2a: Site Analyzer — analizza URL di ispirazione se presenti
+  const urls = extractUrls(userRequest)
+  let inspirationBriefs: DesignBrief[] = []
+  if (urls.length > 0) {
+    steps.push(`🔍 Analisi ${urls.length} sito/i di ispirazione...`)
+    inspirationBriefs = (await Promise.all(urls.map(url => analyzeSite(url, apiKey)))).filter(Boolean) as DesignBrief[]
+    if (inspirationBriefs.length > 0) {
+      steps.push(`✅ Design brief estratti da: ${inspirationBriefs.map(b => b.sourceUrl).join(', ')}`)
+    }
+  }
+
+  // Step 2b: Content + Design in parallelo (con contesto + ispirazione)
   steps.push('✍️ Generazione contenuti e design in parallelo...')
   const [content, design] = await Promise.all([
     runContentAgent(userRequest, plan, apiKey, activeContext),
-    runDesignAgent(userRequest, plan, apiKey, activeContext),
+    runDesignAgent(userRequest, plan, apiKey, activeContext, inspirationBriefs),
   ])
   steps.push(`✅ Contenuti pronti | ✅ Design: ${design.tokens.colors.primary}`)
 
