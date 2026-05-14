@@ -30,16 +30,24 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Check if this is a custom domain (not factulista.com subdomain)
+  // Handle myweb.factulista.com/{slug}/{page?} → /preview/{slug}/{page?}
+  if (host === `${PREVIEW_SUBDOMAIN}.${ROOT_DOMAIN}`) {
+    const segments = path.split('/').filter(Boolean)
+    if (segments.length === 0) {
+      return NextResponse.next() // myweb.factulista.com/ → app homepage
+    }
+    const [slug, page] = segments
+    url.pathname = page ? `/preview/${slug}/${page}` : `/preview/${slug}`
+    return NextResponse.rewrite(url)
+  }
+
+  // Custom domain (not factulista.com subdomain) → serve published site
   if (!host.endsWith(ROOT_DOMAIN)) {
-    // Custom domain - rewrite to API handler that will lookup the project
     url.pathname = `/api/serve-custom-domain${path}`
     url.searchParams.set('host', host)
     return NextResponse.rewrite(url)
   }
 
-  // If we reach here, it's a factulista.com subdomain - just pass through
-  // The app will handle myweb.factulista.com/slug routing normally
   return NextResponse.next()
 }
 

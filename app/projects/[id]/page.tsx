@@ -82,13 +82,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const ROOT_DOMAIN = 'factulista.com'
 
-  // Use subdomain on production (slug.factulista.com), fallback to /preview/slug on vercel.app/localhost
   const publicBaseUrl = (() => {
     if (!projectSlug || typeof window === 'undefined') return ''
     const host = window.location.host
-    const isCustomDomain = host === ROOT_DOMAIN || host === `www.${ROOT_DOMAIN}` || host.endsWith(`.${ROOT_DOMAIN}`)
-    if (isCustomDomain) {
-      return `${window.location.protocol}//${projectSlug}.${ROOT_DOMAIN}`
+    const isProduction = host === ROOT_DOMAIN || host === `www.${ROOT_DOMAIN}` || host.endsWith(`.${ROOT_DOMAIN}`)
+    if (isProduction) {
+      return `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
     }
     return `${window.location.origin}/preview/${projectSlug}`
   })()
