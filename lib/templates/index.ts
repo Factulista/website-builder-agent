@@ -1,7 +1,8 @@
-import { readFileSync } from 'fs'
-import { resolve, dirname } from 'path'
+import { SAAS_TEMPLATE } from './saas'
 
-const TEMPLATES_DIR = resolve(dirname(new URL(import.meta.url).pathname))
+const TEMPLATES: Record<string, string> = {
+  saas: SAAS_TEMPLATE,
+}
 
 export const TEMPLATE_MAP: Record<string, string[]> = {
   saas: ['saas', 'software', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'fatturazione', 'invoicing', 'crm', 'erp', 'gestionale'],
@@ -16,11 +17,7 @@ export function detectTemplate(businessType: string): string | null {
 }
 
 export function loadTemplate(name: string): string | null {
-  try {
-    return readFileSync(resolve(TEMPLATES_DIR, `${name}.html`), 'utf-8')
-  } catch {
-    return null
-  }
+  return TEMPLATES[name] ?? null
 }
 
 export function applyPlaceholders(html: string, values: Record<string, string>): string {
