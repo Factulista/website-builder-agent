@@ -90,8 +90,8 @@ async function callClaude({ system, userMessage, tools, maxTokens = 4096 }) {
 
 async function testContentAgent() {
   const input = await callClaude({
-    system: 'Sei un copywriter esperto. Genera contenuti per siti web.',
-    userMessage: 'Crea contenuti per un sito semplice per un bar a Milano chiamato "Bar Roma".',
+    system: 'Sei un copywriter. Genera contenuti per siti web.',
+    userMessage: 'Crea contenuti per un bar a Milano "Bar Roma".',
     tools: [{
       name: 'generate_content',
       description: 'Genera contenuti per le pagine del sito.',
@@ -128,8 +128,8 @@ async function testContentAgent() {
 
 async function testDesignAgent() {
   const input = await callClaude({
-    system: 'Sei un UI designer esperto. Crei design system per siti web.',
-    userMessage: 'Crea un design per un bar moderno a Milano.',
+    system: 'Sei un UI designer. Crei design system per siti web.',
+    userMessage: 'Crea un design per un bar a Milano.',
     tools: [{
       name: 'generate_design',
       description: 'Genera design tokens e CSS per il sito.',
@@ -162,7 +162,7 @@ async function testDesignAgent() {
         required: ['tokens', 'css', 'summary'],
       },
     }],
-    maxTokens: 4096,
+    maxTokens: 2048,
   })
 
   if (!input.tokens?.colors?.primary) return fail('Design agent', 'tokens.colors.primary missing')
@@ -174,8 +174,8 @@ async function testDesignAgent() {
 
 async function testHtmlAgent() {
   const input = await callClaude({
-    system: 'Sei un web developer. Genera HTML completo per pagine web.',
-    userMessage: 'Genera una pagina home HTML per "Bar Roma" a Milano. Includi header, hero e footer.',
+    system: 'Sei un web developer. Genera HTML per pagine web.',
+    userMessage: 'Genera una pagina home HTML per "Bar Roma" a Milano.',
     tools: [{
       name: 'create_site',
       description: 'Genera le pagine HTML del sito.',
@@ -199,7 +199,7 @@ async function testHtmlAgent() {
         required: ['pages', 'summary'],
       },
     }],
-    maxTokens: 8192,
+    maxTokens: 4096,
   })
 
   if (!input.pages?.length) return fail('HTML agent', 'pages array is empty or missing')
@@ -212,8 +212,8 @@ async function testHtmlAgent() {
 
 async function testPlannerAgent() {
   const input = await callClaude({
-    system: 'Sei un product strategist. Pianifichi la struttura di siti web.',
-    userMessage: 'Pianifica le pagine per un sito di un bar a Milano.',
+    system: 'Sei un product strategist. Pianifichi siti web.',
+    userMessage: 'Pianifica pagine per un sito bar a Milano.',
     tools: [{
       name: 'create_plan',
       description: 'Crea un piano strutturale del sito.',
@@ -238,7 +238,7 @@ async function testPlannerAgent() {
         required: ['businessType', 'pages', 'summary'],
       },
     }],
-    maxTokens: 2048,
+    maxTokens: 1024,
   })
 
   if (!input.pages?.length) return fail('Planner agent', 'pages array is empty')
@@ -249,8 +249,8 @@ async function testPlannerAgent() {
 
 async function testSeoAgent() {
   const input = await callClaude({
-    system: 'Sei un esperto SEO. Ottimizzi siti web per i motori di ricerca.',
-    userMessage: 'Ottimizza SEO per il sito di un bar a Milano.',
+    system: 'Sei un esperto SEO. Ottimizzi siti web.',
+    userMessage: 'Ottimizza SEO per un sito bar a Milano.',
     tools: [{
       name: 'update_seo',
       description: 'Aggiorna i meta tag SEO.',
@@ -280,7 +280,7 @@ async function testSeoAgent() {
         required: ['pages', 'summary'],
       },
     }],
-    maxTokens: 2048,
+    maxTokens: 1536,
   })
 
   if (!input.pages?.length) return fail('SEO agent', 'pages array is empty')
@@ -304,7 +304,8 @@ async function main() {
   let passed = 0
   let failed = 0
 
-  for (const { name, fn } of TESTS) {
+  for (let i = 0; i < TESTS.length; i++) {
+    const { name, fn } = TESTS[i]
     process.stdout.write(`\n[${name}]\n`)
     try {
       const ok = await fn()
@@ -313,6 +314,10 @@ async function main() {
     } catch (err) {
       fail(name, err.message)
       failed++
+    }
+    // Rate limit backoff: wait 2s between tests to avoid hitting org limits
+    if (i < TESTS.length - 1) {
+      await new Promise(r => setTimeout(r, 2000))
     }
   }
 
