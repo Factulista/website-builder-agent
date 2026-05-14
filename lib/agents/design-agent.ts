@@ -1,3 +1,6 @@
+import { callClaude } from './config'
+import { DESIGN_KNOWLEDGE } from './knowledge/design'
+import { buildContextPrompt, type ProjectContext } from './memory-agent'
 import type { SitePlan } from './planner'
 
 const DESIGN_TOOLS = [
@@ -62,9 +65,14 @@ export type DesignOutput = {
 export async function runDesignAgent(
   userRequest: string,
   plan: SitePlan,
-  apiKey: string
+  apiKey: string,
+  context: ProjectContext = {}
 ): Promise<DesignOutput> {
   const system = `Sei un UI designer esperto. Crei design system coerenti e moderni per siti web.
+
+${DESIGN_KNOWLEDGE}
+
+${buildContextPrompt(context)}
 
 PIANO DEL SITO:
 Business: ${plan.businessType}
@@ -72,29 +80,14 @@ ${plan.targetAudience ? `Target: ${plan.targetAudience}` : ''}
 Sezioni usate: ${[...new Set(plan.pages.flatMap(p => p.sections))].join(', ')}
 
 REGOLE:
-- Scegli colori appropriati al tipo di business (ristorante → caldi, tech → freddi, luxury → scuri ecc.).
-- Font leggibili: usa sempre Google Fonts disponibili.
-- CSS deve includere: variabili CSS custom, reset base, stili per navbar, hero, features, cta, footer, cards, buttons, forms.
-- Contrasto colori: almeno 4.5:1 per testo su sfondo (WCAG AA).
-- Design mobile-first con media queries.
-- Stile moderno: usa gradients, box-shadow, border-radius appropriati al brand.`
+- Se il contesto ha colori brand, usali come base della palette.
+- Se il contesto ha font brand, usali.
+- Altrimenti scegli colori e font appropriati al tipo di business.
+- CSS deve includere: variabili CSS custom, reset base, stili per tutte le sezioni del piano.
+- Contrasto colori: almeno 4.5:1 (WCAG AA).
+- Design mobile-first con media queries.`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
-      system,
-      tools: DESIGN_TOOLS,
-      tool_choice: { type: 'any' },
-      messages: [{ role: 'user', content: userRequest }],
-    }),
-  })
+  const res = await callClaude('design', system, [{ role: 'user', content: userRequest }], DESIGN_TOOLS, apiKey)
 
   if (!res.ok) throw new Error(`Design Agent API error: ${await res.text()}`)
   const data = await res.json()

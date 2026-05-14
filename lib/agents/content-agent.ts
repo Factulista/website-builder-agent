@@ -1,3 +1,6 @@
+import { callClaude } from './config'
+import { CONTENT_KNOWLEDGE } from './knowledge/content'
+import { buildContextPrompt, type ProjectContext } from './memory-agent'
 import type { SitePlan } from './planner'
 
 const CONTENT_TOOLS = [
@@ -78,9 +81,14 @@ export type ContentOutput = {
 export async function runContentAgent(
   userRequest: string,
   plan: SitePlan,
-  apiKey: string
+  apiKey: string,
+  context: ProjectContext = {}
 ): Promise<ContentOutput> {
   const system = `Sei un copywriter esperto in italiano. Scrivi testi persuasivi, chiari e ottimizzati SEO per siti web.
+
+${CONTENT_KNOWLEDGE}
+
+${buildContextPrompt(context)}
 
 PIANO DEL SITO:
 Business: ${plan.businessType}
@@ -96,22 +104,7 @@ REGOLE:
 - CTA specifici e persuasivi (non "Clicca qui").
 - Per Schema.org: usa il tipo più specifico disponibile (Restaurant, LegalService, MedicalBusiness, ecc.).`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
-      system,
-      tools: CONTENT_TOOLS,
-      tool_choice: { type: 'any' },
-      messages: [{ role: 'user', content: userRequest }],
-    }),
-  })
+  const res = await callClaude('content', system, [{ role: 'user', content: userRequest }], CONTENT_TOOLS, apiKey)
 
   if (!res.ok) throw new Error(`Content Agent API error: ${await res.text()}`)
   const data = await res.json()

@@ -1,3 +1,7 @@
+import { callClaude } from './config'
+import { SEO_KNOWLEDGE } from './knowledge/seo'
+import { buildContextPrompt, type ProjectContext } from './memory-agent'
+
 type Page = { slug: string; name: string; html: string }
 
 const SEO_TOOLS = [
@@ -53,7 +57,8 @@ export async function runSeoAgent(
   messages: { role: string; content: string }[],
   pages: Page[],
   customDomain: string | null,
-  apiKey: string
+  apiKey: string,
+  context: ProjectContext = {}
 ) {
   const baseUrl = customDomain ? `https://${customDomain}` : 'https://myweb.factulista.com'
 
@@ -64,6 +69,10 @@ export async function runSeoAgent(
   }).join('\n')
 
   const system = `Sei un esperto SEO. Ottimizzi siti web HTML per i motori di ricerca.
+
+${SEO_KNOWLEDGE}
+
+${buildContextPrompt(context)}
 
 PAGINE DEL SITO:
 ${pagesContext}
@@ -76,22 +85,7 @@ REGOLE:
 - Per sitemap usa generate_sitemap con XML valido che include tutte le pagine.
 - NON modificare il design o il contenuto visivo, solo il <head>.`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
-      system,
-      tools: SEO_TOOLS,
-      tool_choice: { type: 'any' },
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-    }),
-  })
+  const res = await callClaude('seo', system, messages, SEO_TOOLS, apiKey)
 
   if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
   const data = await res.json()

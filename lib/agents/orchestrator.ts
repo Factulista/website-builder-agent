@@ -5,6 +5,7 @@ import { runHtmlAgentWithPlan, runHtmlAgent } from './html-agent'
 import { runSeoAgent } from './seo-agent'
 import { runImagesAgent } from './images-agent'
 import { runAccessibilityAgent } from './accessibility-agent'
+import { runMemoryAgent, type ProjectContext } from './memory-agent'
 
 type Page = { slug: string; name: string; html: string }
 
@@ -33,26 +34,36 @@ export type PipelineResult = {
   input: { pages: Page[]; summary: string }
   agent: 'pipeline'
   steps: string[]
+  updatedContext?: ProjectContext
   usage?: object
 }
 
 export async function runFullPipeline(
   userRequest: string,
   existingPages: Page[],
-  apiKey: string
+  apiKey: string,
+  context: ProjectContext = {}
 ): Promise<PipelineResult> {
   const steps: string[] = []
+
+  // Step 0: Memory — aggiorna contesto dal messaggio utente
+  const updatedContext = await runMemoryAgent(
+    [{ role: 'user', content: userRequest }],
+    context,
+    apiKey
+  ).catch(() => null)
+  const activeContext = updatedContext ?? context
 
   // Step 1: Planner
   steps.push('🗺️ Piano strutturale...')
   const plan = await runPlanner(userRequest, existingPages, apiKey)
   steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
 
-  // Step 2: Content + Design in parallelo
+  // Step 2: Content + Design in parallelo (con contesto)
   steps.push('✍️ Generazione contenuti e design in parallelo...')
   const [content, design] = await Promise.all([
-    runContentAgent(userRequest, plan, apiKey),
-    runDesignAgent(userRequest, plan, apiKey),
+    runContentAgent(userRequest, plan, apiKey, activeContext),
+    runDesignAgent(userRequest, plan, apiKey, activeContext),
   ])
   steps.push(`✅ Contenuti pronti | ✅ Design: ${design.tokens.colors.primary}`)
 
@@ -119,5 +130,6 @@ export async function runFullPipeline(
     input: { pages: finalPages, summary: htmlOutput.summary },
     agent: 'pipeline',
     steps,
+    updatedContext: updatedContext ?? undefined,
   }
 }
