@@ -179,10 +179,11 @@ async function fixWithClaude(qaOutput, iteration) {
 
   const messages = [{
     role: 'user',
-    content: `QA failed on iteration ${iteration}. Error output:\n\n\`\`\`\n${qaOutput}\n\`\`\`\n\nCurrent source files:\n\n${fileSnippets}\n\nAnalyze the failure, fix the code, then call done().`,
+    content: `QA failed on iteration ${iteration}. Error output:\n\n\`\`\`\n${qaOutput}\n\`\`\`\n\nCurrent source files:\n\n${fileSnippets}\n\nAnalyze the failure, fix the code, then call done(). ALL agents (Planner, Content, Design, HTML, SEO) must pass QA after your fix.`,
   }]
 
   let fixSummary = null
+  const modifiedFiles = []
 
   // Agentic loop: Claude calls tools until it calls done()
   for (let step = 0; step < 20; step++) {
@@ -201,13 +202,20 @@ async function fixWithClaude(qaOutput, iteration) {
         continue
       }
       const result = handleTool(tu.name, tu.input)
-      console.log(`  ${tu.name}(${tu.input.path ?? ''}) → ${result.slice(0, 80)}`)
+      if ((tu.name === 'apply_edit' || tu.name === 'write_file') && tu.input?.path) {
+        modifiedFiles.push(tu.input.path)
+      }
+      console.log(`  ${tu.name}(${tu.input.path ?? ''}) → ${result.slice(0, 60)}`)
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
     }
 
     messages.push({ role: 'user', content: toolResults })
     if (fixSummary !== null) break
     if (response.stop_reason === 'end_turn') break
+  }
+
+  if (modifiedFiles.length > 0) {
+    console.log(`  📝 Modified: ${[...new Set(modifiedFiles)].join(', ')}`)
   }
 
   return fixSummary ?? 'auto-fix applied'

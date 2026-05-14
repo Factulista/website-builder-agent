@@ -210,12 +210,92 @@ async function testHtmlAgent() {
   return true
 }
 
+async function testPlannerAgent() {
+  const input = await callClaude({
+    system: 'Sei un product strategist. Pianifichi la struttura di siti web.',
+    userMessage: 'Pianifica le pagine per un sito di un bar a Milano.',
+    tools: [{
+      name: 'create_plan',
+      description: 'Crea un piano strutturale del sito.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          businessType: { type: 'string' },
+          pages: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                slug: { type: 'string' },
+                name: { type: 'string' },
+                sections: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['slug', 'name', 'sections'],
+            },
+          },
+          summary: { type: 'string' },
+        },
+        required: ['businessType', 'pages', 'summary'],
+      },
+    }],
+    maxTokens: 2048,
+  })
+
+  if (!input.pages?.length) return fail('Planner agent', 'pages array is empty')
+  if (!input.businessType) return fail('Planner agent', 'businessType missing')
+  pass(`Planner agent → ${input.pages.length} pages, business: "${input.businessType}"`)
+  return true
+}
+
+async function testSeoAgent() {
+  const input = await callClaude({
+    system: 'Sei un esperto SEO. Ottimizzi siti web per i motori di ricerca.',
+    userMessage: 'Ottimizza SEO per il sito di un bar a Milano.',
+    tools: [{
+      name: 'update_seo',
+      description: 'Aggiorna i meta tag SEO.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          pages: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                pageSlug: { type: 'string' },
+                edits: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: { find: { type: 'string' }, replace: { type: 'string' } },
+                    required: ['find', 'replace'],
+                  },
+                },
+              },
+              required: ['pageSlug', 'edits'],
+            },
+          },
+          summary: { type: 'string' },
+        },
+        required: ['pages', 'summary'],
+      },
+    }],
+    maxTokens: 2048,
+  })
+
+  if (!input.pages?.length) return fail('SEO agent', 'pages array is empty')
+  pass(`SEO agent → ${input.pages.length} page(s) optimized`)
+  return true
+}
+
 // ─── main ────────────────────────────────────────────────────────────────────
 
 const TESTS = [
+  { name: 'Planner Agent', fn: testPlannerAgent },
   { name: 'Content Agent', fn: testContentAgent },
   { name: 'Design Agent',  fn: testDesignAgent },
   { name: 'HTML Agent',    fn: testHtmlAgent },
+  { name: 'SEO Agent',     fn: testSeoAgent },
 ]
 
 async function main() {
