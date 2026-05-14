@@ -190,6 +190,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
         pages,
         activePageSlug: activeSlug,
+        customDomain: customDomainStatus === 'verified' ? customDomain : null,
       }),
     })
 
@@ -244,6 +245,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         summary = `🗑 ${result.input.summary}`
         if (activeSlug === targetSlug) newActiveSlug = newPages[0]?.slug || 'home'
       }
+    } else if (result.tool === 'update_seo') {
+      const seoPages = result.input.pages as { pageSlug: string; edits: { find: string; replace: string }[] }[]
+      let skipped = 0
+      newPages = pages.map(p => {
+        const seoPage = seoPages.find(sp => sp.pageSlug === p.slug)
+        if (!seoPage) return p
+        let html = p.html
+        for (const edit of seoPage.edits) {
+          if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
+          else skipped++
+        }
+        return { ...p, html }
+      })
+      summary = `🔍 ${result.input.summary}${skipped ? ` (${skipped} edit non applicate)` : ''}`
+    } else if (result.tool === 'generate_sitemap') {
+      summary = `🗺️ ${result.input.summary}`
     }
 
     setPages(newPages)
