@@ -72,19 +72,38 @@ export async function callClaude(
 ): Promise<Response> {
   const config = AGENT_CONFIGS[agentName] ?? AGENT_CONFIGS.html
 
+  // Prompt Caching: separa system in parte statica (cacheable) e dinamica
+  // La parte statica è tutto ciò che precede "PIANO DEL SITO:" o "PAGINE ATTUALI:" o simili
+  const dynamicMarkers = ['PIANO DEL SITO:', 'PAGINE ATTUALI:', 'PAGINE DEL SITO:', 'URL BASE:']
+  const dynamicIdx = dynamicMarkers.reduce((min, marker) => {
+    const idx = system.indexOf(marker)
+    return idx > -1 && idx < min ? idx : min
+  }, system.length)
+
+  const staticPart = system.slice(0, dynamicIdx).trim()
+  const dynamicPart = system.slice(dynamicIdx).trim()
+
+  const systemBlocks = staticPart.length >= 100
+    ? [
+        { type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } },
+        ...(dynamicPart ? [{ type: 'text', text: dynamicPart }] : []),
+      ]
+    : system // fallback stringa se troppo corto per la cache
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
         model: config.model,
         max_tokens: config.maxTokens,
         ...(config.temperature !== undefined && { temperature: config.temperature }),
-        system,
+        system: systemBlocks,
         tools,
         tool_choice: { type: 'any' },
         messages,
