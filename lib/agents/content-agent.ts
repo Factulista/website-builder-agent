@@ -78,13 +78,25 @@ export type ContentOutput = {
   summary: string
 }
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  it: 'italiano',
+  es: 'spagnolo',
+  en: 'inglese',
+  de: 'tedesco',
+  fr: 'francese',
+  pt: 'portoghese',
+}
+
 export async function runContentAgent(
   userRequest: string,
   plan: SitePlan,
   apiKey: string,
   context: ProjectContext = {}
 ): Promise<ContentOutput> {
-  const system = `Sei un copywriter esperto in italiano. Scrivi testi persuasivi, chiari e ottimizzati SEO per siti web.
+  const language = (context.language as string) || 'it'
+  const langName = LANGUAGE_NAMES[language] || 'italiano'
+
+  const system = `Sei un copywriter esperto in ${langName}. Scrivi testi persuasivi, chiari e ottimizzati SEO per siti web.
 
 ${CONTENT_KNOWLEDGE}
 
@@ -97,11 +109,11 @@ Pagine:
 ${plan.pages.map(p => `- ${p.slug} ("${p.name}"): ${p.sections.join(', ')} — ${p.purpose}`).join('\n')}
 
 REGOLE:
-- Scrivi in italiano, tono professionale ma accessibile.
+- Scrivi in ${langName}, tono professionale ma accessibile.
 - H1 chiaro e descrittivo (include keyword principale).
 - Meta description max 160 caratteri, include call to action.
 - Ogni sezione deve avere testi coerenti tra loro.
-- CTA specifici e persuasivi (non "Clicca qui").
+- CTA specifici e persuasivi (non "Clicca qui", "Haz clic aquí", etc).
 - Per Schema.org: usa il tipo più specifico disponibile (Restaurant, LegalService, MedicalBusiness, ecc.).`
 
   for (let attempt = 0; attempt < 3; attempt++) {

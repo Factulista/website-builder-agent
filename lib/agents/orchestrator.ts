@@ -12,6 +12,25 @@ type Page = { slug: string; name: string; html: string }
 
 type AgentType = 'pipeline' | 'html' | 'seo' | 'design-update' | 'content-update'
 
+const LANGUAGE_PATTERNS: Record<string, string[]> = {
+  it: ['italia', 'italiano', 'italiani', 'per l\'italia'],
+  es: ['spagna', 'spagnolo', 'spagnoli', 'españa', 'autonomos', 'pyme', 'for spain', 'spanish'],
+  en: ['england', 'english', 'uk', 'usa', 'united states', 'american', 'per gli inglesi'],
+  de: ['germany', 'german', 'deutschland', 'tedesco', 'tedeschi'],
+  fr: ['france', 'french', 'français', 'francese', 'francesi'],
+  pt: ['portugal', 'portuguese', 'portuguese', 'portoghese', 'portoghesi'],
+}
+
+export function detectLanguage(userRequest: string): string | null {
+  const lower = userRequest.toLowerCase()
+  for (const [lang, patterns] of Object.entries(LANGUAGE_PATTERNS)) {
+    if (patterns.some(p => lower.includes(p))) {
+      return lang
+    }
+  }
+  return null
+}
+
 const SEO_KEYWORDS = [
   'seo', 'meta', 'title tag', 'keywords', 'sitemap', 'robots', 'canonical',
   'og:', 'open graph', 'indicizzazione', 'posizionamento', 'ottimizza seo', 'migliora seo',
@@ -50,6 +69,7 @@ export type PipelineResult = {
   steps: string[]
   updatedContext?: ProjectContext
   usage?: object
+  requestLanguage?: boolean
 }
 
 export async function runDesignUpdate(
@@ -90,13 +110,29 @@ export async function runFullPipeline(
 ): Promise<PipelineResult> {
   const steps: string[] = []
 
-  // Step 0: Memory — aggiorna contesto dal messaggio utente
+  // Step 0a: Rileva lingua dal prompt
+  const detectedLanguage = detectLanguage(userRequest)
+  if (!detectedLanguage && existingPages.length === 0) {
+    // Prima run senza lingua specificata → chiedi all'utente
+    return {
+      tool: 'create_site',
+      input: { pages: [], summary: 'Lingua non specificata' },
+      agent: 'pipeline',
+      steps: ['⚠️ In che lingua vuoi il sito web? (es: italiano, spagnolo, inglese, tedesco, francese, portoghese)'],
+      requestLanguage: true,
+    }
+  }
+
+  // Step 0b: Memory — aggiorna contesto dal messaggio utente
   const updatedContext = await runMemoryAgent(
     [{ role: 'user', content: userRequest }],
     context,
     apiKey
   ).catch(() => null)
-  const activeContext = updatedContext ?? context
+  const activeContext = {
+    ...( updatedContext ?? context),
+    language: detectedLanguage || context.language || 'it',
+  }
 
   // Step 1: Planner
   steps.push('🗺️ Piano strutturale...')
