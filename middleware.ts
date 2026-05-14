@@ -39,6 +39,13 @@ export function middleware(req: NextRequest) {
       return NextResponse.next()
     }
     const [slug, page] = segments
+    // Serve SEO files directly via API (not as preview pages)
+    if (page === 'sitemap.xml' || page === 'robots.txt') {
+      url.pathname = '/api/seo-files'
+      url.searchParams.set('slug', slug)
+      url.searchParams.set('file', page)
+      return NextResponse.rewrite(url)
+    }
     url.pathname = page ? `/preview/${slug}/${page}` : `/preview/${slug}`
     return NextResponse.rewrite(url)
   }

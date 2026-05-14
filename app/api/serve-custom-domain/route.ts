@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { servePublished } from '../../../lib/preview'
+import { generateSitemap, generateRobots } from '../../../lib/seo-files'
 
 export const runtime = 'nodejs'
 
@@ -11,6 +12,9 @@ export async function GET(req: NextRequest) {
     return new Response('Invalid request', { status: 400 })
   }
 
+  let pathname = req.nextUrl.pathname
+  pathname = pathname.replace(/^\/api\/serve-custom-domain/, '')
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -19,7 +23,7 @@ export async function GET(req: NextRequest) {
   // Find project by custom domain
   const { data: project, error } = await supabase
     .from('projects')
-    .select('slug, custom_domain_status')
+    .select('slug, site_config, custom_domain_status')
     .eq('custom_domain', host)
     .is('deleted_at', null)
     .single()
@@ -38,11 +42,25 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // Extract page slug from path
-  let pathname = req.nextUrl.pathname
-  // Remove /api/serve-custom-domain prefix
-  pathname = pathname.replace(/^\/api\/serve-custom-domain/, '')
-  const pageSlug = pathname === '' || pathname === '/' ? 'home' : pathname.slice(1)
+  const baseUrl = `https://${host}`
+  const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
 
+  // Serve sitemap.xml
+  if (pathname === '/sitemap.xml') {
+    const publishedPages = (siteConfig.published_pages as { slug: string; name: string }[]) ?? []
+    const xml = generateSitemap(publishedPages, baseUrl)
+    return new Response(xml, {
+      headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    })
+  }
+
+  // Serve robots.txt
+  if (pathname === '/robots.txt') {
+    return new Response(generateRobots(baseUrl), {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    })
+  }
+
+  const pageSlug = pathname === '' || pathname === '/' ? 'home' : pathname.slice(1)
   return servePublished(project.slug, pageSlug, host)
 }
