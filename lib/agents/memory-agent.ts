@@ -11,6 +11,7 @@ export type ProjectContext = {
   uniqueValue?: string
   services?: string[]
   contactInfo?: { phone?: string; email?: string; address?: string }
+  language?: string
   updatedAt?: string
 }
 
