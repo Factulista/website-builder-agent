@@ -48,6 +48,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [customDomainStatus, setCustomDomainStatus] = useState<string | null>(null)
   const [addingDomain, setAddingDomain] = useState(false)
   const [dnsInstructions, setDnsInstructions] = useState<string>('')
+  const [verifying, setVerifying] = useState(false)
+  const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -292,12 +294,57 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setCustomDomainStatus(result.status)
       setDnsInstructions(result.message)
       setAddingDomain(false)
+
+      if (result.status === 'pending') {
+        startPolling()
+      }
     } catch (error) {
       console.error(error)
       alert('Errore nella richiesta')
       setAddingDomain(false)
     }
   }
+
+  const startPolling = () => {
+    if (verifyIntervalRef.current) clearInterval(verifyIntervalRef.current)
+    setVerifying(true)
+    verifyIntervalRef.current = setInterval(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        const res = await fetch('/api/verify-custom-domain', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ projectId: id }),
+        })
+
+        const result = await res.json()
+        if (result.status === 'verified') {
+          setCustomDomainStatus('verified')
+          setVerifying(false)
+          clearInterval(verifyIntervalRef.current!)
+          verifyIntervalRef.current = null
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }, 15000)
+  }
+
+  // Start polling if domain is pending on load
+  useEffect(() => {
+    if (customDomainStatus === 'pending') {
+      startPolling()
+    }
+    return () => {
+      if (verifyIntervalRef.current) clearInterval(verifyIntervalRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customDomainStatus === 'pending'])
 
   return (
     <main style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -500,7 +547,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
 
             {/* Custom domain form */}
-            {!customDomain || customDomainStatus !== 'verified' ? (
+            {customDomainStatus === 'verified' ? (
+              <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0fdf4', borderRadius: '0.375rem', borderLeft: '3px solid #10b981' }}>
+                <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.75rem', color: '#6b7280' }}>Dominio personalizzato attivo</p>
+                <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.9rem', fontFamily: 'monospace', color: '#1c1917', fontWeight: 500 }}>{customDomain}</p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#059669' }}>✓ Verificato e attivo</p>
+              </div>
+            ) : customDomainStatus === 'pending' ? (
+              <div style={{ marginBottom: '1rem', padding: '1rem', background: '#fffbeb', borderRadius: '0.375rem', borderLeft: '3px solid #f59e0b' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>In attesa di verifica DNS</span>
+                  {verifying && <span style={{ fontSize: '0.7rem', color: '#f59e0b', animation: 'pulse 1.5s infinite' }}>● controllo in corso...</span>}
+                </div>
+                <p style={{ margin: '0 0 0.25rem 0', fontSize: '0.9rem', fontFamily: 'monospace', color: '#1c1917', fontWeight: 500 }}>{customDomain}</p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#92400e' }}>La verifica è automatica, può richiedere fino a 15 minuti</p>
+              </div>
+            ) : (
               <form onSubmit={handleAddCustomDomain} style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#1c1917' }}>
                   Dominio Personalizzato (Production)
@@ -524,12 +586,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {addingDomain ? '⏳ Configurazione...' : 'Aggiungi Dominio'}
                 </button>
               </form>
-            ) : (
-              <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0fdf4', borderRadius: '0.375rem', borderLeft: '3px solid #10b981' }}>
-                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#6b7280' }}>Dominio Personalizzato (Attivo)</p>
-                <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontFamily: 'monospace', color: '#1c1917', fontWeight: 500 }}>{customDomain}</p>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: '#059669' }}>✓ Verificato e attivo</p>
-              </div>
             )}
 
             {/* DNS Instructions */}
