@@ -130,41 +130,11 @@ export async function runFullPipeline(
   const htmlOutput = await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
   steps.push(`✅ HTML: ${htmlOutput.pages.length} pagine generate`)
-
-  // Step 4: Images + Accessibility in parallelo su tutte le pagine
-  steps.push('🖼️ Ottimizzazione immagini e accessibilità...')
-  const optimizedPages = await Promise.all(
-    htmlOutput.pages.map(async (page) => {
-      const [imagesResult, accessibilityResult] = await Promise.all([
-        runImagesAgent(page.slug, page.html, plan.businessType, apiKey).catch(() => null),
-        runAccessibilityAgent(page.slug, page.html, apiKey).catch(() => null),
-      ])
-
-      let html = page.html
-
-      // Apply images edits
-      if (imagesResult?.edits) {
-        for (const edit of imagesResult.edits) {
-          if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
-        }
-      }
-
-      // Apply accessibility edits
-      if (accessibilityResult?.edits) {
-        for (const edit of accessibilityResult.edits) {
-          if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
-        }
-      }
-
-      return { ...page, html }
-    })
-  )
-
   steps.push('✅ Sito creato')
 
   return {
     tool: 'create_site',
-    input: { pages: optimizedPages, summary: htmlOutput.summary },
+    input: { pages: htmlOutput.pages, summary: htmlOutput.summary },
     agent: 'pipeline',
     steps,
     updatedContext: updatedContext ?? undefined,
