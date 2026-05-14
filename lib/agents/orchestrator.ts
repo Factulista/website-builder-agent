@@ -102,7 +102,15 @@ export async function runFullPipeline(
   steps.push('🗺️ Piano strutturale...')
   const plan = await runPlanner(userRequest, existingPages, apiKey)
   if (!plan?.pages?.length) throw new Error('Planner non ha prodotto un piano valido')
-  steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
+
+  // Prima run: genera solo home, poi l'utente aggiunge pagine via chat
+  if (existingPages.length === 0) {
+    const homePage = plan.pages.find(p => p.slug === 'home') || plan.pages[0]
+    plan.pages = [homePage]
+    steps.push(`✅ Piano: home (altre pagine aggiunte via chat)`)
+  } else {
+    steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
+  }
 
   // Step 2a: Site Analyzer — analizza URL di ispirazione se presenti
   const urls = extractUrls(userRequest)
