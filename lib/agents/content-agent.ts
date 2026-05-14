@@ -104,13 +104,27 @@ REGOLE:
 - CTA specifici e persuasivi (non "Clicca qui").
 - Per Schema.org: usa il tipo più specifico disponibile (Restaurant, LegalService, MedicalBusiness, ecc.).`
 
-  const res = await callClaude('content', system, [{ role: 'user', content: userRequest }], CONTENT_TOOLS, apiKey)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await callClaude('content', system, [{ role: 'user', content: userRequest }], CONTENT_TOOLS, apiKey)
 
-  if (!res.ok) throw new Error(`Content Agent API error: ${await res.text()}`)
-  const data = await res.json()
-  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
-  if (!toolUse) throw new Error('No tool use in Content response')
-  return toolUse.input as ContentOutput
+    if (!res.ok) throw new Error(`Content Agent API error: ${await res.text()}`)
+    const data = await res.json()
+
+    if (data.stop_reason === 'max_tokens') {
+      if (attempt < 2) { await new Promise(r => setTimeout(r, 1500)); continue }
+      throw new Error('Content agent: risposta troncata dopo max_tokens')
+    }
+
+    const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+    if (!toolUse || !toolUse.input?.pages?.length) {
+      if (attempt < 2) { await new Promise(r => setTimeout(r, 1500)); continue }
+      throw new Error('Content agent: nessun contenuto valido generato')
+    }
+
+    return toolUse.input as ContentOutput
+  }
+
+  throw new Error('Content agent: troppi tentativi falliti')
 }
 
 type Page = { slug: string; name: string; html: string }

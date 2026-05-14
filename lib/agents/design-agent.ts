@@ -91,13 +91,27 @@ REGOLE:
 - Contrasto colori: almeno 4.5:1 (WCAG AA).
 - Design mobile-first con media queries.`
 
-  const res = await callClaude('design', system, [{ role: 'user', content: userRequest }], DESIGN_TOOLS, apiKey)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await callClaude('design', system, [{ role: 'user', content: userRequest }], DESIGN_TOOLS, apiKey)
 
-  if (!res.ok) throw new Error(`Design Agent API error: ${await res.text()}`)
-  const data = await res.json()
-  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
-  if (!toolUse) throw new Error('No tool use in Design response')
-  return toolUse.input as DesignOutput
+    if (!res.ok) throw new Error(`Design Agent API error: ${await res.text()}`)
+    const data = await res.json()
+
+    if (data.stop_reason === 'max_tokens') {
+      if (attempt < 2) { await new Promise(r => setTimeout(r, 1500)); continue }
+      throw new Error('Design agent: risposta troncata dopo max_tokens')
+    }
+
+    const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+    if (!toolUse || !toolUse.input?.tokens) {
+      if (attempt < 2) { await new Promise(r => setTimeout(r, 1500)); continue }
+      throw new Error('Design agent: nessun design valido generato')
+    }
+
+    return toolUse.input as DesignOutput
+  }
+
+  throw new Error('Design agent: troppi tentativi falliti')
 }
 
 type Page = { slug: string; name: string; html: string }
