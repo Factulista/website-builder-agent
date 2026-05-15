@@ -36,6 +36,8 @@ function extractTextItems(html: string): TextItem[] {
   const seen = new Set<string>()
   let i = 0
   doc.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,button').forEach(el => {
+    // Only leaf nodes — elements with child elements have fragmented text we can't reliably replace
+    if (el.children.length > 0) return
     const text = el.textContent?.trim() || ''
     if (!text || text.length < 2 || text.length > 500 || seen.has(text)) return
     seen.add(text)
@@ -46,18 +48,32 @@ function extractTextItems(html: string): TextItem[] {
 }
 
 function applyTextChanges(html: string, items: TextItem[]): string {
-  let result = html
-  for (const item of items) {
-    if (item.text === item.originalText) continue
-    // Match text only between tags (not inside attributes)
-    const escaped = item.originalText.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&')
-    const safeReplacement = item.text.replace(/\$/g, '$$$$')
-    result = result.replace(
-      new RegExp(`(>[^<]*?)${escaped}([^<]*?<)`, 'g'),
-      `$1${safeReplacement}$2`
-    )
+  if (typeof window === 'undefined') return html
+  const changed = items.filter(i => i.text !== i.originalText)
+  if (changed.length === 0) return html
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  for (const item of changed) {
+    // Walk all text nodes in the body and find the one matching originalText
+    const walker = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */)
+    let node: Node | null
+    while ((node = walker.nextNode())) {
+      const tn = node as Text
+      if (tn.textContent?.trim() === item.originalText) {
+        // Preserve surrounding whitespace (indentation / newlines)
+        const raw = tn.textContent
+        const leading = raw.match(/^\s*/)?.[0] ?? ''
+        const trailing = raw.match(/\s*$/)?.[0] ?? ''
+        tn.textContent = leading + item.text + trailing
+        break
+      }
+    }
   }
-  return result
+
+  const hasDoctype = /^\s*<!DOCTYPE/i.test(html)
+  const result = doc.documentElement.outerHTML
+  return hasDoctype ? '<!DOCTYPE html>\n' + result : result
 }
 
 function groupVersionsByDay(versions: Version[]): { label: string; items: Version[] }[] {
