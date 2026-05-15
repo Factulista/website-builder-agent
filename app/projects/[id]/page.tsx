@@ -6,6 +6,8 @@ import { supabase } from '../../../lib/supabase'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string }
 type Page = { slug: string; name: string; html: string }
+type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
+type TextItem = { id: string; tag: string; label: string; text: string; originalText: string }
 
 function stripHtmlFromChat(content: string): string {
   if (!content) return ''
@@ -20,6 +22,51 @@ function stripHtmlFromChat(content: string): string {
     return prose ? `${prose}\n\n${status}` : status
   }
   return prose
+}
+
+const TAG_LABELS: Record<string, string> = {
+  h1: 'Titolo H1', h2: 'Titolo H2', h3: 'Titolo H3', h4: 'Titolo H4', h5: 'Titolo H5', h6: 'Titolo H6',
+  p: 'Paragrafo', li: 'Voce lista', a: 'Link', button: 'Bottone',
+}
+
+function extractTextItems(html: string): TextItem[] {
+  if (typeof window === 'undefined') return []
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const items: TextItem[] = []
+  const seen = new Set<string>()
+  let i = 0
+  doc.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,button').forEach(el => {
+    const text = el.textContent?.trim() || ''
+    if (!text || text.length < 2 || text.length > 500 || seen.has(text)) return
+    seen.add(text)
+    const tag = el.tagName.toLowerCase()
+    items.push({ id: `t_${i++}`, tag, label: TAG_LABELS[tag] || tag, text, originalText: text })
+  })
+  return items
+}
+
+function applyTextChanges(html: string, items: TextItem[]): string {
+  let result = html
+  for (const item of items) {
+    if (item.text === item.originalText) continue
+    const escaped = item.originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(`(>\\s*)${escaped}(\\s*<)`, 'g'), `$1${item.text}$2`)
+  }
+  return result
+}
+
+function groupVersionsByDay(versions: Version[]): { label: string; items: Version[] }[] {
+  const groups = new Map<string, Version[]>()
+  const now = new Date()
+  for (const v of [...versions].reverse()) {
+    const d = new Date(v.timestamp)
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000)
+    const label = diffDays === 0 ? 'Oggi' : diffDays === 1 ? 'Ieri'
+      : d.toLocaleDateString('it-IT', { weekday: 'long' }).replace(/^\w/, c => c.toUpperCase())
+    if (!groups.has(label)) groups.set(label, [])
+    groups.get(label)!.push(v)
+  }
+  return Array.from(groups.entries()).map(([label, items]) => ({ label, items }))
 }
 
 function injectBase(html: string, projectSlug: string): string {
@@ -97,13 +144,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'text'>('preview')
   const [codeContent, setCodeContent] = useState('')
   const [codeSaved, setCodeSaved] = useState(false)
+  const [versions, setVersions] = useState<Version[]>([])
+  const [showVersionHistory, setShowVersionHistory] = useState(false)
+  const [hoveredVersionId, setHoveredVersionId] = useState<string | null>(null)
+  const [textItems, setTextItems] = useState<TextItem[]>([])
+  const [textDirty, setTextDirty] = useState(false)
+  const [textSaving, setTextSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -111,6 +165,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (viewMode === 'code' && activePage) {
       setCodeContent(activePage.html)
       setCodeSaved(false)
+    }
+    if (viewMode === 'text' && activePage) {
+      setTextItems(extractTextItems(activePage.html))
+      setTextDirty(false)
+      setTextSaving('idle')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSlug, viewMode])
@@ -186,22 +245,57 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setCustomDomain(project.custom_domain)
         setCustomDomainStatus(project.custom_domain_status)
       }
-      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[] } | null
+      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[] } | null
       let loadedPages: Page[] = []
       if (config?.pages?.length) loadedPages = config.pages
       else if (config?.html) loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
       setPages(loadedPages)
       if (loadedPages.length > 0) setActiveSlug(loadedPages[0].slug)
       if (config?.messages) setMessages(config.messages)
+      if (config?.versions) setVersions(config.versions)
     }
     load()
   }, [id])
 
-  const saveState = async (newMessages: Message[], newPages: Page[]) => {
+  const createVersion = (summary: string, currentPages: Page[], currentVersions: Version[]): Version[] => {
+    if (currentPages.length === 0) return currentVersions
+    const v: Version = { id: `v_${Date.now()}`, timestamp: new Date().toISOString(), summary, pages: currentPages }
+    const updated = [v, ...currentVersions].slice(0, 30)
+    setVersions(updated)
+    return updated
+  }
+
+  const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[]) => {
+    const vers = newVersions ?? versions
     await supabase.from('projects').update({
-      site_config: { pages: newPages, messages: newMessages },
+      site_config: { pages: newPages, messages: newMessages, versions: vers },
       updated_at: new Date().toISOString(),
     }).eq('id', id)
+  }
+
+  const textItemsRef = useRef<TextItem[]>([])
+  useEffect(() => { textItemsRef.current = textItems }, [textItems])
+
+  const handleTextChange = (id: string, newText: string) => {
+    setTextItems(prev => prev.map(item => item.id === id ? { ...item, text: newText } : item))
+    setTextDirty(true)
+    setTextSaving('idle')
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = setTimeout(async () => {
+      setTextSaving('saving')
+      const currentItems = textItemsRef.current
+      const updatedHtml = activePage ? applyTextChanges(activePage.html, currentItems) : ''
+      if (updatedHtml && activePage) {
+        const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: updatedHtml } : p)
+        setPages(newPages)
+        const newVersions = createVersion('Testo modificato manualmente', newPages, versions)
+        await saveState(messages, newPages, newVersions)
+      }
+      setTextItems(prev => prev.map(item => ({ ...item, originalText: item.text })))
+      setTextDirty(false)
+      setTextSaving('saved')
+      setTimeout(() => setTextSaving('idle'), 2000)
+    }, 2000)
   }
 
   const handleSend = async (e: React.FormEvent) => {
@@ -360,7 +454,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setActiveSlug(newActiveSlug)
     setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
     const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
-    await saveState(finalMessages, newPages)
+    const newVersions = createVersion(summary.slice(0, 60).replace(/^[✨✏️➕🗑🔍🗺️🎨✍️]\s*/, ''), newPages, versions)
+    await saveState(finalMessages, newPages, newVersions)
     setLoading(false)
   }
 
@@ -459,7 +554,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           </div>
           <div style={{ display: 'flex', gap: '2px' }}>
-            <ToolbarBtn label="⟳" title="Cronologia" />
+            <ToolbarBtn
+              label="◷"
+              title="Cronologia versioni"
+              active={showVersionHistory}
+              onClick={() => setShowVersionHistory(v => !v)}
+            />
           </div>
         </div>
 
@@ -613,6 +713,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 setViewMode('code')
               }}
             />
+            <ToolbarBtn
+              label="Aa"
+              title="Editor testo"
+              active={viewMode === 'text'}
+              onClick={() => setViewMode('text')}
+            />
           </div>
 
           {/* URL bar */}
@@ -711,8 +817,121 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
-        {/* Preview / Code editor */}
-        {viewMode === 'code' && activePage ? (
+        {/* Version history panel */}
+        {showVersionHistory ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+              <span style={{ fontSize: '0.875rem', fontWeight: 600, color: C.text }}>Cronologia versioni</span>
+              <button onClick={() => setShowVersionHistory(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', padding: '2px 6px' }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+              {versions.length === 0 ? (
+                <div style={{ padding: '40px 24px', textAlign: 'center', color: C.textFaint, fontSize: '0.85rem' }}>
+                  Nessuna versione ancora.<br />Le versioni vengono salvate automaticamente.
+                </div>
+              ) : groupVersionsByDay(versions).map(group => (
+                <div key={group.label}>
+                  <div style={{ padding: '10px 18px 4px', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {group.label}
+                  </div>
+                  {group.items.map(v => (
+                    <div
+                      key={v.id}
+                      onMouseEnter={() => setHoveredVersionId(v.id)}
+                      onMouseLeave={() => setHoveredVersionId(null)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '10px 18px', cursor: 'default',
+                        background: hoveredVersionId === v.id ? C.bgPanel : 'transparent',
+                        transition: 'background 0.1s',
+                      }}
+                    >
+                      <div>
+                        <p style={{ margin: 0, fontSize: '0.8375rem', color: C.text, fontWeight: 400 }}>{v.summary || 'Versione salvata'}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: C.textFaint }}>
+                          {new Date(v.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      {hoveredVersionId === v.id && (
+                        <button
+                          title="Ripristina questa versione"
+                          onClick={async () => {
+                            if (!confirm('Ripristinare questa versione? Le modifiche attuali verranno sovrascritte.')) return
+                            const newVersions = createVersion('Ripristino versione precedente', pages, versions)
+                            setPages(v.pages)
+                            setActiveSlug(v.pages[0]?.slug || 'home')
+                            await saveState(messages, v.pages, newVersions)
+                            setShowVersionHistory(false)
+                          }}
+                          style={{
+                            background: 'transparent', border: `1px solid ${C.border}`, borderRadius: '6px',
+                            padding: '5px 10px', cursor: 'pointer', color: C.textMuted, fontSize: '0.9rem',
+                            display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+                          }}
+                        >
+                          ↩
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : viewMode === 'text' && activePage ? (
+          /* Text editor */
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+              <span style={{ fontSize: '0.75rem', color: C.textFaint }}>Editor testo — {activePage.name}</span>
+              <span style={{ fontSize: '0.72rem', color: textSaving === 'saving' ? '#f59e0b' : textSaving === 'saved' ? '#10b981' : textDirty ? C.textFaint : C.textFaint }}>
+                {textSaving === 'saving' ? '⏳ Salvataggio...' : textSaving === 'saved' ? '✓ Salvato' : textDirty ? 'Modifiche non salvate...' : 'Auto-save attivo'}
+              </span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {textItems.length === 0 ? (
+                <p style={{ color: C.textFaint, fontSize: '0.85rem', textAlign: 'center', marginTop: '40px' }}>
+                  Nessun testo trovato. Prova a generare il sito prima.
+                </p>
+              ) : textItems.map(item => (
+                <div key={item.id}>
+                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+                    {item.label}
+                  </label>
+                  {item.text.length > 80 || item.tag === 'p' ? (
+                    <textarea
+                      value={item.text}
+                      onChange={e => handleTextChange(item.id, e.target.value)}
+                      rows={3}
+                      style={{
+                        width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
+                        padding: '8px 10px', fontSize: '0.875rem', color: C.text,
+                        background: C.white, fontFamily: 'inherit', resize: 'vertical',
+                        outline: 'none', lineHeight: '1.55', boxSizing: 'border-box' as const,
+                      }}
+                      onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
+                      onBlur={e => { e.currentTarget.style.borderColor = C.border }}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={item.text}
+                      onChange={e => handleTextChange(item.id, e.target.value)}
+                      style={{
+                        width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
+                        padding: '8px 10px', fontSize: '0.875rem', color: C.text,
+                        background: C.white, fontFamily: 'inherit',
+                        outline: 'none', boxSizing: 'border-box' as const,
+                      }}
+                      onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
+                      onBlur={e => { e.currentTarget.style.borderColor = C.border }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : viewMode === 'code' && activePage ? (
+          /* Code editor */
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#1e1e1e' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #333', flexShrink: 0 }}>
               <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace' }}>{activePage.slug}.html</span>
@@ -721,7 +940,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: codeContent } : p)
                   setPages(newPages)
                   setCodeSaved(true)
-                  saveState(messages, newPages)
+                  const newVersions = createVersion('Modifica HTML manuale', newPages, versions)
+                  saveState(messages, newPages, newVersions)
                   setTimeout(() => setCodeSaved(false), 2000)
                 }}
                 style={{
