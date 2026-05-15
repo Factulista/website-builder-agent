@@ -146,25 +146,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'preview' | 'code' | 'text'>('preview')
   const [codeContent, setCodeContent] = useState('')
-  const [codeSaved, setCodeSaved] = useState(false)
   const [versions, setVersions] = useState<Version[]>([])
   const [showVersionHistory, setShowVersionHistory] = useState(false)
   const [hoveredVersionId, setHoveredVersionId] = useState<string | null>(null)
   const [textItems, setTextItems] = useState<TextItem[]>([])
   const [textDirty, setTextDirty] = useState(false)
   const [textSaving, setTextSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [codeSaving, setCodeSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
   useEffect(() => {
     if (viewMode === 'code' && activePage) {
       setCodeContent(activePage.html)
-      setCodeSaved(false)
+      setCodeSaving('idle')
     }
     if (viewMode === 'text' && activePage) {
       setTextItems(extractTextItems(activePage.html))
@@ -709,7 +710,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               active={viewMode === 'code'}
               onClick={() => {
                 setCodeContent(activePage?.html ?? '')
-                setCodeSaved(false)
+                setCodeSaving('idle')
                 setViewMode('code')
               }}
             />
@@ -935,28 +936,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#1e1e1e' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #333', flexShrink: 0 }}>
               <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace' }}>{activePage.slug}.html</span>
-              <button
-                onClick={() => {
-                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: codeContent } : p)
-                  setPages(newPages)
-                  setCodeSaved(true)
-                  const newVersions = createVersion('Modifica HTML manuale', newPages, versions)
-                  saveState(messages, newPages, newVersions)
-                  setTimeout(() => setCodeSaved(false), 2000)
-                }}
-                style={{
-                  padding: '5px 14px', borderRadius: '6px', border: 'none',
-                  background: codeSaved ? '#10b981' : C.blue, color: 'white',
-                  fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                  transition: 'background 0.15s',
-                }}
-              >
-                {codeSaved ? '✓ Salvato' : 'Salva'}
-              </button>
+              <span style={{ fontSize: '0.72rem', color: codeSaving === 'saving' ? '#f59e0b' : codeSaving === 'saved' ? '#10b981' : '#6b7280' }}>
+                {codeSaving === 'saving' ? '⏳ Salvataggio...' : codeSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
+              </span>
             </div>
             <textarea
               value={codeContent}
-              onChange={(e) => { setCodeContent(e.target.value); setCodeSaved(false) }}
+              onChange={(e) => {
+                const val = e.target.value
+                setCodeContent(val)
+                setCodeSaving('idle')
+                if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current)
+                codeAutoSaveTimer.current = setTimeout(async () => {
+                  setCodeSaving('saving')
+                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
+                  setPages(newPages)
+                  const newVersions = createVersion('Modifica HTML manuale', newPages, versions)
+                  await saveState(messages, newPages, newVersions)
+                  setCodeSaving('saved')
+                  setTimeout(() => setCodeSaving('idle'), 2000)
+                }, 2000)
+              }}
               spellCheck={false}
               style={{
                 flex: 1, border: 'none', outline: 'none', resize: 'none',
