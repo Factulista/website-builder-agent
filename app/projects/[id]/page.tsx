@@ -181,6 +181,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [textDirty, setTextDirty] = useState(false)
   const [textSaving, setTextSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [codeSaving, setCodeSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [chatHidden, setChatHidden] = useState(false)
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -580,7 +581,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     <main style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: C.bg }}>
 
       {/* ── Chat panel ── */}
-      <div style={{ width: `${chatWidth}%`, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg, borderRight: `1px solid ${C.border}` }}>
+      <div style={{ width: chatHidden ? '0' : `${chatWidth}%`, minWidth: chatHidden ? '0' : undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg, borderRight: chatHidden ? 'none' : `1px solid ${C.border}`, transition: 'width 0.2s ease', flexShrink: 0 }}>
 
         {/* Chat header */}
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.bg, flexShrink: 0 }}>
@@ -599,6 +600,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               title="Cronologia versioni"
               active={showVersionHistory}
               onClick={() => setShowVersionHistory(v => !v)}
+            />
+            <ToolbarBtn
+              label={
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0.5" y="0.5" width="13" height="13" rx="2.5" stroke="currentColor"/>
+                  <line x1="5" y1="1" x2="5" y2="13" stroke="currentColor"/>
+                </svg>
+              }
+              title={chatHidden ? 'Mostra chat' : 'Nascondi chat'}
+              active={chatHidden}
+              onClick={() => setChatHidden(v => !v)}
             />
           </div>
         </div>
@@ -714,16 +726,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       </div>
 
       {/* ── Resize handle ── */}
-      <div
-        onMouseDown={(e) => { e.preventDefault(); setIsDragging(true) }}
-        style={{
-          width: '5px', cursor: 'col-resize', flexShrink: 0, zIndex: 10,
-          background: isDragging ? C.blue : 'transparent',
-          transition: isDragging ? 'none' : 'background 0.15s',
-        }}
-        onMouseEnter={e => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = C.border }}
-        onMouseLeave={e => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-      />
+      {!chatHidden && (
+        <div
+          onMouseDown={(e) => { e.preventDefault(); setIsDragging(true) }}
+          style={{
+            width: '5px', cursor: 'col-resize', flexShrink: 0, zIndex: 10,
+            background: isDragging ? C.blue : 'transparent',
+            transition: isDragging ? 'none' : 'background 0.15s',
+          }}
+          onMouseEnter={e => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = C.border }}
+          onMouseLeave={e => { if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        />
+      )}
       {isDragging && <div style={{ position: 'fixed', inset: 0, cursor: 'col-resize', zIndex: 9999 }} />}
 
       {/* ── Preview panel ── */}
@@ -737,6 +751,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }}>
           {/* Left tools */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            {chatHidden && (
+              <ToolbarBtn
+                label={
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="0.5" y="0.5" width="13" height="13" rx="2.5" stroke="currentColor"/>
+                    <line x1="5" y1="1" x2="5" y2="13" stroke="currentColor"/>
+                  </svg>
+                }
+                title="Mostra chat"
+                onClick={() => setChatHidden(false)}
+              />
+            )}
             <ToolbarBtn
               label="🌐"
               title="Preview"
