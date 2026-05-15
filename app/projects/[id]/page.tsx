@@ -97,12 +97,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
+  const [codeContent, setCodeContent] = useState('')
+  const [codeSaved, setCodeSaved] = useState(false)
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
+
+  useEffect(() => {
+    if (viewMode === 'code' && activePage) {
+      setCodeContent(activePage.html)
+      setCodeSaved(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSlug, viewMode])
 
   useEffect(() => {
     if (!isDragging) return
@@ -586,12 +597,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }}>
           {/* Left tools */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-            <ToolbarBtn label="⟳" title="Cronologia" />
-            <ToolbarBtn label="⊡" title="Layout" />
-            <div style={{ width: '1px', height: '16px', background: C.border, margin: '0 4px' }} />
-            <ToolbarBtn label="◉ Preview" active />
-            <ToolbarBtn label="</> Codice" />
-            <ToolbarBtn label="☁ Deploy" />
+            <ToolbarBtn
+              label="🌐"
+              title="Preview"
+              active={viewMode === 'preview'}
+              onClick={() => setViewMode('preview')}
+            />
+            <ToolbarBtn
+              label="</>"
+              title="Codice HTML"
+              active={viewMode === 'code'}
+              onClick={() => {
+                setCodeContent(activePage?.html ?? '')
+                setCodeSaved(false)
+                setViewMode('code')
+              }}
+            />
           </div>
 
           {/* URL bar */}
@@ -690,8 +711,44 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         )}
 
-        {/* iframe */}
-        {activePage ? (
+        {/* Preview / Code editor */}
+        {viewMode === 'code' && activePage ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#1e1e1e' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #333', flexShrink: 0 }}>
+              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace' }}>{activePage.slug}.html</span>
+              <button
+                onClick={() => {
+                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: codeContent } : p)
+                  setPages(newPages)
+                  setCodeSaved(true)
+                  saveState(messages, newPages)
+                  setTimeout(() => setCodeSaved(false), 2000)
+                }}
+                style={{
+                  padding: '5px 14px', borderRadius: '6px', border: 'none',
+                  background: codeSaved ? '#10b981' : C.blue, color: 'white',
+                  fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {codeSaved ? '✓ Salvato' : 'Salva'}
+              </button>
+            </div>
+            <textarea
+              value={codeContent}
+              onChange={(e) => { setCodeContent(e.target.value); setCodeSaved(false) }}
+              spellCheck={false}
+              style={{
+                flex: 1, border: 'none', outline: 'none', resize: 'none',
+                background: '#1e1e1e', color: '#d4d4d4',
+                fontFamily: '"Fira Code", "Cascadia Code", "Consolas", monospace',
+                fontSize: '0.8125rem', lineHeight: '1.6',
+                padding: '14px 18px', overflowY: 'auto',
+                tabSize: 2,
+              }}
+            />
+          </div>
+        ) : activePage ? (
           <iframe
             srcDoc={injectBase(activePage.html, projectSlug)}
             style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
