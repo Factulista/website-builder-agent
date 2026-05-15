@@ -9,6 +9,47 @@ type Page = { slug: string; name: string; html: string }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type TextItem = { id: string; tag: string; label: string; text: string; originalText: string }
 
+const INLINE_EDIT_SCRIPT = `(function(){
+  document.querySelectorAll('a').forEach(function(a){
+    a.addEventListener('click',function(e){e.preventDefault();});
+  });
+  function makeEditable(el){
+    if(el.querySelector('p,div,h1,h2,h3,h4,h5,h6,ul,ol,table,section,article')) return;
+    el.contentEditable='true';
+    el.dataset.factEdit='1';
+    el.style.transition='outline 0.1s';
+    el.addEventListener('mouseenter',function(){
+      if(document.activeElement!==el){el.style.outline='2px dashed rgba(37,99,235,0.45)';el.style.outlineOffset='3px';el.style.borderRadius='3px';}
+    });
+    el.addEventListener('mouseleave',function(){
+      if(document.activeElement!==el){el.style.outline='';el.style.outlineOffset='';}
+    });
+    el.addEventListener('focus',function(){
+      el.style.outline='2px solid #2563eb';el.style.outlineOffset='3px';el.style.borderRadius='3px';
+    });
+    el.addEventListener('blur',function(){
+      el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
+    });
+    el.addEventListener('keydown',function(e){
+      if(e.key==='Enter'&&/^H[1-6]$|^BUTTON$/.test(el.tagName)){e.preventDefault();}
+    });
+  }
+  document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,button').forEach(makeEditable);
+  var timer;
+  document.addEventListener('input',function(){
+    clearTimeout(timer);
+    timer=setTimeout(function(){
+      var clone=document.documentElement.cloneNode(true);
+      clone.querySelectorAll('[data-fact-edit]').forEach(function(el){
+        el.removeAttribute('contenteditable');
+        el.removeAttribute('data-fact-edit');
+        el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';el.style.transition='';
+      });
+      window.parent.postMessage({type:'html-change',html:'<!DOCTYPE html>\\n'+clone.outerHTML},'*');
+    },400);
+  });
+})();`
+
 function stripHtmlFromChat(content: string): string {
   if (!content) return ''
   const codeMatch = content.indexOf('```')
@@ -172,7 +213,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'text'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'text' | 'edit'>('preview')
   const [codeContent, setCodeContent] = useState('')
   const [versions, setVersions] = useState<Version[]>([])
   const [showVersionHistory, setShowVersionHistory] = useState(false)
@@ -181,6 +222,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [textDirty, setTextDirty] = useState(false)
   const [textSaving, setTextSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [codeSaving, setCodeSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [editSrcDoc, setEditSrcDoc] = useState('')
+  const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [chatHidden, setChatHidden] = useState(false)
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -192,10 +235,45 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const latestPagesRef = useRef<Page[]>([])
   const textScrollRef = useRef<HTMLDivElement>(null)
   const textPreviewIframeRef = useRef<HTMLIFrameElement>(null)
+  const editIframeRef = useRef<HTMLIFrameElement>(null)
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
   useEffect(() => { latestPagesRef.current = pages }, [pages])
+
+  // Set editSrcDoc when entering edit mode (don't depend on pages to avoid iframe reload)
+  useEffect(() => {
+    if (viewMode === 'edit' && activePage && projectSlug) {
+      setEditSrcDoc(injectBase(activePage.html, projectSlug))
+      setEditSaving('idle')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, activeSlug, projectSlug])
+
+  // Listen for inline edits coming from the iframe via postMessage
+  useEffect(() => {
+    if (viewMode !== 'edit') return
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type !== 'html-change' || !activePage) return
+      const newHtml = e.data.html as string
+      const newPages = latestPagesRef.current.map(p =>
+        p.slug === activePage.slug ? { ...p, html: newHtml } : p
+      )
+      setPages(newPages)
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+      autoSaveTimer.current = setTimeout(async () => {
+        setEditSaving('saving')
+        const curPages = latestPagesRef.current
+        const newVersions = createVersion('Modifica inline', curPages, versions)
+        await saveState(messages, curPages, newVersions)
+        setEditSaving('saved')
+        setTimeout(() => setEditSaving('idle'), 2000)
+      }, 2000)
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, activePage?.slug, messages, versions])
 
   useEffect(() => {
     if (viewMode === 'code' && activePage) {
@@ -308,6 +386,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       site_config: { pages: newPages, messages: newMessages, versions: vers },
       updated_at: new Date().toISOString(),
     }).eq('id', id)
+  }
+
+  const injectEditingScript = () => {
+    const iframe = editIframeRef.current
+    if (!iframe?.contentDocument?.body) return
+    const existing = iframe.contentDocument.querySelector('[data-fact-edit-loaded]')
+    if (existing) return // already injected
+    const marker = iframe.contentDocument.createElement('meta')
+    marker.setAttribute('data-fact-edit-loaded', '1')
+    iframe.contentDocument.head.appendChild(marker)
+    const script = iframe.contentDocument.createElement('script')
+    script.textContent = INLINE_EDIT_SCRIPT
+    iframe.contentDocument.body.appendChild(script)
   }
 
   const handleTextChange = (id: string, newText: string) => {
@@ -787,6 +878,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               active={viewMode === 'text'}
               onClick={() => setViewMode('text')}
             />
+            <ToolbarBtn
+              label="✎"
+              title="Editor inline (clicca sul testo)"
+              active={viewMode === 'edit'}
+              onClick={() => setViewMode('edit')}
+            />
           </div>
 
           {/* URL bar */}
@@ -945,6 +1042,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
               ))}
             </div>
+          </div>
+        ) : viewMode === 'edit' && activePage ? (
+          /* Inline editor v2 — contentEditable inside iframe */
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
+              <span style={{ fontSize: '0.75rem', color: C.textFaint }}>
+                ✎ Clicca su qualsiasi testo per modificarlo direttamente
+              </span>
+              <span style={{ fontSize: '0.72rem', color: editSaving === 'saving' ? '#f59e0b' : editSaving === 'saved' ? '#10b981' : C.textFaint }}>
+                {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
+              </span>
+            </div>
+            <iframe
+              ref={editIframeRef}
+              srcDoc={editSrcDoc}
+              onLoad={injectEditingScript}
+              style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
+              title="Inline editor"
+              sandbox="allow-scripts allow-same-origin"
+            />
           </div>
         ) : viewMode === 'text' && activePage ? (
           /* Text editor — split: fields left, live preview right */
