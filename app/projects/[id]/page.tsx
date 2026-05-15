@@ -36,9 +36,16 @@ function extractTextItems(html: string): TextItem[] {
   const seen = new Set<string>()
   let i = 0
   doc.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,button').forEach(el => {
-    // Only leaf nodes — elements with child elements have fragmented text we can't reliably replace
-    if (el.children.length > 0) return
-    const text = el.textContent?.trim() || ''
+    // Use direct TEXT_NODE children only — this handles elements like
+    // <h1>Title<span class="dot">.</span></h1> where the editable part
+    // is the text node "Title", not the full textContent "Title."
+    const directText = Array.from(el.childNodes)
+      .filter(n => n.nodeType === 3 /* TEXT_NODE */)
+      .map(n => n.textContent?.trim() ?? '')
+      .join(' ')
+      .trim()
+    // For pure leaf nodes fall back to full textContent
+    const text = directText || (el.children.length === 0 ? el.textContent?.trim() ?? '' : '')
     if (!text || text.length < 2 || text.length > 500 || seen.has(text)) return
     seen.add(text)
     const tag = el.tagName.toLowerCase()
