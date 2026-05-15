@@ -919,55 +919,70 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           </div>
         ) : viewMode === 'text' && activePage ? (
-          /* Text editor */
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-              <span style={{ fontSize: '0.75rem', color: C.textFaint }}>Editor testo — {activePage.name}</span>
-              <span style={{ fontSize: '0.72rem', color: textSaving === 'saving' ? '#f59e0b' : textSaving === 'saved' ? '#10b981' : textDirty ? C.textFaint : C.textFaint }}>
-                {textSaving === 'saving' ? '⏳ Salvataggio...' : textSaving === 'saved' ? '✓ Salvato' : textDirty ? 'Modifiche non salvate...' : 'Auto-save attivo'}
-              </span>
+          /* Text editor — split: fields left, live preview right */
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* Left: text fields */}
+            <div style={{ width: '40%', minWidth: '260px', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, background: C.bg }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: C.textFaint }}>Testi — {activePage.name}</span>
+                <span style={{ fontSize: '0.72rem', color: textSaving === 'saving' ? '#f59e0b' : textSaving === 'saved' ? '#10b981' : C.textFaint }}>
+                  {textSaving === 'saving' ? '⏳ Salvataggio...' : textSaving === 'saved' ? '✓ Salvato' : textDirty ? 'Non salvato...' : 'Auto-save'}
+                </span>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {textItems.length === 0 ? (
+                  <p style={{ color: C.textFaint, fontSize: '0.85rem', textAlign: 'center', marginTop: '40px' }}>
+                    Nessun testo trovato. Prova a generare il sito prima.
+                  </p>
+                ) : textItems.map(item => (
+                  <div key={item.id}>
+                    <label style={{ display: 'block', fontSize: '0.67rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+                      {item.label}
+                    </label>
+                    {item.text.length > 80 || item.tag === 'p' ? (
+                      <textarea
+                        value={item.text}
+                        onChange={e => handleTextChange(item.id, e.target.value)}
+                        rows={3}
+                        style={{
+                          width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
+                          padding: '8px 10px', fontSize: '0.85rem', color: C.text,
+                          background: C.white, fontFamily: 'inherit', resize: 'vertical',
+                          outline: 'none', lineHeight: '1.55', boxSizing: 'border-box' as const,
+                        }}
+                        onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
+                        onBlur={e => { e.currentTarget.style.borderColor = C.border }}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={item.text}
+                        onChange={e => handleTextChange(item.id, e.target.value)}
+                        style={{
+                          width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
+                          padding: '8px 10px', fontSize: '0.85rem', color: C.text,
+                          background: C.white, fontFamily: 'inherit',
+                          outline: 'none', boxSizing: 'border-box' as const,
+                        }}
+                        onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
+                        onBlur={e => { e.currentTarget.style.borderColor = C.border }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {textItems.length === 0 ? (
-                <p style={{ color: C.textFaint, fontSize: '0.85rem', textAlign: 'center', marginTop: '40px' }}>
-                  Nessun testo trovato. Prova a generare il sito prima.
-                </p>
-              ) : textItems.map(item => (
-                <div key={item.id}>
-                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
-                    {item.label}
-                  </label>
-                  {item.text.length > 80 || item.tag === 'p' ? (
-                    <textarea
-                      value={item.text}
-                      onChange={e => handleTextChange(item.id, e.target.value)}
-                      rows={3}
-                      style={{
-                        width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
-                        padding: '8px 10px', fontSize: '0.875rem', color: C.text,
-                        background: C.white, fontFamily: 'inherit', resize: 'vertical',
-                        outline: 'none', lineHeight: '1.55', boxSizing: 'border-box' as const,
-                      }}
-                      onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
-                      onBlur={e => { e.currentTarget.style.borderColor = C.border }}
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      value={item.text}
-                      onChange={e => handleTextChange(item.id, e.target.value)}
-                      style={{
-                        width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
-                        padding: '8px 10px', fontSize: '0.875rem', color: C.text,
-                        background: C.white, fontFamily: 'inherit',
-                        outline: 'none', boxSizing: 'border-box' as const,
-                      }}
-                      onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
-                      onBlur={e => { e.currentTarget.style.borderColor = C.border }}
-                    />
-                  )}
-                </div>
-              ))}
+            {/* Right: live preview */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
+                <span style={{ fontSize: '0.75rem', color: C.textFaint }}>Preview live</span>
+              </div>
+              <iframe
+                srcDoc={injectBase(activePage.html, projectSlug)}
+                style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
+                title="Live preview"
+                sandbox="allow-scripts allow-same-origin"
+              />
             </div>
           </div>
         ) : viewMode === 'code' && activePage ? (
