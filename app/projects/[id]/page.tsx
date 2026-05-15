@@ -249,6 +249,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [codeSaving, setCodeSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [editSrcDoc, setEditSrcDoc] = useState('')
   const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [editOutdated, setEditOutdated] = useState(false)
   const [chatHidden, setChatHidden] = useState(false)
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -261,6 +262,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const textScrollRef = useRef<HTMLDivElement>(null)
   const textPreviewIframeRef = useRef<HTMLIFrameElement>(null)
   const editIframeRef = useRef<HTMLIFrameElement>(null)
+  const editBaseHtmlRef = useRef<string>('')
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -269,11 +271,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Set editSrcDoc when entering edit mode (don't depend on pages to avoid iframe reload)
   useEffect(() => {
     if (viewMode === 'edit' && activePage && projectSlug) {
+      editBaseHtmlRef.current = activePage.html
       setEditSrcDoc(injectBase(activePage.html, projectSlug))
       setEditSaving('idle')
+      setEditOutdated(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, activeSlug, projectSlug])
+
+  // Detect when AI updates pages while user is in edit mode
+  useEffect(() => {
+    if (viewMode !== 'edit' || !activePage) return
+    if (activePage.html !== editBaseHtmlRef.current) {
+      setEditOutdated(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages])
 
   // Listen for inline edits coming from the iframe via postMessage
   useEffect(() => {
@@ -281,6 +294,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const handleMessage = (e: MessageEvent) => {
       if (e.data?.type !== 'html-change' || !activePage) return
       const newHtml = e.data.html as string
+      // Keep editBaseHtmlRef in sync so AI-change detection doesn't false-positive
+      editBaseHtmlRef.current = newHtml
       const newPages = latestPagesRef.current.map(p =>
         p.slug === activePage.slug ? { ...p, html: newHtml } : p
       )
@@ -1079,6 +1094,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
               </span>
             </div>
+            {editOutdated && (
+              <div
+                onClick={() => {
+                  if (!activePage) return
+                  editBaseHtmlRef.current = activePage.html
+                  setEditSrcDoc(injectBase(activePage.html, projectSlug))
+                  setEditOutdated(false)
+                }}
+                style={{
+                  padding: '10px 16px', background: '#1d4ed8', color: 'white',
+                  fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  flexShrink: 0,
+                }}
+              >
+                <span>↻ Il sito è stato aggiornato dall&apos;AI — clicca per ricaricare l&apos;editor</span>
+                <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>Le modifiche inline non salvate andranno perse</span>
+              </div>
+            )}
             <iframe
               ref={editIframeRef}
               srcDoc={editSrcDoc}
