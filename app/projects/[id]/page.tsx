@@ -190,6 +190,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const baseHtmlRef = useRef<string>('')
   const latestPagesRef = useRef<Page[]>([])
+  const textScrollRef = useRef<HTMLDivElement>(null)
+  const textPreviewIframeRef = useRef<HTMLIFrameElement>(null)
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -955,7 +957,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {textSaving === 'saving' ? '⏳ Salvataggio...' : textSaving === 'saved' ? '✓ Salvato' : textDirty ? 'Non salvato...' : 'Auto-save'}
                 </span>
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div
+                ref={textScrollRef}
+                onScroll={() => {
+                  const el = textScrollRef.current
+                  const iframe = textPreviewIframeRef.current
+                  if (!el || !iframe?.contentWindow) return
+                  const pct = el.scrollTop / (el.scrollHeight - el.clientHeight || 1)
+                  const iDoc = iframe.contentDocument || iframe.contentWindow.document
+                  const maxScroll = iDoc.body.scrollHeight - iframe.clientHeight
+                  iframe.contentWindow.scrollTo({ top: pct * maxScroll, behavior: 'instant' })
+                }}
+                style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}
+              >
                 {textItems.length === 0 ? (
                   <p style={{ color: C.textFaint, fontSize: '0.85rem', textAlign: 'center', marginTop: '40px' }}>
                     Nessun testo trovato. Prova a generare il sito prima.
@@ -1004,6 +1018,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 <span style={{ fontSize: '0.75rem', color: C.textFaint }}>Preview live</span>
               </div>
               <iframe
+                ref={textPreviewIframeRef}
                 srcDoc={injectBase(activePage.html, projectSlug)}
                 style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                 title="Live preview"
