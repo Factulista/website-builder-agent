@@ -49,8 +49,13 @@ function applyTextChanges(html: string, items: TextItem[]): string {
   let result = html
   for (const item of items) {
     if (item.text === item.originalText) continue
-    const escaped = item.originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    result = result.replace(new RegExp(`(>\\s*)${escaped}(\\s*<)`, 'g'), `$1${item.text}$2`)
+    // Match text only between tags (not inside attributes)
+    const escaped = item.originalText.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&')
+    const safeReplacement = item.text.replace(/\$/g, '$$$$')
+    result = result.replace(
+      new RegExp(`(>[^<]*?)${escaped}([^<]*?<)`, 'g'),
+      `$1${safeReplacement}$2`
+    )
   }
   return result
 }
@@ -159,8 +164,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const baseHtmlRef = useRef<string>('')
+  const latestPagesRef = useRef<Page[]>([])
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
+
+  useEffect(() => { latestPagesRef.current = pages }, [pages])
 
   useEffect(() => {
     if (viewMode === 'code' && activePage) {
@@ -168,6 +177,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setCodeSaving('idle')
     }
     if (viewMode === 'text' && activePage) {
+      baseHtmlRef.current = activePage.html
       setTextItems(extractTextItems(activePage.html))
       setTextDirty(false)
       setTextSaving('idle')
@@ -274,24 +284,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }).eq('id', id)
   }
 
-  const textItemsRef = useRef<TextItem[]>([])
-  useEffect(() => { textItemsRef.current = textItems }, [textItems])
-
   const handleTextChange = (id: string, newText: string) => {
-    setTextItems(prev => prev.map(item => item.id === id ? { ...item, text: newText } : item))
+    // Update items state
+    const updatedItems = textItems.map(item => item.id === id ? { ...item, text: newText } : item)
+    setTextItems(updatedItems)
     setTextDirty(true)
     setTextSaving('idle')
+
+    // Immediately apply to pages so Preview and HTML view stay in sync
+    if (activePage) {
+      const updatedHtml = applyTextChanges(baseHtmlRef.current, updatedItems)
+      const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: updatedHtml } : p)
+      setPages(newPages)
+    }
+
+    // Debounce only the DB save
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(async () => {
       setTextSaving('saving')
-      const currentItems = textItemsRef.current
-      const updatedHtml = activePage ? applyTextChanges(activePage.html, currentItems) : ''
-      if (updatedHtml && activePage) {
-        const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: updatedHtml } : p)
-        setPages(newPages)
-        const newVersions = createVersion('Testo modificato manualmente', newPages, versions)
-        await saveState(messages, newPages, newVersions)
-      }
+      const curPages = latestPagesRef.current
+      const newVersions = createVersion('Testo modificato manualmente', curPages, versions)
+      await saveState(messages, curPages, newVersions)
+      // Reset base so next edits are relative to saved state
+      const savedHtml = curPages.find(p => p.slug === activePage?.slug)?.html
+      if (savedHtml) baseHtmlRef.current = savedHtml
       setTextItems(prev => prev.map(item => ({ ...item, originalText: item.text })))
       setTextDirty(false)
       setTextSaving('saved')
@@ -946,13 +962,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 const val = e.target.value
                 setCodeContent(val)
                 setCodeSaving('idle')
+                // Immediately update pages so Preview and Text view stay in sync
+                const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
+                setPages(newPages)
+                // Debounce only the DB save
                 if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current)
                 codeAutoSaveTimer.current = setTimeout(async () => {
                   setCodeSaving('saving')
-                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
-                  setPages(newPages)
-                  const newVersions = createVersion('Modifica HTML manuale', newPages, versions)
-                  await saveState(messages, newPages, newVersions)
+                  const curPages = latestPagesRef.current
+                  const newVersions = createVersion('Modifica HTML manuale', curPages, versions)
+                  await saveState(messages, curPages, newVersions)
                   setCodeSaving('saved')
                   setTimeout(() => setCodeSaving('idle'), 2000)
                 }, 2000)
