@@ -12,34 +12,22 @@ type TextItem = { id: string; tag: string; label: string; text: string; original
 const INLINE_EDIT_SCRIPT = `(function(){
   var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','SVG']);
 
-  // Nuclear CSS override: ensure nothing blocks pointer events or text selection
+  // Freeze all interactions: disable pointer events and hover effects on everything,
+  // then re-enable only on elements we mark as editable.
   var globalStyle=document.createElement('style');
   globalStyle.id='fact-edit-global';
-  globalStyle.textContent='[data-fact-edit]{pointer-events:auto!important;user-select:text!important;-webkit-user-select:text!important;cursor:text!important;}';
+  globalStyle.textContent=
+    '*{pointer-events:none!important;user-select:none!important;-webkit-user-select:none!important;'+
+    'transition:none!important;animation-play-state:paused!important;}'+
+    '[data-fact-edit]{pointer-events:auto!important;user-select:text!important;'+
+    '-webkit-user-select:text!important;cursor:text!important;}';
   document.head.appendChild(globalStyle);
 
   function attach(el){
     if(el.getAttribute('contenteditable')==='true') return;
     el.contentEditable='true';
     el.dataset.factEdit='1';
-    el.style.setProperty('pointer-events','auto','important');
-    el.style.setProperty('user-select','text','important');
-    el.style.setProperty('-webkit-user-select','text','important');
-    el.style.transition='outline 0.08s';
-    el.style.cursor='text';
-    // For <a> tags: neutralise href on mousedown so the browser doesn't navigate
-    // and still assigns focus (preventDefault on click can suppress focus in some browsers)
-    if(el.tagName==='A'){
-      var _href=el.getAttribute('href');
-      el.addEventListener('mousedown',function(e){
-        el.setAttribute('data-fact-href',_href||'');
-        el.removeAttribute('href');
-      });
-      el.addEventListener('blur',function(){
-        var saved=el.getAttribute('data-fact-href');
-        if(saved!==null){el.setAttribute('href',saved);el.removeAttribute('data-fact-href');}
-      });
-    }
+    // Prevent any navigation or default click behaviour
     el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();});
     el.addEventListener('mouseenter',function(){
       if(document.activeElement!==el){el.style.outline='2px dashed rgba(37,99,235,0.5)';el.style.outlineOffset='3px';el.style.borderRadius='3px';}
@@ -56,12 +44,6 @@ const INLINE_EDIT_SCRIPT = `(function(){
     el.addEventListener('keydown',function(e){
       if(e.key==='Enter'&&/^(H[1-6]|BUTTON|A)$/.test(el.tagName)){e.preventDefault();}
     });
-    // Fix any ancestor with pointer-events:none
-    var anc=el.parentElement;
-    while(anc&&anc!==document.body){
-      try{if(getComputedStyle(anc).pointerEvents==='none')anc.style.setProperty('pointer-events','auto','important');}catch(e){}
-      anc=anc.parentElement;
-    }
   }
 
   function run(){
@@ -78,8 +60,7 @@ const INLINE_EDIT_SCRIPT = `(function(){
   }
 
   run();
-  // Re-run after a tick to catch elements revealed by CSS transitions or lazy render
-  setTimeout(run, 300);
+  setTimeout(run,300);
 
   var timer;
   document.addEventListener('input',function(){
@@ -90,12 +71,7 @@ const INLINE_EDIT_SCRIPT = `(function(){
         el.removeAttribute('contenteditable');
         el.removeAttribute('data-fact-edit');
         el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
-        el.style.transition='';el.style.cursor='';
-        // Restore href that may have been temporarily removed for focus handling
-        var saved=el.getAttribute('data-fact-href');
-        if(saved!==null){el.setAttribute('href',saved);el.removeAttribute('data-fact-href');}
       });
-      // Also remove the injected global style from clone
       var gs=clone.querySelector('#fact-edit-global');
       if(gs) gs.remove();
       window.parent.postMessage({type:'html-change',html:'<!DOCTYPE html>\\n'+clone.outerHTML},'*');
