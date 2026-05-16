@@ -7,8 +7,6 @@ import { supabase } from '../../../lib/supabase'
 type Message = { id: string; role: 'user' | 'assistant'; content: string }
 type Page = { slug: string; name: string; html: string }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
-type TextItem = { id: string; tag: string; label: string; text: string; originalText: string }
-
 const INLINE_EDIT_SCRIPT = `(function(){
   var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','SVG']);
 
@@ -94,65 +92,6 @@ function stripHtmlFromChat(content: string): string {
     return prose ? `${prose}\n\n${status}` : status
   }
   return prose
-}
-
-const TAG_LABELS: Record<string, string> = {
-  h1: 'Titolo H1', h2: 'Titolo H2', h3: 'Titolo H3', h4: 'Titolo H4', h5: 'Titolo H5', h6: 'Titolo H6',
-  p: 'Paragrafo', li: 'Voce lista', a: 'Link', button: 'Bottone',
-}
-
-function extractTextItems(html: string): TextItem[] {
-  if (typeof window === 'undefined') return []
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  const items: TextItem[] = []
-  const seen = new Set<string>()
-  let i = 0
-  doc.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,button').forEach(el => {
-    // Use direct TEXT_NODE children only — this handles elements like
-    // <h1>Title<span class="dot">.</span></h1> where the editable part
-    // is the text node "Title", not the full textContent "Title."
-    const directText = Array.from(el.childNodes)
-      .filter(n => n.nodeType === 3 /* TEXT_NODE */)
-      .map(n => n.textContent?.trim() ?? '')
-      .join(' ')
-      .trim()
-    // For pure leaf nodes fall back to full textContent
-    const text = directText || (el.children.length === 0 ? el.textContent?.trim() ?? '' : '')
-    if (!text || text.length < 2 || text.length > 500 || seen.has(text)) return
-    seen.add(text)
-    const tag = el.tagName.toLowerCase()
-    items.push({ id: `t_${i++}`, tag, label: TAG_LABELS[tag] || tag, text, originalText: text })
-  })
-  return items
-}
-
-function applyTextChanges(html: string, items: TextItem[]): string {
-  if (typeof window === 'undefined') return html
-  const changed = items.filter(i => i.text !== i.originalText)
-  if (changed.length === 0) return html
-
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-
-  for (const item of changed) {
-    // Walk all text nodes in the body and find the one matching originalText
-    const walker = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */)
-    let node: Node | null
-    while ((node = walker.nextNode())) {
-      const tn = node as Text
-      if (tn.textContent?.trim() === item.originalText) {
-        // Preserve surrounding whitespace (indentation / newlines)
-        const raw = tn.textContent
-        const leading = raw.match(/^\s*/)?.[0] ?? ''
-        const trailing = raw.match(/\s*$/)?.[0] ?? ''
-        tn.textContent = leading + item.text + trailing
-        break
-      }
-    }
-  }
-
-  const hasDoctype = /^\s*<!DOCTYPE/i.test(html)
-  const result = doc.documentElement.outerHTML
-  return hasDoctype ? '<!DOCTYPE html>\n' + result : result
 }
 
 function groupVersionsByDay(versions: Version[]): { label: string; items: Version[] }[] {
@@ -272,14 +211,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'text' | 'edit'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit'>('preview')
   const [codeContent, setCodeContent] = useState('')
   const [versions, setVersions] = useState<Version[]>([])
   const [showVersionHistory, setShowVersionHistory] = useState(false)
   const [hoveredVersionId, setHoveredVersionId] = useState<string | null>(null)
-  const [textItems, setTextItems] = useState<TextItem[]>([])
-  const [textDirty, setTextDirty] = useState(false)
-  const [textSaving, setTextSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [codeSaving, setCodeSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [editSrcDoc, setEditSrcDoc] = useState('')
   const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -291,10 +227,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const baseHtmlRef = useRef<string>('')
   const latestPagesRef = useRef<Page[]>([])
-  const textScrollRef = useRef<HTMLDivElement>(null)
-  const textPreviewIframeRef = useRef<HTMLIFrameElement>(null)
   const editIframeRef = useRef<HTMLIFrameElement>(null)
   const editBaseHtmlRef = useRef<string>('')
 
@@ -353,12 +286,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (viewMode === 'code' && activePage) {
       setCodeContent(activePage.html)
       setCodeSaving('idle')
-    }
-    if (viewMode === 'text' && activePage) {
-      baseHtmlRef.current = activePage.html
-      setTextItems(extractTextItems(activePage.html))
-      setTextDirty(false)
-      setTextSaving('idle')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSlug, viewMode])
@@ -477,37 +404,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     script.id = 'fact-edit-script'
     script.textContent = INLINE_EDIT_SCRIPT
     iframe.contentDocument.body.appendChild(script)
-  }
-
-  const handleTextChange = (id: string, newText: string) => {
-    // Update items state
-    const updatedItems = textItems.map(item => item.id === id ? { ...item, text: newText } : item)
-    setTextItems(updatedItems)
-    setTextDirty(true)
-    setTextSaving('idle')
-
-    // Immediately apply to pages so Preview and HTML view stay in sync
-    if (activePage) {
-      const updatedHtml = applyTextChanges(baseHtmlRef.current, updatedItems)
-      const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: updatedHtml } : p)
-      setPages(newPages)
-    }
-
-    // Debounce only the DB save
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
-    autoSaveTimer.current = setTimeout(async () => {
-      setTextSaving('saving')
-      const curPages = latestPagesRef.current
-      const newVersions = createVersion('Testo modificato manualmente', curPages, versions)
-      await saveState(messages, curPages, newVersions)
-      // Reset base so next edits are relative to saved state
-      const savedHtml = curPages.find(p => p.slug === activePage?.slug)?.html
-      if (savedHtml) baseHtmlRef.current = savedHtml
-      setTextItems(prev => prev.map(item => ({ ...item, originalText: item.text })))
-      setTextDirty(false)
-      setTextSaving('saved')
-      setTimeout(() => setTextSaving('idle'), 2000)
-    }, 2000)
   }
 
   const handleSend = async (e: React.FormEvent) => {
@@ -951,12 +847,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               }}
             />
             <ToolbarBtn
-              label="Aa"
-              title="Editor testo"
-              active={viewMode === 'text'}
-              onClick={() => setViewMode('text')}
-            />
-            <ToolbarBtn
               label="✎"
               title="Editor inline (clicca sul testo)"
               active={viewMode === 'edit'}
@@ -1159,86 +1049,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               title="Inline editor"
               sandbox="allow-scripts allow-same-origin"
             />
-          </div>
-        ) : viewMode === 'text' && activePage ? (
-          /* Text editor — split: fields left, live preview right */
-          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-            {/* Left: text fields */}
-            <div style={{ width: '40%', minWidth: '260px', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, background: C.bg }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-                <span style={{ fontSize: '0.75rem', color: C.textFaint }}>Testi — {activePage.name}</span>
-                <span style={{ fontSize: '0.72rem', color: textSaving === 'saving' ? '#f59e0b' : textSaving === 'saved' ? '#10b981' : C.textFaint }}>
-                  {textSaving === 'saving' ? '⏳ Salvataggio...' : textSaving === 'saved' ? '✓ Salvato' : textDirty ? 'Non salvato...' : 'Auto-save'}
-                </span>
-              </div>
-              <div
-                ref={textScrollRef}
-                onScroll={() => {
-                  const el = textScrollRef.current
-                  const iframe = textPreviewIframeRef.current
-                  if (!el || !iframe?.contentWindow) return
-                  const pct = el.scrollTop / (el.scrollHeight - el.clientHeight || 1)
-                  const iDoc = iframe.contentDocument || iframe.contentWindow.document
-                  const maxScroll = iDoc.body.scrollHeight - iframe.clientHeight
-                  iframe.contentWindow.scrollTo({ top: pct * maxScroll, behavior: 'instant' })
-                }}
-                style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}
-              >
-                {textItems.length === 0 ? (
-                  <p style={{ color: C.textFaint, fontSize: '0.85rem', textAlign: 'center', marginTop: '40px' }}>
-                    Nessun testo trovato. Prova a generare il sito prima.
-                  </p>
-                ) : textItems.map(item => (
-                  <div key={item.id}>
-                    <label style={{ display: 'block', fontSize: '0.67rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
-                      {item.label}
-                    </label>
-                    {item.text.length > 80 || item.tag === 'p' ? (
-                      <textarea
-                        value={item.text}
-                        onChange={e => handleTextChange(item.id, e.target.value)}
-                        rows={3}
-                        style={{
-                          width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
-                          padding: '8px 10px', fontSize: '0.85rem', color: C.text,
-                          background: C.white, fontFamily: 'inherit', resize: 'vertical',
-                          outline: 'none', lineHeight: '1.55', boxSizing: 'border-box' as const,
-                        }}
-                        onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
-                        onBlur={e => { e.currentTarget.style.borderColor = C.border }}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={item.text}
-                        onChange={e => handleTextChange(item.id, e.target.value)}
-                        style={{
-                          width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
-                          padding: '8px 10px', fontSize: '0.85rem', color: C.text,
-                          background: C.white, fontFamily: 'inherit',
-                          outline: 'none', boxSizing: 'border-box' as const,
-                        }}
-                        onFocus={e => { e.currentTarget.style.borderColor = C.blue }}
-                        onBlur={e => { e.currentTarget.style.borderColor = C.border }}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* Right: live preview */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
-                <span style={{ fontSize: '0.75rem', color: C.textFaint }}>Preview live</span>
-              </div>
-              <iframe
-                ref={textPreviewIframeRef}
-                srcDoc={injectBase(activePage.html, projectSlug)}
-                style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
-                title="Live preview"
-                sandbox="allow-scripts allow-same-origin"
-              />
-            </div>
           </div>
         ) : viewMode === 'code' && activePage ? (
           /* Code editor */
