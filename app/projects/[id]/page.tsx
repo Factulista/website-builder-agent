@@ -169,12 +169,25 @@ function groupVersionsByDay(versions: Version[]): { label: string; items: Versio
   return Array.from(groups.entries()).map(([label, items]) => ({ label, items }))
 }
 
+function stripEditorArtifacts(html: string): string {
+  return html
+    // Remove injected script/style/marker elements (by id, regardless of attribute order)
+    .replace(/<script\b[^>]*\bid=["']fact-edit-script["'][^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*\bid=["']fact-edit-global["'][^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<meta\b[^>]*\bdata-fact-edit-loaded[^>]*>/gi, '')
+    // Strip residual contenteditable/data-fact-edit/data-fact-href attributes
+    .replace(/\s+contenteditable=["'][^"']*["']/gi, '')
+    .replace(/\s+data-fact-edit=["'][^"']*["']/gi, '')
+    .replace(/\s+data-fact-href=["'][^"']*["']/gi, '')
+}
+
 function injectBase(html: string, projectSlug: string): string {
+  const clean = stripEditorArtifacts(html)
   const baseTag = `<base href="/preview/${projectSlug}/">`
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
+  if (/<head[^>]*>/i.test(clean)) {
+    return clean.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
   }
-  return baseTag + html
+  return baseTag + clean
 }
 
 // ---- Design Tokens ----
@@ -410,6 +423,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       let loadedPages: Page[] = []
       if (config?.pages?.length) loadedPages = config.pages
       else if (config?.html) loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
+      // Strip any editor artefacts left over from previous edit sessions before fix
+      loadedPages = loadedPages.map(p => ({ ...p, html: stripEditorArtifacts(p.html) }))
       setPages(loadedPages)
       if (loadedPages.length > 0) setActiveSlug(loadedPages[0].slug)
       if (config?.messages) setMessages(config.messages)
