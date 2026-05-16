@@ -12,6 +12,12 @@ type TextItem = { id: string; tag: string; label: string; text: string; original
 const INLINE_EDIT_SCRIPT = `(function(){
   var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','SVG']);
 
+  // Nuclear CSS override: ensure nothing blocks pointer events or text selection
+  var globalStyle=document.createElement('style');
+  globalStyle.id='fact-edit-global';
+  globalStyle.textContent='[data-fact-edit]{pointer-events:auto!important;user-select:text!important;-webkit-user-select:text!important;cursor:text!important;}';
+  document.head.appendChild(globalStyle);
+
   document.querySelectorAll('a').forEach(function(a){
     a.addEventListener('click',function(e){e.preventDefault();});
   });
@@ -20,6 +26,9 @@ const INLINE_EDIT_SCRIPT = `(function(){
     if(el.getAttribute('contenteditable')==='true') return;
     el.contentEditable='true';
     el.dataset.factEdit='1';
+    el.style.setProperty('pointer-events','auto','important');
+    el.style.setProperty('user-select','text','important');
+    el.style.setProperty('-webkit-user-select','text','important');
     el.style.transition='outline 0.08s';
     el.style.cursor='text';
     el.addEventListener('mouseenter',function(){
@@ -37,18 +46,30 @@ const INLINE_EDIT_SCRIPT = `(function(){
     el.addEventListener('keydown',function(e){
       if(e.key==='Enter'&&/^(H[1-6]|BUTTON|A)$/.test(el.tagName)){e.preventDefault();}
     });
+    // Fix any ancestor with pointer-events:none
+    var anc=el.parentElement;
+    while(anc&&anc!==document.body){
+      try{if(getComputedStyle(anc).pointerEvents==='none')anc.style.setProperty('pointer-events','auto','important');}catch(e){}
+      anc=anc.parentElement;
+    }
   }
 
-  // Walk every text node — make its direct parent editable.
-  // isContentEditable catches nodes already inside an editable ancestor.
-  var walker=document.createTreeWalker(document.body,4/*NodeFilter.SHOW_TEXT*/);
-  var node;
-  while((node=walker.nextNode())){
-    if(node.textContent.trim().length<1) continue;
-    var p=node.parentElement;
-    if(!p||SKIP.has(p.tagName)||p.isContentEditable) continue;
-    attach(p);
+  function run(){
+    var walker=document.createTreeWalker(document.body,4/*NodeFilter.SHOW_TEXT*/);
+    var node;
+    while((node=walker.nextNode())){
+      try{
+        if(node.textContent.trim().length<1) continue;
+        var p=node.parentElement;
+        if(!p||SKIP.has(p.tagName)||p.isContentEditable) continue;
+        attach(p);
+      }catch(e){}
+    }
   }
+
+  run();
+  // Re-run after a tick to catch elements revealed by CSS transitions or lazy render
+  setTimeout(run, 300);
 
   var timer;
   document.addEventListener('input',function(){
@@ -61,6 +82,9 @@ const INLINE_EDIT_SCRIPT = `(function(){
         el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
         el.style.transition='';el.style.cursor='';
       });
+      // Also remove the injected global style from clone
+      var gs=clone.querySelector('#fact-edit-global');
+      if(gs) gs.remove();
       window.parent.postMessage({type:'html-change',html:'<!DOCTYPE html>\\n'+clone.outerHTML},'*');
     },400);
   });
