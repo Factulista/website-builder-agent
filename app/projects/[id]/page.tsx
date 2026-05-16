@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
 
-type Message = { id: string; role: 'user' | 'assistant'; content: string }
+type Message = { id: string; role: 'user' | 'assistant'; content: string; failed?: boolean; retryInput?: string; retryImages?: string[] }
 type Page = { slug: string; name: string; html: string }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
@@ -534,24 +534,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     iframe.contentDocument.body.appendChild(script)
   }
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if ((!input.trim() && attachedImages.length === 0) || loading) return
+  const FRIENDLY_ERROR = 'Qualcosa è andato storto durante l\'elaborazione. Le tue modifiche al sito sono al sicuro — puoi riprovare con lo stesso messaggio.'
 
-    const imagesBlock = attachedImages.length
-      ? (input.trim() ? '\n\n' : '') + attachedImages.map(u => `Immagine allegata: ${u}`).join('\n')
+  const handleSend = async (e: React.FormEvent, retryOverride?: { input: string; images: string[] }) => {
+    e.preventDefault()
+    const effectiveInput = retryOverride?.input ?? input
+    const effectiveImages = retryOverride?.images ?? attachedImages
+    if ((!effectiveInput.trim() && effectiveImages.length === 0) || loading) return
+
+    const imagesBlock = effectiveImages.length
+      ? (effectiveInput.trim() ? '\n\n' : '') + effectiveImages.map(u => `Immagine allegata: ${u}`).join('\n')
       : ''
-    const userContent = (input.trim() || 'Usa queste immagini.') + imagesBlock
+    const userContent = (effectiveInput.trim() || 'Usa queste immagini.') + imagesBlock
     const userMsg: Message = { id: `u_${Date.now()}`, role: 'user', content: userContent }
     const updatedMessages = [...messages, userMsg]
     setMessages(updatedMessages)
-    setInput('')
-    setAttachedImages([])
+    if (!retryOverride) {
+      setInput('')
+      setAttachedImages([])
+    }
+
     if (textareaRef.current) { textareaRef.current.style.height = 'auto' }
     setLoading(true)
 
     const assistantId = `a_${Date.now()}`
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }])
+
+    // Snapshot of the original prompt so we can offer retry later
+    const retrySnapshot = { input: effectiveInput, images: effectiveImages }
+    const markFailed = (errorContext?: string) => {
+      console.error('[chat] failed:', errorContext)
+      setMessages(prev => prev.map(m => m.id === assistantId
+        ? { ...m, content: FRIENDLY_ERROR, failed: true, retryInput: retrySnapshot.input, retryImages: retrySnapshot.images }
+        : m))
+      setLoading(false)
+    }
 
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -567,10 +584,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-      setMessages(prev => prev.map(m => m.id === assistantId
-        ? { ...m, content: `❌ Errore: ${error.error || `HTTP ${res.status}`}` }
-        : m))
-      setLoading(false)
+      markFailed(`HTTP ${res.status}: ${error.error || ''}`)
       return
     }
 
@@ -581,13 +595,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
     if (contentType.includes('ndjson')) {
       const reader = res.body?.getReader()
-      if (!reader) {
-        setMessages(prev => prev.map(m => m.id === assistantId
-          ? { ...m, content: '❌ Errore: Impossibile leggere la risposta' }
-          : m))
-        setLoading(false)
-        return
-      }
+      if (!reader) { markFailed('no readable stream'); return }
       const decoder = new TextDecoder()
       let buffer = ''
       try {
@@ -618,11 +626,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           }
         }
       } catch (err) {
-        console.error('Errore lettura stream:', err)
-        setMessages(prev => prev.map(m => m.id === assistantId
-          ? { ...m, content: `❌ Errore: ${err instanceof Error ? err.message : 'comunicazione fallita'}` }
-          : m))
-        setLoading(false)
+        markFailed(`stream error: ${err instanceof Error ? err.message : String(err)}`)
         return
       }
     } else {
@@ -634,10 +638,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
 
     if (!result) {
-      setMessages(prev => prev.map(m => m.id === assistantId
-        ? { ...m, content: '❌ Nessun risultato ricevuto' }
-        : m))
-      setLoading(false)
+      markFailed('empty result')
       return
     }
 
@@ -855,13 +856,44 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
             ) : (
               <div key={msg.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                <div style={{ width: '22px', height: '22px', background: 'linear-gradient(135deg, #ff6b6b, #ffa94d)', borderRadius: '6px', flexShrink: 0, marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ color: 'white', fontSize: '0.6rem', fontWeight: 700 }}>F</span>
+                <div style={{
+                  width: '22px', height: '22px',
+                  background: msg.failed ? '#fef3c7' : 'linear-gradient(135deg, #ff6b6b, #ffa94d)',
+                  borderRadius: '6px', flexShrink: 0, marginTop: '2px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: msg.failed ? '1px solid #fcd34d' : 'none',
+                }}>
+                  <span style={{ color: msg.failed ? '#92400e' : 'white', fontSize: '0.6rem', fontWeight: 700 }}>
+                    {msg.failed ? '!' : 'F'}
+                  </span>
                 </div>
-                <div style={{ fontSize: '0.9rem', lineHeight: '1.65', color: C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 }}>
-                  {stripHtmlFromChat(msg.content) || (loading ? (
-                    <span style={{ color: C.textFaint, letterSpacing: '0.1em' }}>● ● ●</span>
-                  ) : '')}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.9rem', lineHeight: '1.65', color: msg.failed ? C.textMuted : C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {stripHtmlFromChat(msg.content) || (loading ? (
+                      <span style={{ color: C.textFaint, letterSpacing: '0.1em' }}>● ● ●</span>
+                    ) : '')}
+                  </div>
+                  {msg.failed && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => {
+                        const fakeEvent = { preventDefault: () => {} } as React.FormEvent
+                        handleSend(fakeEvent, { input: msg.retryInput || '', images: msg.retryImages || [] })
+                      }}
+                      style={{
+                        marginTop: '8px',
+                        background: 'transparent', color: C.text,
+                        border: `1px solid ${C.border}`, borderRadius: '7px',
+                        padding: '5px 12px', fontSize: '0.78rem', fontWeight: 500,
+                        cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        transition: 'background 0.12s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.bg}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                    >↻ Riprova</button>
+                  )}
                 </div>
               </div>
             )
