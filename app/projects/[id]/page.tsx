@@ -3,6 +3,7 @@
 import { useState, use, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
+import { confirmDialog, alertDialog } from '../../../lib/dialog'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string }
 type Page = { slug: string; name: string; html: string }
@@ -370,14 +371,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const uploadImageFile = async (file: File, target: 'chat' | 'media' = 'chat') => {
-    if (!file.type.startsWith('image/')) { alert('Solo immagini supportate'); return }
+    if (!file.type.startsWith('image/')) { await alertDialog('Solo immagini supportate'); return }
     setUploading(true)
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setUploading(false); return }
     const ext = file.name.split('.').pop() || 'png'
     const path = `${session.user.id}/${id}/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
-    if (error) { alert(`Errore upload: ${error.message}`); setUploading(false); return }
+    if (error) { await alertDialog({ title: 'Errore upload', message: error.message, variant: 'danger' }); setUploading(false); return }
     const { data: { publicUrl: imageUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
     if (target === 'chat') {
       setAttachedImages(prev => [...prev, imageUrl])
@@ -489,9 +490,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const deleteMedia = async (item: MediaItem) => {
-    if (!confirm(`Eliminare definitivamente "${item.name}"?`)) return
+    const ok = await confirmDialog({
+      title: 'Eliminare media',
+      message: `"${item.name}" verrà rimosso definitivamente. L'azione non è reversibile.`,
+      confirmLabel: 'Elimina',
+      variant: 'danger',
+    })
+    if (!ok) return
     const { error } = await supabase.storage.from('project-assets').remove([item.path])
-    if (error) { alert(`Errore: ${error.message}`); return }
+    if (error) { await alertDialog({ title: 'Errore', message: error.message, variant: 'danger' }); return }
     const newMeta = { ...mediaMeta }
     delete newMeta[item.path]
     setMediaMeta(newMeta)
@@ -693,8 +700,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const handleDeletePage = async (slug: string) => {
-    if (slug === 'home') { alert('La pagina "home" non può essere eliminata'); return }
-    if (!confirm(`Eliminare la pagina "${slug}"?`)) return
+    if (slug === 'home') { await alertDialog('La pagina "home" non può essere eliminata'); return }
+    const ok = await confirmDialog({
+      title: 'Eliminare pagina',
+      message: `La pagina "${slug}" verrà eliminata.`,
+      confirmLabel: 'Elimina',
+      variant: 'danger',
+    })
+    if (!ok) return
     const newPages = pages.filter(p => p.slug !== slug)
     setPages(newPages)
     if (activeSlug === slug) setActiveSlug(newPages[0]?.slug || 'home')
@@ -714,12 +727,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         body: JSON.stringify({ projectId: id, domain: customDomain.trim() }),
       })
       const result = await res.json()
-      if (!res.ok) { alert(`Errore: ${result.error}`); setAddingDomain(false); return }
+      if (!res.ok) { await alertDialog({ title: 'Errore', message: String(result.error), variant: 'danger' }); setAddingDomain(false); return }
       setCustomDomainStatus(result.status)
       setDnsInstructions(result.message)
       setAddingDomain(false)
       if (result.status === 'pending') startPolling()
-    } catch { alert('Errore nella richiesta'); setAddingDomain(false) }
+    } catch { await alertDialog({ title: 'Errore', message: 'Richiesta fallita', variant: 'danger' }); setAddingDomain(false) }
   }
 
   const startPolling = () => {
@@ -746,7 +759,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const handlePublish = async () => {
-    if (!confirm(`Pubblicare su ${customDomain}?`)) return
+    const ok = await confirmDialog({
+      title: 'Pubblicare il sito',
+      message: `Il sito verrà reso pubblico su ${customDomain}.`,
+      confirmLabel: 'Pubblica',
+    })
+    if (!ok) return
     setPublishing(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -757,9 +775,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         body: JSON.stringify({ projectId: id }),
       })
       const result = await res.json()
-      if (!res.ok) { alert(`Errore: ${result.error}`); return }
+      if (!res.ok) { await alertDialog({ title: 'Errore', message: String(result.error), variant: 'danger' }); return }
       setPublishedAt(result.publishedAt)
-    } catch { alert('Errore nella pubblicazione') }
+    } catch { await alertDialog({ title: 'Errore', message: 'Pubblicazione fallita', variant: 'danger' }) }
     finally { setPublishing(false) }
   }
 
@@ -1175,7 +1193,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         <button
                           title="Ripristina questa versione"
                           onClick={async () => {
-                            if (!confirm('Ripristinare questa versione? Le modifiche attuali verranno sovrascritte.')) return
+                            const ok = await confirmDialog({
+                              title: 'Ripristinare versione',
+                              message: 'Le modifiche attuali verranno sovrascritte (una versione di backup viene salvata automaticamente).',
+                              confirmLabel: 'Ripristina',
+                            })
+                            if (!ok) return
                             const newVersions = createVersion('Ripristino versione precedente', pages, versions)
                             setPages(v.pages)
                             setActiveSlug(v.pages[0]?.slug || 'home')

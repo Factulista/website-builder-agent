@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { DialogHost } from '../lib/dialog'
 
 export const metadata: Metadata = {
   title: 'Website Builder Agent',
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <DialogHost />
+      </body>
     </html>
   )
 }

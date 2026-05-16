@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
+import { confirmDialog } from '../../lib/dialog'
 
 type Page = { slug: string; name: string; html: string }
 type Project = {
@@ -225,7 +226,13 @@ export default function ProjectsPage() {
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Eliminare "${name}"?`)) return
+    const ok = await confirmDialog({
+      title: 'Eliminare progetto',
+      message: `"${name}" verrà spostato nel cestino.`,
+      confirmLabel: 'Elimina',
+      variant: 'danger',
+    })
+    if (!ok) return
     await supabase.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', id)
     setProjects(prev => prev.filter(p => p.id !== id))
   }
