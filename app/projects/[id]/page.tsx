@@ -7,6 +7,8 @@ import { supabase } from '../../../lib/supabase'
 type Message = { id: string; role: 'user' | 'assistant'; content: string }
 type Page = { slug: string; name: string; html: string }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
+type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
+type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
 const INLINE_EDIT_SCRIPT = `(function(){
   var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','SVG']);
 
@@ -212,7 +214,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media'>('preview')
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
+  const [mediaLoading, setMediaLoading] = useState(false)
+  const [mediaSearch, setMediaSearch] = useState('')
+  const [mediaSort, setMediaSort] = useState<'recent' | 'oldest' | 'name'>('recent')
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null)
+  const [mediaMeta, setMediaMeta] = useState<Record<string, MediaMeta>>({})
+  const [mediaUrlCopied, setMediaUrlCopied] = useState(false)
   const [codeContent, setCodeContent] = useState('')
   const [versions, setVersions] = useState<Version[]>([])
   const [showVersionHistory, setShowVersionHistory] = useState(false)
@@ -344,6 +353,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const { data: { publicUrl: imageUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
     setInput(prev => `${prev}${prev ? ' ' : ''}Usa questa immagine: ${imageUrl}`)
     setUploading(false)
+    if (viewMode === 'media') loadMedia()
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -367,7 +377,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setCustomDomain(project.custom_domain)
         setCustomDomainStatus(project.custom_domain_status)
       }
-      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[] } | null
+      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta> } | null
       let loadedPages: Page[] = []
       if (config?.pages?.length) loadedPages = config.pages
       else if (config?.html) loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
@@ -377,6 +387,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (loadedPages.length > 0) setActiveSlug(loadedPages[0].slug)
       if (config?.messages) setMessages(config.messages)
       if (config?.versions) setVersions(config.versions)
+      if (config?.media) setMediaMeta(config.media)
     }
     load()
   }, [id])
@@ -389,12 +400,75 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return updated
   }
 
-  const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[]) => {
+  const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[], newMedia?: Record<string, MediaMeta>) => {
     const vers = newVersions ?? versions
+    const med = newMedia ?? mediaMeta
     await supabase.from('projects').update({
-      site_config: { pages: newPages, messages: newMessages, versions: vers },
+      site_config: { pages: newPages, messages: newMessages, versions: vers, media: med },
       updated_at: new Date().toISOString(),
     }).eq('id', id)
+  }
+
+  const loadMedia = async () => {
+    setMediaLoading(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setMediaLoading(false); return }
+    const folder = `${session.user.id}/${id}`
+    const { data: files } = await supabase.storage.from('project-assets').list(folder, {
+      sortBy: { column: 'created_at', order: 'desc' },
+      limit: 1000,
+    })
+    if (!files) { setMediaLoading(false); return }
+    const items: MediaItem[] = files
+      .filter(f => f.name && !f.name.endsWith('/') && f.metadata)
+      .map(f => ({
+        path: `${folder}/${f.name}`,
+        name: f.name,
+        size: (f.metadata?.size as number) || 0,
+        createdAt: f.created_at || '',
+        url: supabase.storage.from('project-assets').getPublicUrl(`${folder}/${f.name}`).data.publicUrl,
+      }))
+    setMediaItems(items)
+    setMediaLoading(false)
+  }
+
+  useEffect(() => {
+    if (viewMode === 'media') loadMedia()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, id])
+
+  const updateMediaMeta = (path: string, field: keyof MediaMeta, value: string) => {
+    const updated = { ...mediaMeta, [path]: { ...mediaMeta[path], [field]: value } }
+    setMediaMeta(updated)
+    // Debounce save
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = setTimeout(() => {
+      saveState(messages, pages, versions, updated)
+    }, 1000)
+  }
+
+  const deleteMedia = async (item: MediaItem) => {
+    if (!confirm(`Eliminare definitivamente "${item.name}"?`)) return
+    const { error } = await supabase.storage.from('project-assets').remove([item.path])
+    if (error) { alert(`Errore: ${error.message}`); return }
+    const newMeta = { ...mediaMeta }
+    delete newMeta[item.path]
+    setMediaMeta(newMeta)
+    setMediaItems(prev => prev.filter(m => m.path !== item.path))
+    if (selectedMedia?.path === item.path) setSelectedMedia(null)
+    await saveState(messages, pages, versions, newMeta)
+  }
+
+  const copyMediaUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url)
+    setMediaUrlCopied(true)
+    setTimeout(() => setMediaUrlCopied(false), 2000)
+  }
+
+  const formatBytes = (b: number) => {
+    if (b < 1024) return `${b} B`
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
+    return `${(b / 1024 / 1024).toFixed(2)} MB`
   }
 
   const injectEditingScript = () => {
@@ -886,6 +960,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               active={viewMode === 'edit'}
               onClick={() => setViewMode('edit')}
             />
+            <ToolbarBtn
+              label="◫"
+              title="Media library"
+              active={viewMode === 'media'}
+              onClick={() => setViewMode('media')}
+            />
           </div>
 
           {/* URL bar */}
@@ -1123,6 +1203,235 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 tabSize: 2,
               }}
             />
+          </div>
+        ) : viewMode === 'media' ? (
+          /* Media Library */
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* Header */}
+              <div style={{
+                padding: '14px 20px', borderBottom: `1px solid ${C.border}`,
+                display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, background: C.bg,
+              }}>
+                <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: C.text }}>Media</h2>
+                <span style={{ fontSize: '0.78rem', color: C.textFaint }}>
+                  {mediaItems.length} {mediaItems.length === 1 ? 'file' : 'file'}
+                </span>
+                <div style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  style={{
+                    background: C.dark, color: 'white', border: 'none',
+                    padding: '6px 14px', fontSize: '0.78rem', fontWeight: 500,
+                    borderRadius: '7px', cursor: uploading ? 'wait' : 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {uploading ? 'Carico...' : '+ Aggiungi'}
+                </button>
+                <input
+                  type="text"
+                  placeholder="Cerca..."
+                  value={mediaSearch}
+                  onChange={e => setMediaSearch(e.target.value)}
+                  style={{
+                    border: `1px solid ${C.border}`, borderRadius: '7px',
+                    padding: '6px 10px', fontSize: '0.78rem', color: C.text,
+                    background: C.white, outline: 'none', width: '180px',
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <select
+                  value={mediaSort}
+                  onChange={e => setMediaSort(e.target.value as 'recent' | 'oldest' | 'name')}
+                  style={{
+                    border: `1px solid ${C.border}`, borderRadius: '7px',
+                    padding: '6px 10px', fontSize: '0.78rem', color: C.text,
+                    background: C.white, outline: 'none', fontFamily: 'inherit', cursor: 'pointer',
+                  }}
+                >
+                  <option value="recent">Più recenti</option>
+                  <option value="oldest">Meno recenti</option>
+                  <option value="name">Nome (A-Z)</option>
+                </select>
+              </div>
+              {/* Grid */}
+              <div
+                onDragOver={e => { e.preventDefault(); if (!dragOver) setDragOver(true) }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false) }}
+                onDrop={async e => {
+                  e.preventDefault(); setDragOver(false)
+                  const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
+                  for (const file of files) await uploadImageFile(file)
+                  await loadMedia()
+                }}
+                style={{
+                  flex: 1, overflowY: 'auto', padding: '20px',
+                  background: dragOver ? 'rgba(37,99,235,0.04)' : 'transparent',
+                  transition: 'background 0.15s',
+                  position: 'relative',
+                }}
+              >
+                {dragOver && (
+                  <div style={{
+                    position: 'absolute', inset: '12px',
+                    border: `2px dashed ${C.blue}`, borderRadius: '14px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: C.blue, fontSize: '0.95rem', fontWeight: 500,
+                    pointerEvents: 'none', zIndex: 2,
+                  }}>↓ Rilascia le immagini qui</div>
+                )}
+                {mediaLoading ? (
+                  <p style={{ color: C.textFaint, fontSize: '0.85rem', textAlign: 'center', marginTop: '40px' }}>Caricamento...</p>
+                ) : mediaItems.length === 0 ? (
+                  <div style={{ textAlign: 'center', marginTop: '60px', color: C.textFaint }}>
+                    <div style={{ fontSize: '2rem', opacity: 0.3, marginBottom: '10px' }}>◫</div>
+                    <p style={{ fontSize: '0.88rem' }}>Nessun media in questo progetto</p>
+                    <p style={{ fontSize: '0.78rem', marginTop: '4px' }}>Trascina immagini qui o usa &quot;Aggiungi&quot;</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '14px' }}>
+                    {mediaItems
+                      .filter(m => !mediaSearch || m.name.toLowerCase().includes(mediaSearch.toLowerCase()))
+                      .sort((a, b) => {
+                        if (mediaSort === 'name') return a.name.localeCompare(b.name)
+                        if (mediaSort === 'oldest') return a.createdAt.localeCompare(b.createdAt)
+                        return b.createdAt.localeCompare(a.createdAt)
+                      })
+                      .map(item => {
+                        const selected = selectedMedia?.path === item.path
+                        return (
+                          <button
+                            key={item.path}
+                            type="button"
+                            onClick={() => setSelectedMedia(item)}
+                            style={{
+                              background: C.white, border: `2px solid ${selected ? C.blue : C.border}`,
+                              borderRadius: '10px', padding: 0, cursor: 'pointer',
+                              aspectRatio: '1', overflow: 'hidden',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              transition: 'border-color 0.12s, transform 0.12s',
+                              position: 'relative',
+                            }}
+                            onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.borderColor = C.textFaint }}
+                            onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.borderColor = C.border }}
+                            // eslint-disable-next-line @next/next/no-img-element
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={item.url}
+                              alt={mediaMeta[item.path]?.alt || item.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            />
+                          </button>
+                        )
+                      })}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Side panel — details */}
+            {selectedMedia && (
+              <div style={{
+                width: '340px', flexShrink: 0, borderLeft: `1px solid ${C.border}`,
+                background: C.bg, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              }}>
+                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.text }}>Dettagli</span>
+                  <button
+                    onClick={() => setSelectedMedia(null)}
+                    style={{ background: 'transparent', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: C.textFaint, padding: '0 4px' }}
+                  >×</button>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
+                  <div style={{
+                    background: C.white, borderRadius: '10px', overflow: 'hidden',
+                    border: `1px solid ${C.border}`, marginBottom: '14px',
+                  }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={selectedMedia.url} alt={mediaMeta[selectedMedia.path]?.alt || selectedMedia.name} style={{ width: '100%', display: 'block' }} />
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: C.textMuted, lineHeight: '1.7', marginBottom: '14px' }}>
+                    <div><strong style={{ color: C.text }}>Nome:</strong> {selectedMedia.name}</div>
+                    <div><strong style={{ color: C.text }}>Peso:</strong> {formatBytes(selectedMedia.size)}</div>
+                    <div><strong style={{ color: C.text }}>Caricato:</strong> {selectedMedia.createdAt ? new Date(selectedMedia.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</div>
+                  </div>
+                  {(['alt', 'title', 'caption', 'description'] as const).map(field => {
+                    const labels = { alt: 'Testo alternativo', title: 'Titolo', caption: 'Didascalia', description: 'Descrizione' }
+                    const isLong = field === 'caption' || field === 'description'
+                    const value = mediaMeta[selectedMedia.path]?.[field] || ''
+                    return (
+                      <div key={field} style={{ marginBottom: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '0.67rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+                          {labels[field]}
+                        </label>
+                        {isLong ? (
+                          <textarea
+                            value={value}
+                            onChange={e => updateMediaMeta(selectedMedia.path, field, e.target.value)}
+                            rows={2}
+                            style={{
+                              width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
+                              padding: '7px 9px', fontSize: '0.8rem', color: C.text,
+                              background: C.white, fontFamily: 'inherit', resize: 'vertical',
+                              outline: 'none', boxSizing: 'border-box' as const,
+                            }}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={e => updateMediaMeta(selectedMedia.path, field, e.target.value)}
+                            style={{
+                              width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px',
+                              padding: '7px 9px', fontSize: '0.8rem', color: C.text,
+                              background: C.white, fontFamily: 'inherit',
+                              outline: 'none', boxSizing: 'border-box' as const,
+                            }}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                  <div style={{ marginTop: '14px' }}>
+                    <label style={{ display: 'block', fontSize: '0.67rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>URL</label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input
+                        type="text"
+                        readOnly
+                        value={selectedMedia.url}
+                        style={{
+                          flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px',
+                          padding: '7px 9px', fontSize: '0.75rem', color: C.textMuted,
+                          background: C.white, fontFamily: 'monospace',
+                          outline: 'none', boxSizing: 'border-box' as const,
+                        }}
+                      />
+                      <button
+                        onClick={() => copyMediaUrl(selectedMedia.url)}
+                        style={{
+                          background: C.white, border: `1px solid ${C.border}`, borderRadius: '7px',
+                          padding: '7px 12px', fontSize: '0.76rem', cursor: 'pointer',
+                          color: C.text, fontFamily: 'inherit', whiteSpace: 'nowrap',
+                        }}
+                      >{mediaUrlCopied ? '✓' : 'Copia'}</button>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => deleteMedia(selectedMedia)}
+                    style={{
+                      marginTop: '20px', width: '100%',
+                      background: 'transparent', color: '#dc2626',
+                      border: '1px solid #fca5a5', borderRadius: '7px',
+                      padding: '8px', fontSize: '0.8rem', cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >Elimina definitivamente</button>
+                </div>
+              </div>
+            )}
           </div>
         ) : activePage ? (
           <iframe
