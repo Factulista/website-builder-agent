@@ -110,6 +110,32 @@ function groupVersionsByDay(versions: Version[]): { label: string; items: Versio
   return Array.from(groups.entries()).map(([label, items]) => ({ label, items }))
 }
 
+function applyMediaMetaToPages(pages: Page[], url: string, meta: MediaMeta): Page[] {
+  if (typeof window === 'undefined') return pages
+  let anyChanged = false
+  const next = pages.map(page => {
+    if (!page.html.includes(url)) return page
+    const doc = new DOMParser().parseFromString(page.html, 'text/html')
+    let pageChanged = false
+    doc.querySelectorAll('img').forEach(img => {
+      if (img.getAttribute('src') !== url) return
+      if (meta.alt !== undefined && img.getAttribute('alt') !== meta.alt) {
+        img.setAttribute('alt', meta.alt); pageChanged = true
+      }
+      if (meta.title !== undefined) {
+        const current = img.getAttribute('title') || ''
+        if (meta.title && current !== meta.title) { img.setAttribute('title', meta.title); pageChanged = true }
+        else if (!meta.title && img.hasAttribute('title')) { img.removeAttribute('title'); pageChanged = true }
+      }
+    })
+    if (!pageChanged) return page
+    anyChanged = true
+    const hasDoctype = /^\s*<!DOCTYPE/i.test(page.html)
+    return { ...page, html: (hasDoctype ? '<!DOCTYPE html>\n' : '') + doc.documentElement.outerHTML }
+  })
+  return anyChanged ? next : pages
+}
+
 function stripEditorArtifacts(html: string): string {
   if (typeof window === 'undefined' || !html) return html
   // Quick exit if no markers present
@@ -440,10 +466,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const updateMediaMeta = (path: string, field: keyof MediaMeta, value: string) => {
     const updated = { ...mediaMeta, [path]: { ...mediaMeta[path], [field]: value } }
     setMediaMeta(updated)
+    // Apply alt/title to <img> tags in pages whose src matches this media URL
+    let updatedPages = pages
+    if (field === 'alt' || field === 'title') {
+      const item = mediaItems.find(m => m.path === path)
+      if (item) {
+        updatedPages = applyMediaMetaToPages(pages, item.url, updated[path])
+        if (updatedPages !== pages) setPages(updatedPages)
+      }
+    }
     // Debounce save
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(() => {
-      saveState(messages, pages, versions, updated)
+      saveState(messages, latestPagesRef.current, versions, updated)
     }, 1000)
   }
 
