@@ -201,6 +201,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [projectSlug, setProjectSlug] = useState('')
   const [copied, setCopied] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const [chatWidth, setChatWidth] = useState(38)
   const [isDragging, setIsDragging] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -331,9 +332,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const uploadImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) { alert('Solo immagini supportate'); return }
     setUploading(true)
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setUploading(false); return }
@@ -344,6 +344,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const { data: { publicUrl: imageUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
     setInput(prev => `${prev}${prev ? ' ' : ''}Usa questa immagine: ${imageUrl}`)
     setUploading(false)
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    await uploadImageFile(file)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -720,15 +726,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         </div>
 
         {/* Input */}
-        <div style={{ padding: '8px 10px 12px', flexShrink: 0 }}>
+        <div
+          style={{ padding: '8px 10px 12px', flexShrink: 0, position: 'relative' }}
+          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true) }}
+          onDragLeave={(e) => {
+            // Only clear when leaving the container, not when entering children
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return
+            setDragOver(false)
+          }}
+          onDrop={async (e) => {
+            e.preventDefault()
+            setDragOver(false)
+            const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
+            for (const file of files) await uploadImageFile(file)
+          }}
+        >
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleUpload} style={{ display: 'none' }} />
+          {dragOver && (
+            <div style={{
+              position: 'absolute', inset: '8px 10px 12px',
+              background: 'rgba(37,99,235,0.06)',
+              border: `2px dashed ${C.blue}`,
+              borderRadius: '12px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: C.blue, fontSize: '0.85rem', fontWeight: 500,
+              pointerEvents: 'none', zIndex: 2,
+            }}>
+              ↓ Rilascia l&apos;immagine qui
+            </div>
+          )}
           <form onSubmit={handleSend}>
             <div style={{
               background: C.white,
-              border: `1px solid ${C.border}`,
+              border: `1px solid ${dragOver ? C.blue : C.border}`,
               borderRadius: '12px',
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
               overflow: 'hidden',
+              transition: 'border-color 0.15s',
             }}>
               <textarea
                 ref={textareaRef}
