@@ -53,12 +53,30 @@ export async function POST(req: NextRequest) {
     )
     const { data: project } = await supabase
       .from('projects')
-      .select('site_config')
+      .select('site_config, user_id')
       .eq('id', projectId)
       .single()
 
     const siteConfig = (project?.site_config ?? {}) as Record<string, unknown>
     const context: ProjectContext = (siteConfig.context as ProjectContext) ?? {}
+    const mediaMeta = (siteConfig.media ?? {}) as Record<string, { alt?: string; title?: string }>
+
+    // List project media so agents can reference user-uploaded images
+    let projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = []
+    if (project?.user_id) {
+      const folder = `${project.user_id}/${projectId}`
+      const { data: files } = await supabase.storage.from('project-assets').list(folder, { limit: 100 })
+      if (files) {
+        projectMedia = files
+          .filter(f => f.name && f.metadata)
+          .map(f => {
+            const path = `${folder}/${f.name}`
+            const url = supabase.storage.from('project-assets').getPublicUrl(path).data.publicUrl
+            const meta = mediaMeta[path] || {}
+            return { url, name: f.name, alt: meta.alt, title: meta.title }
+          })
+      }
+    }
 
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
     const agent = classify(lastUserMessage, pages?.length > 0)
@@ -123,7 +141,7 @@ export async function POST(req: NextRequest) {
     }
 
     // HTML agent — also update context from conversation
-    const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey)
+    const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia)
 
     // Run memory agent in background (non-blocking)
     runMemoryAgent(messages, context, apiKey).then(async (updatedContext) => {

@@ -252,13 +252,18 @@ export async function runHtmlAgent(
   messages: { role: string; content: string }[],
   pages: Page[],
   activePageSlug: string | null,
-  apiKey: string
+  apiKey: string,
+  projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = []
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
   const pagesOverview = hasPages
     ? pages.map(p => `- /${p.slug === 'home' ? '' : p.slug} ("${p.name}")`).join('\n')
     : 'Nessuna pagina ancora.'
+
+  const mediaList = projectMedia.length > 0
+    ? projectMedia.map(m => `- ${m.url}${m.alt ? ` (alt: "${m.alt}")` : ''}${m.title ? ` (titolo: "${m.title}")` : ''} — file: ${m.name}`).join('\n')
+    : 'Nessuna immagine caricata dall\'utente.'
 
   const system = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
@@ -270,7 +275,14 @@ REGOLE:
 LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a href="./chi-siamo">Chi Siamo</a>
 
 OGNI PAGINA: HTML completo, CSS inline, mobile-friendly, design moderno e coerente tra pagine.
-IMMAGINI: usa https://picsum.photos/seed/{keyword}/{w}/{h} o https://i.pravatar.cc/300?u={username}
+
+IMMAGINI — REGOLE DI PRIORITÀ (importante):
+1. Se l'utente fornisce un URL esplicito nel messaggio (es: "Immagine allegata: https://..." o "usa questa immagine: https://...") → USA QUELL'URL ESATTO COSÌ COM'È. Non sostituirlo con placeholder. Non modificarlo.
+2. Se l'utente chiede genericamente di mettere "una sua immagine" / "l'immagine del progetto" e nella libreria media del progetto c'è qualcosa di pertinente → usa quegli URL dalla MEDIA LIBRARY qui sotto.
+3. Solo se non hai URL utente né media pertinente → usa placeholder https://picsum.photos/seed/{keyword}/{w}/{h} o https://i.pravatar.cc/300?u={username}.
+
+MEDIA LIBRARY DEL PROGETTO (immagini già caricate dall'utente, disponibili per l'uso):
+${mediaList}
 
 PAGINE ATTUALI:
 ${pagesOverview}
