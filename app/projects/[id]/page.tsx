@@ -170,15 +170,30 @@ function groupVersionsByDay(versions: Version[]): { label: string; items: Versio
 }
 
 function stripEditorArtifacts(html: string): string {
-  return html
-    // Remove injected script/style/marker elements (by id, regardless of attribute order)
-    .replace(/<script\b[^>]*\bid=["']fact-edit-script["'][^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style\b[^>]*\bid=["']fact-edit-global["'][^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<meta\b[^>]*\bdata-fact-edit-loaded[^>]*>/gi, '')
-    // Strip residual contenteditable/data-fact-edit/data-fact-href attributes
-    .replace(/\s+contenteditable=["'][^"']*["']/gi, '')
-    .replace(/\s+data-fact-edit=["'][^"']*["']/gi, '')
-    .replace(/\s+data-fact-href=["'][^"']*["']/gi, '')
+  if (typeof window === 'undefined' || !html) return html
+  // Quick exit if no markers present
+  if (!/fact-edit|contenteditable|html-change/i.test(html)) return html
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  // Any inline script that references the editor (id-based or content-based, for legacy saves)
+  doc.querySelectorAll('script').forEach(s => {
+    const txt = s.textContent || ''
+    if (s.id === 'fact-edit-script' || /fact-edit|html-change|data-fact-edit/.test(txt)) {
+      s.remove()
+    }
+  })
+
+  // Style and marker by id
+  doc.querySelectorAll('style#fact-edit-global, #fact-edit-marker, meta[data-fact-edit-loaded]').forEach(el => el.remove())
+
+  // Residual attributes from interrupted edit sessions
+  doc.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'))
+  doc.querySelectorAll('[data-fact-edit]').forEach(el => el.removeAttribute('data-fact-edit'))
+  doc.querySelectorAll('[data-fact-href]').forEach(el => el.removeAttribute('data-fact-href'))
+
+  const hasDoctype = /^\s*<!DOCTYPE/i.test(html)
+  return (hasDoctype ? '<!DOCTYPE html>\n' : '') + doc.documentElement.outerHTML
 }
 
 function injectBase(html: string, projectSlug: string): string {
