@@ -10,23 +10,14 @@ type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type TextItem = { id: string; tag: string; label: string; text: string; originalText: string }
 
 const INLINE_EDIT_SCRIPT = `(function(){
-  var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','FIGURE','PICTURE']);
-  var INLINE=new Set(['SPAN','STRONG','EM','A','I','B','U','SMALL','MARK','BR','WBR','ABBR','SUB','SUP','S','LABEL','FONT','SVG','PATH','CIRCLE','RECT','LINE','POLYLINE','POLYGON','USE','DEFS','G','SYMBOL','TSPAN','TEXT','CODE','KBD','VAR','TIME','Q','CITE']);
+  var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','SVG']);
 
   document.querySelectorAll('a').forEach(function(a){
     a.addEventListener('click',function(e){e.preventDefault();});
   });
 
-  function nodeDepth(el){var d=0,n=el;while(n.parentElement){d++;n=n.parentElement;}return d;}
-
-  function hasOnlyInlineOrNoChildren(el){
-    for(var i=0;i<el.children.length;i++){
-      if(!INLINE.has(el.children[i].tagName)) return false;
-    }
-    return true;
-  }
-
   function attach(el){
+    if(el.getAttribute('contenteditable')==='true') return;
     el.contentEditable='true';
     el.dataset.factEdit='1';
     el.style.transition='outline 0.08s';
@@ -44,20 +35,20 @@ const INLINE_EDIT_SCRIPT = `(function(){
       el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
     });
     el.addEventListener('keydown',function(e){
-      if(e.key==='Enter'&&/^(H[1-6]|BUTTON|A|LI)$/.test(el.tagName)){e.preventDefault();}
+      if(e.key==='Enter'&&/^(H[1-6]|BUTTON|A)$/.test(el.tagName)){e.preventDefault();}
     });
   }
 
-  var all=Array.from(document.querySelectorAll('body *'));
-  all.sort(function(a,b){return nodeDepth(b)-nodeDepth(a);});
-  all.forEach(function(el){
-    if(SKIP.has(el.tagName)) return;
-    if(el.getAttribute('contenteditable')==='true') return;
-    if(el.querySelector('[contenteditable="true"]')) return;
-    if(!hasOnlyInlineOrNoChildren(el)) return;
-    if(el.textContent.trim().length<1) return;
-    attach(el);
-  });
+  // Walk every text node — make its direct parent editable.
+  // isContentEditable catches nodes already inside an editable ancestor.
+  var walker=document.createTreeWalker(document.body,4/*NodeFilter.SHOW_TEXT*/);
+  var node;
+  while((node=walker.nextNode())){
+    if(node.textContent.trim().length<1) continue;
+    var p=node.parentElement;
+    if(!p||SKIP.has(p.tagName)||p.isContentEditable) continue;
+    attach(p);
+  }
 
   var timer;
   document.addEventListener('input',function(){
