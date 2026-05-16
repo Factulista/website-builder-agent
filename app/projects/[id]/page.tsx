@@ -18,10 +18,6 @@ const INLINE_EDIT_SCRIPT = `(function(){
   globalStyle.textContent='[data-fact-edit]{pointer-events:auto!important;user-select:text!important;-webkit-user-select:text!important;cursor:text!important;}';
   document.head.appendChild(globalStyle);
 
-  document.querySelectorAll('a').forEach(function(a){
-    a.addEventListener('click',function(e){e.preventDefault();});
-  });
-
   function attach(el){
     if(el.getAttribute('contenteditable')==='true') return;
     el.contentEditable='true';
@@ -31,6 +27,20 @@ const INLINE_EDIT_SCRIPT = `(function(){
     el.style.setProperty('-webkit-user-select','text','important');
     el.style.transition='outline 0.08s';
     el.style.cursor='text';
+    // For <a> tags: neutralise href on mousedown so the browser doesn't navigate
+    // and still assigns focus (preventDefault on click can suppress focus in some browsers)
+    if(el.tagName==='A'){
+      var _href=el.getAttribute('href');
+      el.addEventListener('mousedown',function(e){
+        el.setAttribute('data-fact-href',_href||'');
+        el.removeAttribute('href');
+      });
+      el.addEventListener('blur',function(){
+        var saved=el.getAttribute('data-fact-href');
+        if(saved!==null){el.setAttribute('href',saved);el.removeAttribute('data-fact-href');}
+      });
+    }
+    el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();});
     el.addEventListener('mouseenter',function(){
       if(document.activeElement!==el){el.style.outline='2px dashed rgba(37,99,235,0.5)';el.style.outlineOffset='3px';el.style.borderRadius='3px';}
     });
@@ -81,6 +91,9 @@ const INLINE_EDIT_SCRIPT = `(function(){
         el.removeAttribute('data-fact-edit');
         el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
         el.style.transition='';el.style.cursor='';
+        // Restore href that may have been temporarily removed for focus handling
+        var saved=el.getAttribute('data-fact-href');
+        if(saved!==null){el.setAttribute('href',saved);el.removeAttribute('data-fact-href');}
       });
       // Also remove the injected global style from clone
       var gs=clone.querySelector('#fact-edit-global');
