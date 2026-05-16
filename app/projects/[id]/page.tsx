@@ -574,56 +574,63 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return
     }
 
-    // Consuma lo stream newline-delimited JSON
-    const reader = res.body?.getReader()
-    if (!reader) {
-      setMessages(prev => prev.map(m => m.id === assistantId
-        ? { ...m, content: '❌ Errore: Impossibile leggere la risposta' }
-        : m))
-      setLoading(false)
-      return
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
+    // Two response shapes: NDJSON stream (pipeline agent) or plain JSON (html/seo/etc)
+    const contentType = res.headers.get('content-type') || ''
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let result: any = null
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Ultimo elemento (incompleto) rimane nel buffer
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const msg = JSON.parse(line)
-
-            if (msg.type === 'progress') {
-              // Mostra il progresso: "✏️ Content Agent... 0m 5s · 1.2k tokens"
-              const tokenDisplay = msg.tokens > 1000 ? `${(msg.tokens / 1000).toFixed(1)}k` : msg.tokens
-              const progressText = `${msg.step} • ${msg.time} • ${tokenDisplay} tokens`
-              setMessages(prev => prev.map(m => m.id === assistantId
-                ? { ...m, content: progressText }
-                : m))
-            } else if (msg.type === 'done') {
-              result = msg.result
+    if (contentType.includes('ndjson')) {
+      const reader = res.body?.getReader()
+      if (!reader) {
+        setMessages(prev => prev.map(m => m.id === assistantId
+          ? { ...m, content: '❌ Errore: Impossibile leggere la risposta' }
+          : m))
+        setLoading(false)
+        return
+      }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              const msg = JSON.parse(line)
+              if (msg.type === 'progress') {
+                const tokenDisplay = msg.tokens > 1000 ? `${(msg.tokens / 1000).toFixed(1)}k` : msg.tokens
+                const progressText = `${msg.step} • ${msg.time} • ${tokenDisplay} tokens`
+                setMessages(prev => prev.map(m => m.id === assistantId
+                  ? { ...m, content: progressText }
+                  : m))
+              } else if (msg.type === 'done') {
+                result = msg.result
+              } else if (msg.type === 'error') {
+                throw new Error(msg.error)
+              }
+            } catch (e) {
+              console.error('Errore parsing messaggio:', e)
             }
-          } catch (e) {
-            console.error('Errore parsing messaggio:', e)
           }
         }
+      } catch (err) {
+        console.error('Errore lettura stream:', err)
+        setMessages(prev => prev.map(m => m.id === assistantId
+          ? { ...m, content: `❌ Errore: ${err instanceof Error ? err.message : 'comunicazione fallita'}` }
+          : m))
+        setLoading(false)
+        return
       }
-    } catch (err) {
-      console.error('Errore lettura stream:', err)
-      setMessages(prev => prev.map(m => m.id === assistantId
-        ? { ...m, content: '❌ Errore nella comunicazione' }
-        : m))
-      setLoading(false)
-      return
+    } else {
+      try {
+        result = await res.json()
+      } catch (err) {
+        console.error('Errore parsing JSON:', err)
+      }
     }
 
     if (!result) {
