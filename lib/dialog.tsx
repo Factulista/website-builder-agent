@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 
 type DialogOptions = {
   title?: string
@@ -75,7 +74,7 @@ export function DialogHost() {
   const confirmLabel = active.confirmLabel || (active.type === 'alert' ? 'OK' : 'Conferma')
   const cancelLabel = active.cancelLabel || 'Annulla'
 
-  return createPortal(
+  return (
     <div
       onClick={() => close(false)}
       style={{
@@ -155,7 +154,6 @@ export function DialogHost() {
           >{confirmLabel}</button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   )
 }
