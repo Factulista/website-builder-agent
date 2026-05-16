@@ -72,8 +72,10 @@ const INLINE_EDIT_SCRIPT = `(function(){
         el.removeAttribute('data-fact-edit');
         el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
       });
-      var gs=clone.querySelector('#fact-edit-global');
-      if(gs) gs.remove();
+      // Remove all editor artefacts so the saved HTML is clean
+      ['#fact-edit-global','#fact-edit-script','#fact-edit-marker'].forEach(function(sel){
+        var el=clone.querySelector(sel); if(el) el.remove();
+      });
       window.parent.postMessage({type:'html-change',html:'<!DOCTYPE html>\\n'+clone.outerHTML},'*');
     },400);
   });
@@ -439,8 +441,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (existing) return // already injected
     const marker = iframe.contentDocument.createElement('meta')
     marker.setAttribute('data-fact-edit-loaded', '1')
+    marker.id = 'fact-edit-marker'
     iframe.contentDocument.head.appendChild(marker)
     const script = iframe.contentDocument.createElement('script')
+    script.id = 'fact-edit-script'
     script.textContent = INLINE_EDIT_SCRIPT
     iframe.contentDocument.body.appendChild(script)
   }
