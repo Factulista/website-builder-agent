@@ -231,6 +231,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [uploading, setUploading] = useState(false)
   const [dragOverChat, setDragOverChat] = useState(false)
   const [dragOverMedia, setDragOverMedia] = useState(false)
+  const [attachedImages, setAttachedImages] = useState<string[]>([])
   const [chatWidth, setChatWidth] = useState(38)
   const [isDragging, setIsDragging] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -379,7 +380,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (error) { alert(`Errore upload: ${error.message}`); setUploading(false); return }
     const { data: { publicUrl: imageUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
     if (target === 'chat') {
-      setInput(prev => `${prev}${prev ? ' ' : ''}Usa questa immagine: ${imageUrl}`)
+      setAttachedImages(prev => [...prev, imageUrl])
     }
     setUploading(false)
     if (target === 'media' || viewMode === 'media') loadMedia()
@@ -528,13 +529,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || loading) return
+    if ((!input.trim() && attachedImages.length === 0) || loading) return
 
-    const userContent = input
+    const imagesBlock = attachedImages.length
+      ? (input.trim() ? '\n\n' : '') + attachedImages.map(u => `Immagine allegata: ${u}`).join('\n')
+      : ''
+    const userContent = (input.trim() || 'Usa queste immagini.') + imagesBlock
     const userMsg: Message = { id: `u_${Date.now()}`, role: 'user', content: userContent }
     const updatedMessages = [...messages, userMsg]
     setMessages(updatedMessages)
     setInput('')
+    setAttachedImages([])
     if (textareaRef.current) { textareaRef.current.style.height = 'auto' }
     setLoading(true)
 
@@ -878,6 +883,33 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               overflow: 'hidden',
               transition: 'border-color 0.15s',
             }}>
+              {attachedImages.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '8px 8px 0' }}>
+                  {attachedImages.map((url, i) => (
+                    <div key={url} style={{
+                      position: 'relative', width: '52px', height: '52px',
+                      borderRadius: '8px', overflow: 'hidden',
+                      border: `1px solid ${C.border}`, flexShrink: 0,
+                    }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <button
+                        type="button"
+                        onClick={() => setAttachedImages(prev => prev.filter((_, idx) => idx !== i))}
+                        aria-label="Rimuovi immagine"
+                        style={{
+                          position: 'absolute', top: '2px', right: '2px',
+                          width: '16px', height: '16px', borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.65)', color: 'white',
+                          border: 'none', cursor: 'pointer', fontSize: '0.7rem',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          padding: 0, lineHeight: 1,
+                        }}
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <textarea
                 ref={textareaRef}
                 placeholder="Descrivi il tuo sito o chiedi modifiche..."
@@ -890,7 +922,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    if (input.trim() && !loading) handleSend(e as unknown as React.FormEvent)
+                    if ((input.trim() || attachedImages.length > 0) && !loading) handleSend(e as unknown as React.FormEvent)
                   }
                 }}
                 disabled={loading}
@@ -921,13 +953,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
                 <button
                   type="submit"
-                  disabled={loading || !input.trim()}
+                  disabled={loading || (!input.trim() && attachedImages.length === 0)}
                   style={{
                     width: '30px', height: '30px', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: input.trim() && !loading ? C.dark : '#d6d3d1',
+                    background: (input.trim() || attachedImages.length > 0) && !loading ? C.dark : '#d6d3d1',
                     color: 'white', border: 'none',
-                    cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+                    cursor: (input.trim() || attachedImages.length > 0) && !loading ? 'pointer' : 'not-allowed',
                     fontSize: '0.9rem', flexShrink: 0,
                   }}
                   title="Invia"
