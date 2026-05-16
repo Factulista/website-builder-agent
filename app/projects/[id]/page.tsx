@@ -229,7 +229,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [projectSlug, setProjectSlug] = useState('')
   const [copied, setCopied] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [dragOver, setDragOver] = useState(false)
+  const [dragOverChat, setDragOverChat] = useState(false)
+  const [dragOverMedia, setDragOverMedia] = useState(false)
   const [chatWidth, setChatWidth] = useState(38)
   const [isDragging, setIsDragging] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -367,7 +368,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const uploadImageFile = async (file: File) => {
+  const uploadImageFile = async (file: File, target: 'chat' | 'media' = 'chat') => {
     if (!file.type.startsWith('image/')) { alert('Solo immagini supportate'); return }
     setUploading(true)
     const { data: { session } } = await supabase.auth.getSession()
@@ -377,15 +378,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
     if (error) { alert(`Errore upload: ${error.message}`); setUploading(false); return }
     const { data: { publicUrl: imageUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
-    setInput(prev => `${prev}${prev ? ' ' : ''}Usa questa immagine: ${imageUrl}`)
+    if (target === 'chat') {
+      setInput(prev => `${prev}${prev ? ' ' : ''}Usa questa immagine: ${imageUrl}`)
+    }
     setUploading(false)
-    if (viewMode === 'media') loadMedia()
+    if (target === 'media' || viewMode === 'media') loadMedia()
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    await uploadImageFile(file)
+    // "+ Aggiungi" button in media view → media target; chat paperclip → chat target
+    const target = viewMode === 'media' ? 'media' : 'chat'
+    await uploadImageFile(file, target)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -837,21 +842,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         {/* Input */}
         <div
           style={{ padding: '8px 10px 12px', flexShrink: 0, position: 'relative' }}
-          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true) }}
+          onDragOver={(e) => { e.preventDefault(); if (!dragOverChat) setDragOverChat(true) }}
           onDragLeave={(e) => {
             // Only clear when leaving the container, not when entering children
             if (e.currentTarget.contains(e.relatedTarget as Node)) return
-            setDragOver(false)
+            setDragOverChat(false)
           }}
           onDrop={async (e) => {
             e.preventDefault()
-            setDragOver(false)
+            setDragOverChat(false)
             const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
-            for (const file of files) await uploadImageFile(file)
+            for (const file of files) await uploadImageFile(file, 'chat')
           }}
         >
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleUpload} style={{ display: 'none' }} />
-          {dragOver && (
+          {dragOverChat && (
             <div style={{
               position: 'absolute', inset: '8px 10px 12px',
               background: 'rgba(37,99,235,0.06)',
@@ -867,7 +872,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <form onSubmit={handleSend}>
             <div style={{
               background: C.white,
-              border: `1px solid ${dragOver ? C.blue : C.border}`,
+              border: `1px solid ${dragOverChat ? C.blue : C.border}`,
               borderRadius: '12px',
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
               overflow: 'hidden',
@@ -1294,22 +1299,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
               {/* Grid */}
               <div
-                onDragOver={e => { e.preventDefault(); if (!dragOver) setDragOver(true) }}
-                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false) }}
+                onDragOver={e => { e.preventDefault(); if (!dragOverMedia) setDragOverMedia(true) }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverMedia(false) }}
                 onDrop={async e => {
-                  e.preventDefault(); setDragOver(false)
+                  e.preventDefault(); setDragOverMedia(false)
                   const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
-                  for (const file of files) await uploadImageFile(file)
-                  await loadMedia()
+                  for (const file of files) await uploadImageFile(file, 'media')
                 }}
                 style={{
                   flex: 1, overflowY: 'auto', padding: '20px',
-                  background: dragOver ? 'rgba(37,99,235,0.04)' : 'transparent',
+                  background: dragOverMedia ? 'rgba(37,99,235,0.04)' : 'transparent',
                   transition: 'background 0.15s',
                   position: 'relative',
                 }}
               >
-                {dragOver && (
+                {dragOverMedia && (
                   <div style={{
                     position: 'absolute', inset: '12px',
                     border: `2px dashed ${C.blue}`, borderRadius: '14px',
