@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { confirmDialog } from '../../lib/dialog'
+import { isAdmin } from '../../lib/admin'
 
 type Page = { slug: string; name: string; html: string }
 type Project = {
@@ -307,6 +308,14 @@ export default function ProjectsPage() {
               {projects.slice(0, 5).map(p => (
                 <NavItem key={p.id} label={p.name} href={`/projects/${p.id}`} />
               ))}
+            </>
+          )}
+
+          {isAdmin(userEmail) && (
+            <>
+              <SectionLabel>Back Office</SectionLabel>
+              <NavItem icon="⌬" label="Agents" href="/back-office/agents" />
+              <NavItem icon="◇" label="Pipeline" href="/back-office/pipeline" />
             </>
           )}
         </nav>
