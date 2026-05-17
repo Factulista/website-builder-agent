@@ -5,7 +5,8 @@ import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
-import { applyDbOverrides } from '../../../lib/agents/config'
+import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
+import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -103,6 +104,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Logging setup — non-blocking
+    let runId = ''
+    const runStartTime = Date.now()
+    const agentModel = dbConfigs.find(c => c.name === agent)?.model ?? AGENT_CONFIGS[agent]?.model ?? ''
+    try {
+      runId = await startRun({
+        project_id: projectId,
+        user_id: project?.user_id ?? undefined,
+        agent_type: agent,
+        input_summary: lastUserMessage.slice(0, 300),
+        model: agentModel,
+      })
+    } catch {
+      // Non-blocking — continue without logging
+    }
+
     if (agent === 'pipeline') {
       const startTime = Date.now()
       const encoder = new TextEncoder()
@@ -132,11 +149,29 @@ export async function POST(req: NextRequest) {
               site_config: { ...siteConfig, context: result.updatedContext },
             }).eq('id', projectId)
           }
+          // Log completion
+          if (runId) {
+            const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+            const pageCount = (result.input?.pages?.length ?? 0)
+            completeRun(runId, {
+              output_summary: `pipeline: ${pageCount} pagine`,
+              input_tokens: usage?.input_tokens ?? 0,
+              output_tokens: usage?.output_tokens ?? 0,
+              cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+              duration_ms: Date.now() - runStartTime,
+            }).catch(() => null)
+          }
           const done: DoneMessage = { type: 'done', result }
           streamController?.enqueue(encoder.encode(encodeMessage(done)))
           streamController?.close()
         })
         .catch((err) => {
+          if (runId) {
+            failRun(runId, {
+              error_message: String(err).slice(0, 500),
+              duration_ms: Date.now() - runStartTime,
+            }).catch(() => null)
+          }
           const error = { type: 'error', error: String(err) }
           streamController?.enqueue(encoder.encode(JSON.stringify(error) + '\n'))
           streamController?.close()
@@ -149,21 +184,62 @@ export async function POST(req: NextRequest) {
 
     if (agent === 'design-update') {
       const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context)
+      if (runId) {
+        const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+        completeRun(runId, {
+          output_summary: `design-update: ${result.input?.pages?.length ?? 0} pagine`,
+          input_tokens: usage?.input_tokens ?? 0,
+          output_tokens: usage?.output_tokens ?? 0,
+          cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+          duration_ms: Date.now() - runStartTime,
+        }).catch(() => null)
+      }
       return Response.json(result)
     }
 
     if (agent === 'content-update') {
       const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
+      if (runId) {
+        const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+        completeRun(runId, {
+          output_summary: `content-update: ${result.input?.pages?.length ?? 0} pagine`,
+          input_tokens: usage?.input_tokens ?? 0,
+          output_tokens: usage?.output_tokens ?? 0,
+          cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+          duration_ms: Date.now() - runStartTime,
+        }).catch(() => null)
+      }
       return Response.json(result)
     }
 
     if (agent === 'seo') {
       const result = await runSeoAgent(messages, pages ?? [], customDomain ?? null, apiKey, context)
+      if (runId) {
+        const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+        completeRun(runId, {
+          output_summary: `seo: ${pages?.length ?? 0} pagine`,
+          input_tokens: usage?.input_tokens ?? 0,
+          output_tokens: usage?.output_tokens ?? 0,
+          cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+          duration_ms: Date.now() - runStartTime,
+        }).catch(() => null)
+      }
       return Response.json({ ...result, agent: 'seo' })
     }
 
     // HTML agent — also update context from conversation
     const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia)
+
+    if (runId) {
+      const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+      completeRun(runId, {
+        output_summary: `html: ${pages?.length ?? 0} pagine`,
+        input_tokens: usage?.input_tokens ?? 0,
+        output_tokens: usage?.output_tokens ?? 0,
+        cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+        duration_ms: Date.now() - runStartTime,
+      }).catch(() => null)
+    }
 
     // Run memory agent in background (non-blocking)
     runMemoryAgent(messages, context, apiKey).then(async (updatedContext) => {
