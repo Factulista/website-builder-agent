@@ -45,16 +45,25 @@ export default function BackOfficeLayout({ children }: { children: React.ReactNo
   const [authorized, setAuthorized] = useState<boolean | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        if (!session) { router.push('/login'); return }
-        if (!isAdmin(session.user.email)) { router.push('/projects'); return }
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          router.push('/login')
+          return
+        }
+        if (!isAdmin(session.user.email)) {
+          router.push('/projects')
+          return
+        }
         setAuthorized(true)
-      })
-      .catch(() => {
+      } catch (err) {
+        console.error('Auth check failed:', err)
         router.push('/login')
-      })
-  }, [router])
+      }
+    }
+    checkAuth()
+  }, [])
 
   if (authorized === null) {
     return (
