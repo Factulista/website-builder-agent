@@ -120,6 +120,7 @@ export default function AgentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | AgentMeta['category']>('all')
   const [search, setSearch] = useState('')
+  const [openFilterMenu, setOpenFilterMenu] = useState(false)
 
   const fetchAgents = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -169,37 +170,20 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+      {/* Search bar */}
+      <div style={{ marginBottom: '20px' }}>
         <input
           type="text"
-          placeholder="Cerca..."
+          placeholder="Cerca agente..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{
             border: `1px solid ${C.border}`, borderRadius: '8px',
-            padding: '7px 12px', fontSize: '0.85rem', color: C.text,
-            background: C.white, outline: 'none', minWidth: '200px',
+            padding: '8px 14px', fontSize: '0.85rem', color: C.text,
+            background: C.white, outline: 'none', minWidth: '250px',
             fontFamily: 'inherit',
           }}
         />
-        {(['all', ...Object.keys(CATEGORY_LABELS)] as const).map(cat => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => setFilter(cat as typeof filter)}
-            style={{
-              background: filter === cat ? C.text : 'transparent',
-              color: filter === cat ? 'white' : C.textMuted,
-              border: `1px solid ${filter === cat ? C.text : C.border}`,
-              borderRadius: '8px', padding: '7px 12px',
-              fontSize: '0.78rem', fontWeight: 500, cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            {cat === 'all' ? 'Tutti' : CATEGORY_LABELS[cat as AgentMeta['category']]}
-          </button>
-        ))}
       </div>
 
       {/* Table */}
@@ -208,7 +192,7 @@ export default function AgentsPage() {
           Caricamento agenti…
         </div>
       ) : (
-        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden' }}>
+        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden', position: 'relative' }}>
           {/* Table header */}
           <div style={{
             display: 'grid',
@@ -217,12 +201,109 @@ export default function AgentsPage() {
             padding: '10px 20px',
             borderBottom: `1px solid ${C.border}`,
             background: C.bg,
+            position: 'relative',
           }}>
-            {['', 'Nome', 'Categoria', 'Modello', 'Max tokens', 'Stato', 'Workflow', ''].map((h, i) => (
-              <span key={i} style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                {h}
+            {/* Status dot header */}
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            </span>
+
+            {/* Nome header */}
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Nome
+            </span>
+
+            {/* Categoria header with filter icon */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
+              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Categoria
               </span>
-            ))}
+              <button
+                onClick={() => setOpenFilterMenu(!openFilterMenu)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: filter !== 'all' ? C.text : C.textFaint,
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  padding: '2px 4px',
+                  fontWeight: 600,
+                }}
+                title={filter !== 'all' ? `Filtro attivo: ${CATEGORY_LABELS[filter as AgentMeta['category']]}` : 'Mostra filtri'}
+              >
+                ☰
+              </button>
+
+              {/* Filter dropdown */}
+              {openFilterMenu && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  background: C.white,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  zIndex: 10,
+                  marginTop: '4px',
+                  minWidth: '160px',
+                }}>
+                  {(['all', ...Object.keys(CATEGORY_LABELS)] as const).map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => {
+                        setFilter(cat as typeof filter)
+                        setOpenFilterMenu(false)
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 14px',
+                        border: 'none',
+                        background: filter === cat ? C.bg : 'transparent',
+                        color: C.text,
+                        fontSize: '0.8rem',
+                        fontWeight: filter === cat ? 600 : 400,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        borderBottom: cat !== Object.keys(CATEGORY_LABELS)[Object.keys(CATEGORY_LABELS).length - 1] && cat !== 'all' ? `1px solid ${C.border}` : 'none',
+                      }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.bg}
+                      onMouseLeave={e => {
+                        if (filter !== cat) {
+                          (e.currentTarget as HTMLElement).style.background = 'transparent'
+                        }
+                      }}
+                    >
+                      {cat === 'all' ? '✓ Tutti' : CATEGORY_LABELS[cat as AgentMeta['category']]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modello header */}
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Modello
+            </span>
+
+            {/* Max tokens header */}
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Max tokens
+            </span>
+
+            {/* Stato header */}
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Stato
+            </span>
+
+            {/* Workflow header */}
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Workflow
+            </span>
+
+            {/* Arrow header */}
+            <span></span>
           </div>
 
           {/* Rows */}
