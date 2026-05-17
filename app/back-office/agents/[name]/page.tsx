@@ -159,7 +159,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ name: st
         })
         setSavedFeedback(true)
         setTimeout(() => setSavedFeedback(false), 2000)
-        fetchVersions()
+        await fetchVersions()
       }
     } finally {
       setSaving(false)

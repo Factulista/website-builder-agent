@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
-import { AGENTS_MANIFEST, type AgentMeta } from '../../../lib/agents/manifest'
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../../../lib/supabase'
+import { type AgentMeta } from '../../../lib/agents/manifest'
 
 const C = {
   bg: '#faf9f7',
@@ -32,24 +33,71 @@ const CATEGORY_COLORS: Record<AgentMeta['category'], string> = {
   utility: '#10b981',
 }
 
+type AgentRow = {
+  name: string
+  model: string
+  max_tokens: number
+  enabled: boolean
+  system_prompt: string | null
+  updated_at: string
+  displayName: string
+  description: string
+  category: AgentMeta['category']
+  inputs: string[]
+  outputs: string[]
+  filePath: string
+}
+
 export default function AgentsPage() {
+  const [agents, setAgents] = useState<AgentRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | AgentMeta['category']>('all')
   const [search, setSearch] = useState('')
 
-  const filtered = AGENTS_MANIFEST.filter(a => {
+  const fetchAgents = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) { setError('Non autenticato'); setLoading(false); return }
+
+    const res = await fetch('/api/admin/agents', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      const body = await res.json() as { error?: string }
+      setError(body.error ?? 'Errore nel caricamento')
+      setLoading(false)
+      return
+    }
+    const data = await res.json() as AgentRow[]
+    setAgents(data)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchAgents() }, [fetchAgents])
+
+  const filtered = agents.filter(a => {
     if (filter !== 'all' && a.category !== filter) return false
     if (search && !`${a.name} ${a.displayName} ${a.description}`.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
+
+  const enabledCount = agents.filter(a => a.enabled).length
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Agents</h1>
         <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: C.textMuted }}>
-          {AGENTS_MANIFEST.length} agenti registrati nel sistema. Vista read-only — il prossimo step (Fase 2) abiliterà editing e versioning.
+          {loading ? 'Caricamento…' : `${agents.length} agenti · ${enabledCount} attivi`}
         </p>
       </div>
+
+      {error && (
+        <div style={{ marginBottom: '20px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '12px 16px', fontSize: '0.84rem', color: '#991b1b' }}>
+          {error}
+        </div>
+      )}
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
@@ -85,50 +133,66 @@ export default function AgentsPage() {
       </div>
 
       {/* Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
-        {filtered.map(agent => (
-          <Link
-            key={agent.name}
-            href={`/back-office/agents/${agent.name}`}
-            style={{
-              background: C.white, border: `1px solid ${C.border}`,
-              borderRadius: '12px', padding: '16px 18px',
-              textDecoration: 'none', color: 'inherit',
-              transition: 'border-color 0.12s, transform 0.12s',
-              display: 'flex', flexDirection: 'column', gap: '8px',
-            }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = C.textFaint}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = C.border}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {loading ? (
+        <div style={{ color: C.textFaint, fontSize: '0.88rem', padding: '40px 0', textAlign: 'center' }}>
+          Caricamento agenti…
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+          {filtered.map(agent => (
+            <Link
+              key={agent.name}
+              href={`/back-office/agents/${agent.name}`}
+              style={{
+                background: C.white, border: `1px solid ${C.border}`,
+                borderRadius: '12px', padding: '16px 18px',
+                textDecoration: 'none', color: 'inherit',
+                display: 'flex', flexDirection: 'column', gap: '8px',
+                opacity: agent.enabled ? 1 : 0.6,
+              }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = C.textFaint}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = C.border}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    display: 'inline-block', width: '8px', height: '8px',
+                    borderRadius: '50%',
+                    background: agent.enabled ? C.green : C.textFaint,
+                    flexShrink: 0,
+                  }} />
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: C.text }}>
+                    {agent.displayName}
+                  </h3>
+                </div>
                 <span style={{
-                  display: 'inline-block', width: '8px', height: '8px',
-                  borderRadius: '50%',
-                  background: agent.enabled ? C.green : C.textFaint,
-                }} />
-                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: C.text }}>
-                  {agent.displayName}
-                </h3>
+                  fontSize: '0.62rem', fontWeight: 600,
+                  padding: '2px 7px', borderRadius: '999px',
+                  background: `${CATEGORY_COLORS[agent.category] ?? '#6b7280'}15`,
+                  color: CATEGORY_COLORS[agent.category] ?? '#6b7280',
+                  textTransform: 'uppercase', letterSpacing: '0.04em',
+                  flexShrink: 0,
+                }}>{agent.category}</span>
               </div>
-              <span style={{
-                fontSize: '0.62rem', fontWeight: 600,
-                padding: '2px 7px', borderRadius: '999px',
-                background: `${CATEGORY_COLORS[agent.category]}15`,
-                color: CATEGORY_COLORS[agent.category],
-                textTransform: 'uppercase', letterSpacing: '0.04em',
-              }}>{agent.category}</span>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: C.textMuted, lineHeight: 1.5 }}>
+                {agent.description}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '0.72rem', color: C.textFaint }}>
+                <span style={{ fontFamily: 'monospace' }}>{agent.model.replace('claude-', '').replace('-20251001', '')}</span>
+                {agent.max_tokens > 0 && <span>· max {agent.max_tokens.toLocaleString()} tok</span>}
+                {!agent.enabled && (
+                  <span style={{ marginLeft: 'auto', color: C.amber, fontWeight: 600 }}>disattivato</span>
+                )}
+              </div>
+            </Link>
+          ))}
+          {filtered.length === 0 && !loading && (
+            <div style={{ gridColumn: '1/-1', color: C.textFaint, fontSize: '0.88rem', padding: '32px 0', textAlign: 'center' }}>
+              Nessun agente trovato
             </div>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: C.textMuted, lineHeight: 1.5 }}>
-              {agent.description}
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '0.72rem', color: C.textFaint }}>
-              <span style={{ fontFamily: 'monospace' }}>{agent.model.replace('claude-', '').replace('-20251001', '')}</span>
-              {agent.maxTokens > 0 && <span>· max {agent.maxTokens.toLocaleString()} tok</span>}
-            </div>
-          </Link>
-        ))}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
