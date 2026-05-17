@@ -5,6 +5,18 @@ export type AgentConfig = {
   description: string
 }
 
+// Module-level cache for DB overrides — populated at request time via applyDbOverrides()
+let _dbOverrides: Record<string, { model?: string; maxTokens?: number }> = {}
+
+export function applyDbOverrides(
+  configs: Array<{ name: string; model: string; max_tokens: number }>
+): void {
+  _dbOverrides = {}
+  for (const c of configs) {
+    _dbOverrides[c.name] = { model: c.model, maxTokens: c.max_tokens }
+  }
+}
+
 export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   orchestrator: {
     model: 'claude-haiku-4-5-20251001',
@@ -70,7 +82,9 @@ export async function callClaude(
   apiKey: string,
   maxRetries = 3
 ): Promise<Response> {
-  const config = AGENT_CONFIGS[agentName] ?? AGENT_CONFIGS.html
+  const base = AGENT_CONFIGS[agentName] ?? AGENT_CONFIGS.html
+  const override = _dbOverrides[agentName] ?? {}
+  const config = { ...base, ...override }
 
   // Prompt Caching: separa system in parte statica (cacheable) e dinamica
   // La parte statica è tutto ciò che precede "PIANO DEL SITO:" o "PAGINE ATTUALI:" o simili

@@ -4,6 +4,8 @@ import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '..
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
+import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
+import { applyDbOverrides } from '../../../lib/agents/config'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -46,6 +48,15 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
 
+    // Load DB agent configs and apply overrides (non-blocking fallback)
+    let dbConfigs: DbAgentConfig[] = []
+    try {
+      dbConfigs = await getAgentConfigs()
+      applyDbOverrides(dbConfigs)
+    } catch {
+      // Fall back to hardcoded configs if DB is unavailable
+    }
+
     // Load project context from DB
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -80,6 +91,17 @@ export async function POST(req: NextRequest) {
 
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
     const agent = classify(lastUserMessage, pages?.length > 0)
+
+    // Check if the html agent is disabled before running html-only requests
+    if (agent === 'html' && dbConfigs.length > 0) {
+      const htmlConfig = dbConfigs.find(c => c.name === 'html')
+      if (htmlConfig && !htmlConfig.enabled) {
+        return Response.json(
+          { error: 'L\'agente HTML è attualmente disabilitato. Riprova più tardi.' },
+          { status: 503 }
+        )
+      }
+    }
 
     if (agent === 'pipeline') {
       const startTime = Date.now()
