@@ -11,7 +11,7 @@ import { detectTemplate, loadTemplate } from '../templates/index'
 
 type Page = { slug: string; name: string; html: string }
 
-type AgentType = 'pipeline' | 'html' | 'seo' | 'design-update' | 'content-update'
+type AgentType = 'pipeline' | 'html' | 'design-update' | 'content-update' | 'seo'
 
 const LANGUAGE_PATTERNS: Record<string, string[]> = {
   it: ['italia', 'italiano', 'italiani', 'per l\'italia'],
@@ -56,17 +56,19 @@ const CONTENT_UPDATE_KEYWORDS = [
 
 export function classify(userMessage: string, hasPages: boolean): AgentType {
   const lower = userMessage.toLowerCase()
-  if (SEO_KEYWORDS.some(k => lower.includes(k))) return 'seo'
+  // Creazione nuovo sito o nessun sito esistente → pipeline
   if (!hasPages || CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
-  if (hasPages && DESIGN_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'design-update'
-  if (hasPages && CONTENT_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'content-update'
+  // Modifica sito — classifica ulteriormente quale tipo
+  if (SEO_KEYWORDS.some(k => lower.includes(k))) return 'seo'
+  if (DESIGN_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'design-update'
+  if (CONTENT_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'content-update'
   return 'html'
 }
 
 export type PipelineResult = {
   tool: 'create_site'
   input: { pages: Page[]; summary: string }
-  agent: 'pipeline' | 'design-update' | 'content-update'
+  agent: 'pipeline' | 'html' | 'design-update' | 'content-update' | 'seo'
   steps: string[]
   updatedContext?: ProjectContext
   usage?: object

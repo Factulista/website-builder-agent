@@ -269,36 +269,17 @@ export default function WorkflowPage() {
         </ConditionalGroup>
       </WorkflowCard>
 
-      {/* ── 2. Modifica puntuale ── */}
+      {/* ── 2. Modifica sito (tutti i branch condizionali) ── */}
       <WorkflowCard
         title={WORKFLOWS[1].name}
         trigger={WORKFLOWS[1].trigger}
       >
-        <SingleAgent id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} />
-      </WorkflowCard>
-
-      {/* ── 3. SEO ── */}
-      <WorkflowCard
-        title={WORKFLOWS[2].name}
-        trigger={WORKFLOWS[2].trigger}
-      >
-        <SingleAgent id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} />
-      </WorkflowCard>
-
-      {/* ── 4. Aggiorna design ── */}
-      <WorkflowCard
-        title={WORKFLOWS[3].name}
-        trigger={WORKFLOWS[3].trigger}
-      >
-        <SingleAgent id="design" label="Design Update" model={AGENT_MODEL} />
-      </WorkflowCard>
-
-      {/* ── 5. Aggiorna contenuti ── */}
-      <WorkflowCard
-        title={WORKFLOWS[4].name}
-        trigger={WORKFLOWS[4].trigger}
-      >
-        <SingleAgent id="content" label="Content Update" model={AGENT_MODEL} />
+        <ConditionalGroup>
+          <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} conditional note="modifica HTML/struttura" />
+          <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} conditional note="aggiorna design" />
+          <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} conditional note="aggiorna contenuti" />
+          <AgentNode id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} conditional note="ottimizzazione SEO" />
+        </ConditionalGroup>
       </WorkflowCard>
 
       {/* Legend */}

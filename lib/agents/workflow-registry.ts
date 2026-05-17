@@ -32,28 +32,15 @@ export const WORKFLOWS: WorkflowDef[] = [
     ],
   },
   {
-    id: 'html',
-    name: '2 · Modifica puntuale',
-    trigger: 'qualsiasi richiesta generica su sito esistente',
-    steps: [{ agentId: 'html' }],
-  },
-  {
-    id: 'seo',
-    name: '3 · Ottimizzazione SEO',
-    trigger: '«seo», «meta tag», «sitemap», «robots», «canonical»',
-    steps: [{ agentId: 'seo' }],
-  },
-  {
-    id: 'design-update',
-    name: '4 · Aggiorna Design',
-    trigger: '«colore», «font», «stile», «tema», «restyle», «più moderno»',
-    steps: [{ agentId: 'design' }],
-  },
-  {
-    id: 'content-update',
-    name: '5 · Aggiorna Contenuti',
-    trigger: '«riscrivi», «tono di voce», «più formale», «traduci»',
-    steps: [{ agentId: 'content' }],
+    id: 'modify-site',
+    name: '2 · Modifica sito',
+    trigger: 'qualsiasi modifica su sito esistente — orchestratore sceglie il branch',
+    steps: [
+      { agentId: 'html', conditional: true, note: 'modifica HTML/struttura' },
+      { agentId: 'design-update', conditional: true, note: 'aggiorna design' },
+      { agentId: 'content-update', conditional: true, note: 'aggiorna contenuti' },
+      { agentId: 'seo', conditional: true, note: 'ottimizzazione SEO' },
+    ],
   },
 ]
 
