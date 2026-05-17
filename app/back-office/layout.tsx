@@ -91,16 +91,6 @@ export default function BackOfficeLayout({ children }: { children: React.ReactNo
           <NavItem icon="◉" label="Runs" href="/back-office/runs" active={pathname.startsWith('/back-office/runs')} />
         </nav>
 
-        <Link
-          href="/projects"
-          style={{
-            padding: '8px 12px', fontSize: '0.78rem', color: C.textMuted,
-            textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '8px',
-            borderTop: `1px solid ${C.border}`, marginTop: '12px', paddingTop: '14px',
-          }}
-        >
-          ← Torna ai progetti
-        </Link>
       </aside>
 
       <main style={{ flex: 1, overflow: 'auto' }}>
