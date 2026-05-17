@@ -14,7 +14,6 @@ const C = {
   white: '#ffffff',
   green: '#10b981',
   amber: '#f59e0b',
-  red: '#dc2626',
 }
 
 const CATEGORY_LABELS: Record<AgentMeta['category'], string> = {
@@ -85,7 +84,7 @@ export default function AgentsPage() {
   const enabledCount = agents.filter(a => a.enabled).length
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
+    <div style={{ padding: '32px 40px', maxWidth: '1100px' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Agents</h1>
         <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: C.textMuted }}>
@@ -132,64 +131,108 @@ export default function AgentsPage() {
         ))}
       </div>
 
-      {/* Grid */}
+      {/* Table */}
       {loading ? (
         <div style={{ color: C.textFaint, fontSize: '0.88rem', padding: '40px 0', textAlign: 'center' }}>
           Caricamento agenti…
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
-          {filtered.map(agent => (
-            <Link
-              key={agent.name}
-              href={`/back-office/agents/${agent.name}`}
-              style={{
-                background: C.white, border: `1px solid ${C.border}`,
-                borderRadius: '12px', padding: '16px 18px',
-                textDecoration: 'none', color: 'inherit',
-                display: 'flex', flexDirection: 'column', gap: '8px',
-                opacity: agent.enabled ? 1 : 0.6,
-              }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = C.textFaint}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = C.border}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{
-                    display: 'inline-block', width: '8px', height: '8px',
-                    borderRadius: '50%',
-                    background: agent.enabled ? C.green : C.textFaint,
-                    flexShrink: 0,
-                  }} />
-                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: C.text }}>
-                    {agent.displayName}
-                  </h3>
-                </div>
+        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden' }}>
+          {/* Table header */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '16px 1fr 140px 160px 100px 80px 32px',
+            gap: '0 16px',
+            padding: '10px 20px',
+            borderBottom: `1px solid ${C.border}`,
+            background: C.bg,
+          }}>
+            {['', 'Nome', 'Categoria', 'Modello', 'Max tokens', 'Stato', ''].map((h, i) => (
+              <span key={i} style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {h}
+              </span>
+            ))}
+          </div>
+
+          {/* Rows */}
+          {filtered.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: C.textFaint, fontSize: '0.88rem' }}>
+              Nessun agente trovato
+            </div>
+          ) : (
+            filtered.map((agent, idx) => (
+              <Link
+                key={agent.name}
+                href={`/back-office/agents/${agent.name}`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '16px 1fr 140px 160px 100px 80px 32px',
+                  gap: '0 16px',
+                  alignItems: 'center',
+                  padding: '13px 20px',
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  borderBottom: idx < filtered.length - 1 ? `1px solid ${C.border}` : 'none',
+                  background: C.white,
+                  opacity: agent.enabled ? 1 : 0.55,
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.bg}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = C.white}
+              >
+                {/* Status dot */}
                 <span style={{
-                  fontSize: '0.62rem', fontWeight: 600,
-                  padding: '2px 7px', borderRadius: '999px',
+                  display: 'inline-block', width: '7px', height: '7px',
+                  borderRadius: '50%',
+                  background: agent.enabled ? C.green : C.textFaint,
+                  flexShrink: 0,
+                }} />
+
+                {/* Name + description */}
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {agent.displayName}
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: C.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {agent.description}
+                  </p>
+                </div>
+
+                {/* Category */}
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 600,
+                  padding: '2px 8px', borderRadius: '999px',
                   background: `${CATEGORY_COLORS[agent.category] ?? '#6b7280'}15`,
                   color: CATEGORY_COLORS[agent.category] ?? '#6b7280',
                   textTransform: 'uppercase', letterSpacing: '0.04em',
-                  flexShrink: 0,
-                }}>{agent.category}</span>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: C.textMuted, lineHeight: 1.5 }}>
-                {agent.description}
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', fontSize: '0.72rem', color: C.textFaint }}>
-                <span style={{ fontFamily: 'monospace' }}>{agent.model.replace('claude-', '').replace('-20251001', '')}</span>
-                {agent.max_tokens > 0 && <span>· max {agent.max_tokens.toLocaleString()} tok</span>}
-                {!agent.enabled && (
-                  <span style={{ marginLeft: 'auto', color: C.amber, fontWeight: 600 }}>disattivato</span>
-                )}
-              </div>
-            </Link>
-          ))}
-          {filtered.length === 0 && !loading && (
-            <div style={{ gridColumn: '1/-1', color: C.textFaint, fontSize: '0.88rem', padding: '32px 0', textAlign: 'center' }}>
-              Nessun agente trovato
-            </div>
+                  justifySelf: 'start',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {CATEGORY_LABELS[agent.category] ?? agent.category}
+                </span>
+
+                {/* Model */}
+                <span style={{ fontSize: '0.78rem', color: C.textMuted, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {agent.model.replace('claude-', '').replace('-20251001', '')}
+                </span>
+
+                {/* Max tokens */}
+                <span style={{ fontSize: '0.78rem', color: C.textFaint, fontFamily: 'monospace' }}>
+                  {agent.max_tokens > 0 ? agent.max_tokens.toLocaleString() : '—'}
+                </span>
+
+                {/* Status label */}
+                <span style={{
+                  fontSize: '0.72rem', fontWeight: 600,
+                  color: agent.enabled ? C.green : C.amber,
+                }}>
+                  {agent.enabled ? 'Attivo' : 'Off'}
+                </span>
+
+                {/* Arrow */}
+                <span style={{ fontSize: '0.8rem', color: C.textFaint, justifySelf: 'end' }}>→</span>
+              </Link>
+            ))
           )}
         </div>
       )}
