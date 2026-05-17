@@ -134,6 +134,60 @@ export default function WorkflowPage() {
         I 5 flussi di esecuzione degli agenti. Ogni nodo è cliccabile e apre la configurazione dell&apos;agente.
       </p>
 
+      {/* ── Orchestrator (entry point) ── */}
+      <div style={{
+        display: 'flex', alignItems: 'stretch', gap: '0',
+        background: C.white, border: `1px solid ${C.border}`,
+        borderRadius: '12px', marginBottom: '16px', overflow: 'hidden',
+      }}>
+        {/* Left: orchestrator node */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+          padding: '20px 28px', borderRight: `1px solid ${C.border}`, gap: '6px', minWidth: '200px',
+        }}>
+          <span style={{ fontSize: '0.6rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '2px' }}>Ingresso</span>
+          <Link href="/back-office/agents/orchestrator" style={{ textDecoration: 'none' }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+              padding: '12px 20px', borderRadius: '10px',
+              border: `2px solid ${C.text}`, background: C.text,
+              transition: 'opacity 0.12s', cursor: 'pointer',
+            }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+            >
+              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: C.white }}>Orchestrator</span>
+              <span style={{ fontSize: '0.68rem', color: '#9ca3af', fontFamily: 'ui-monospace, monospace' }}>rule-based</span>
+            </div>
+          </Link>
+          <span style={{ fontSize: '0.72rem', color: C.textFaint, textAlign: 'center', maxWidth: '160px' }}>
+            Classifica intent e instrada al workflow corretto
+          </span>
+        </div>
+
+        {/* Arrow */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 4px' }}>
+          <Arrow />
+        </div>
+
+        {/* Right: 5 workflow labels */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '16px 20px', gap: '8px' }}>
+          {[
+            { num: '1', label: 'Creazione sito', trigger: 'crea, genera, nuovo sito — o nessun sito esistente' },
+            { num: '2', label: 'Modifica puntuale', trigger: 'qualsiasi richiesta generica su sito esistente' },
+            { num: '3', label: 'Ottimizzazione SEO', trigger: 'seo, meta tag, sitemap, robots' },
+            { num: '4', label: 'Aggiorna Design', trigger: 'colore, font, stile, tema, restyle' },
+            { num: '5', label: 'Aggiorna Contenuti', trigger: 'riscrivi, tono di voce, traduci' },
+          ].map(w => (
+            <div key={w.num} style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, width: '16px', flexShrink: 0 }}>{w.num}</span>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.text }}>{w.label}</span>
+              <span style={{ fontSize: '0.75rem', color: C.textFaint }}>— {w.trigger}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ── 1. Creazione sito ── */}
       <WorkflowCard
         title="1 · Creazione sito"
