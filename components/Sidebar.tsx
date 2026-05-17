@@ -68,6 +68,181 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
+type SearchResult = {
+  type: 'menu' | 'project'
+  label: string
+  href: string
+  icon?: string
+}
+
+function SearchBar({
+  projects,
+  router,
+  language,
+  loaded,
+}: {
+  projects: Array<{ id: string; name: string }>
+  router: ReturnType<typeof useRouter>
+  language: any
+  loaded: boolean
+}) {
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [showResults, setShowResults] = useState(false)
+
+  const menuItems = [
+    { label: loaded ? t('sidebar.projects' as const, language) : 'Projects', href: '/projects', icon: '⊞' },
+    { label: loaded ? t('sidebar.newSite' as const, language) : 'New site', href: '/projects/new', icon: '✦' },
+    { label: loaded ? t('sidebar.agents' as const, language) : 'Agents', href: '/back-office/agents', icon: '⌬' },
+    { label: loaded ? t('sidebar.workflow' as const, language) : 'Workflow', href: '/back-office/pipeline', icon: '◇' },
+    { label: loaded ? t('sidebar.runs' as const, language) : 'Runs', href: '/back-office/runs', icon: '◉' },
+    { label: loaded ? t('sidebar.templates' as const, language) : 'Templates', href: '/back-office/templates', icon: '▦' },
+    { label: loaded ? t('sidebar.settings' as const, language) : 'Settings', href: '/back-office/settings', icon: '⚙' },
+  ]
+
+  const handleSearch = (query: string) => {
+    setSearch(query)
+    if (query.trim() === '') {
+      setResults([])
+      setShowResults(false)
+      return
+    }
+
+    const lowerQuery = query.toLowerCase()
+    const found: SearchResult[] = []
+
+    // Search menu items
+    menuItems.forEach(item => {
+      if (item.label.toLowerCase().includes(lowerQuery)) {
+        found.push({
+          type: 'menu',
+          label: item.label,
+          href: item.href,
+          icon: item.icon,
+        })
+      }
+    })
+
+    // Search projects
+    projects.forEach(project => {
+      if (project.name.toLowerCase().includes(lowerQuery)) {
+        found.push({
+          type: 'project',
+          label: project.name,
+          href: `/projects/${project.id}`,
+        })
+      }
+    })
+
+    setResults(found)
+    setShowResults(true)
+  }
+
+  const handleSelectResult = (href: string) => {
+    setSearch('')
+    setShowResults(false)
+    router.push(href)
+  }
+
+  return (
+    <div style={{ padding: '8px 10px 12px', position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
+        <input
+          type="text"
+          placeholder={loaded ? t('sidebar.search' as const, language) : 'Search...'}
+          value={search}
+          onChange={e => handleSearch(e.target.value)}
+          onFocus={() => search && setShowResults(true)}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            border: '1px solid #e8e4de',
+            borderRadius: '8px',
+            background: 'white',
+            color: '#1a1a1a',
+            fontSize: '0.8375rem',
+            fontFamily: 'inherit',
+            outline: 'none',
+          }}
+        />
+
+        {/* Results dropdown */}
+        {showResults && results.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            background: 'white',
+            border: '1px solid #e8e4de',
+            borderTop: 'none',
+            borderRadius: '0 0 8px 8px',
+            maxHeight: '300px',
+            overflowY: 'auto',
+            zIndex: 1000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          }}>
+            {results.map((result, idx) => (
+              <button
+                key={`${result.type}-${result.href}-${idx}`}
+                onClick={() => handleSelectResult(result.href)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#1a1a1a',
+                  fontSize: '0.8rem',
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  borderBottom: idx < results.length - 1 ? '1px solid #f0f0f0' : 'none',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f9f9f9'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+              >
+                {result.icon && <span style={{ fontSize: '0.9rem', opacity: 0.7 }}>{result.icon}</span>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                    {result.label}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#9b9896', marginTop: '2px' }}>
+                    {result.type === 'project' ? '📁 Progetto' : '⚙️ Menu'}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* No results message */}
+        {showResults && search && results.length === 0 && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            background: 'white',
+            border: '1px solid #e8e4de',
+            borderTop: 'none',
+            borderRadius: '0 0 8px 8px',
+            padding: '12px',
+            fontSize: '0.8rem',
+            color: '#9b9896',
+            textAlign: 'center',
+            zIndex: 1000,
+          }}>
+            {loaded ? 'Nessun risultato trovato' : 'No results found'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function Sidebar({ userEmail, projects }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -103,30 +278,11 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
         </button>
       </div>
 
-      {/* Workspace selector */}
-      <div style={{ padding: '0 10px 6px' }}>
-        <button style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          width: '100%', padding: '7px 10px', background: 'white',
-          border: '1px solid #e0dcd6', borderRadius: '8px', cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '20px', height: '20px', background: '#e05a2b', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.65rem', fontWeight: 700 }}>
-              {userInitial}
-            </div>
-            <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#1a1a1a' }}>
-              {userEmail.split('@')[0] ?? 'Workspace'}
-            </span>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: '#9b9896' }}>▾</span>
-        </button>
-      </div>
+      {/* Search bar */}
+      <SearchBar projects={projects} router={router} language={language} loaded={loaded} />
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '2px 8px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-        <NavItem icon="⌂" label={loaded ? t('sidebar.home' as const, language) : 'Home'} href="/projects" active={pathname === '/projects'} />
-        <NavItem icon="⌕" label={loaded ? t('sidebar.search' as const, language) : 'Search'} shortcut="⌘K" />
 
         <SectionLabel>{loaded ? t('sidebar.projects' as const, language) : 'Projects'}</SectionLabel>
         <NavItem icon="⊞" label={loaded ? t('sidebar.allSites' as const, language) : 'All sites'} href="/projects" active={pathname === '/projects'} />
