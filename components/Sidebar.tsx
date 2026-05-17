@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { isAdmin } from '../lib/admin'
+import { useLanguage } from '../lib/i18n/useLanguage'
+import { t } from '../lib/i18n/translations'
 
 type SidebarProps = {
   userEmail: string
@@ -69,6 +71,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar({ userEmail, projects }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const { language, loaded } = useLanguage()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -122,16 +125,16 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '2px 8px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-        <NavItem icon="⌂" label="Home" href="/projects" active={pathname === '/projects'} />
-        <NavItem icon="⌕" label="Cerca" shortcut="⌘K" />
+        <NavItem icon="⌂" label={loaded ? t('sidebar.home' as const, language) : 'Home'} href="/projects" active={pathname === '/projects'} />
+        <NavItem icon="⌕" label={loaded ? t('sidebar.search' as const, language) : 'Search'} shortcut="⌘K" />
 
-        <SectionLabel>Progetti</SectionLabel>
-        <NavItem icon="⊞" label="Tutti i siti" href="/projects" active={pathname === '/projects'} />
-        <NavItem icon="✦" label="Nuovo sito" href="/projects/new" active={pathname === '/projects/new'} />
+        <SectionLabel>{loaded ? t('sidebar.projects' as const, language) : 'Projects'}</SectionLabel>
+        <NavItem icon="⊞" label={loaded ? t('sidebar.allSites' as const, language) : 'All sites'} href="/projects" active={pathname === '/projects'} />
+        <NavItem icon="✦" label={loaded ? t('sidebar.newSite' as const, language) : 'New site'} href="/projects/new" active={pathname === '/projects/new'} />
 
         {projects.length > 0 && (
           <>
-            <SectionLabel>Recenti</SectionLabel>
+            <SectionLabel>{loaded ? t('sidebar.recent' as const, language) : 'Recent'}</SectionLabel>
             {projects.slice(0, 5).map(p => (
               <NavItem key={p.id} label={p.name} href={`/projects/${p.id}`} active={pathname === `/projects/${p.id}`} />
             ))}
@@ -140,11 +143,12 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
 
         {isAdmin(userEmail) && (
           <>
-            <SectionLabel>Back Office</SectionLabel>
-            <NavItem icon="⌬" label="Agents" href="/back-office/agents" active={pathname.startsWith('/back-office/agents')} />
-            <NavItem icon="◇" label="Workflow" href="/back-office/pipeline" active={pathname.startsWith('/back-office/pipeline')} />
-            <NavItem icon="◉" label="Runs" href="/back-office/runs" active={pathname.startsWith('/back-office/runs')} />
-            <NavItem icon="▦" label="Template" href="/back-office/templates" active={pathname.startsWith('/back-office/templates')} />
+            <SectionLabel>{loaded ? t('sidebar.backOffice' as const, language) : 'Back Office'}</SectionLabel>
+            <NavItem icon="⌬" label={loaded ? t('sidebar.agents' as const, language) : 'Agents'} href="/back-office/agents" active={pathname.startsWith('/back-office/agents')} />
+            <NavItem icon="◇" label={loaded ? t('sidebar.workflow' as const, language) : 'Workflow'} href="/back-office/pipeline" active={pathname.startsWith('/back-office/pipeline')} />
+            <NavItem icon="◉" label={loaded ? t('sidebar.runs' as const, language) : 'Runs'} href="/back-office/runs" active={pathname.startsWith('/back-office/runs')} />
+            <NavItem icon="▦" label={loaded ? t('sidebar.templates' as const, language) : 'Templates'} href="/back-office/templates" active={pathname.startsWith('/back-office/templates')} />
+            <NavItem icon="⚙" label={loaded ? t('sidebar.settings' as const, language) : 'Settings'} href="/back-office/settings" active={pathname.startsWith('/back-office/settings')} />
           </>
         )}
       </nav>
@@ -164,7 +168,7 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
             onClick={handleLogout}
             style={{ background: 'transparent', border: 'none', color: '#9b9896', fontSize: '0.75rem', cursor: 'pointer', padding: '2px 4px', fontFamily: 'inherit' }}
           >
-            Esci
+            {loaded ? t('sidebar.logout' as const, language) : 'Logout'}
           </button>
         </div>
       </div>
