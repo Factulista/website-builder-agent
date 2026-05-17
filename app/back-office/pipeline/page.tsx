@@ -149,27 +149,37 @@ export default function WorkflowPage() {
         Visualizza il flusso di esecuzione degli agenti. Ogni nodo è cliccabile e apre la configurazione.
       </p>
 
-      {/* Workflow tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: `1px solid ${C.border}`, paddingBottom: '0' }}>
-        {WORKFLOWS.map(w => (
-          <button
-            key={w.id}
-            onClick={() => handleWorkflowChange(w.id)}
-            style={{
-              padding: '10px 16px',
-              border: 'none',
-              borderBottom: selectedWorkflowId === w.id ? `3px solid ${C.text}` : '3px solid transparent',
-              background: 'transparent',
-              color: selectedWorkflowId === w.id ? C.text : C.textMuted,
-              fontSize: '0.88rem',
-              fontWeight: selectedWorkflowId === w.id ? 600 : 400,
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            {w.name}
-          </button>
-        ))}
+      {/* Workflow dropdown */}
+      <div style={{ marginBottom: '24px' }}>
+        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+          Seleziona workflow
+        </label>
+        <select
+          value={selectedWorkflowId}
+          onChange={(e) => handleWorkflowChange(e.target.value)}
+          style={{
+            padding: '10px 14px',
+            border: `1px solid ${C.border}`,
+            borderRadius: '8px',
+            background: C.white,
+            color: C.text,
+            fontSize: '0.9rem',
+            fontWeight: 500,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            minWidth: '280px',
+            transition: 'all 0.15s',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+          }}
+          onMouseEnter={e => (e.currentTarget as HTMLSelectElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'}
+          onMouseLeave={e => (e.currentTarget as HTMLSelectElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'}
+        >
+          {WORKFLOWS.map(w => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Workflow details */}
