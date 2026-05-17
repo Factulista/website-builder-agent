@@ -315,7 +315,8 @@ export default function ProjectsPage() {
             <>
               <SectionLabel>Back Office</SectionLabel>
               <NavItem icon="⌬" label="Agents" href="/back-office/agents" />
-              <NavItem icon="◇" label="Pipeline" href="/back-office/pipeline" />
+              <NavItem icon="◇" label="Workflow" href="/back-office/pipeline" />
+              <NavItem icon="◉" label="Runs" href="/back-office/runs" />
             </>
           )}
         </nav>
