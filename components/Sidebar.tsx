@@ -247,10 +247,16 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { language, loaded } = useLanguage()
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleSettings = () => {
+    setUserMenuOpen(false)
+    router.push('/back-office/settings')
   }
 
   const userInitial = userEmail?.[0]?.toUpperCase() ?? 'U'
@@ -304,29 +310,125 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
             <NavItem icon="◇" label={loaded ? t('sidebar.workflow' as const, language) : 'Workflow'} href="/back-office/pipeline" active={pathname.startsWith('/back-office/pipeline')} />
             <NavItem icon="◉" label={loaded ? t('sidebar.runs' as const, language) : 'Runs'} href="/back-office/runs" active={pathname.startsWith('/back-office/runs')} />
             <NavItem icon="▦" label={loaded ? t('sidebar.templates' as const, language) : 'Templates'} href="/back-office/templates" active={pathname.startsWith('/back-office/templates')} />
-            <NavItem icon="⚙" label={loaded ? t('sidebar.settings' as const, language) : 'Settings'} href="/back-office/settings" active={pathname.startsWith('/back-office/settings')} />
           </>
         )}
       </nav>
 
       {/* User section */}
-      <div style={{ padding: '12px 10px', borderTop: '1px solid #e8e4de' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'white', border: '1px solid #e8e4de', borderRadius: '10px' }}>
+      <div style={{ padding: '12px 10px', borderTop: '1px solid #e8e4de', position: 'relative' }}>
+        <button
+          onClick={() => setUserMenuOpen(!userMenuOpen)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            padding: '8px 10px',
+            background: 'white',
+            border: `1px solid ${userMenuOpen ? '#2563eb' : '#e8e4de'}`,
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={e => {
+            if (!userMenuOpen) {
+              (e.currentTarget as HTMLElement).style.borderColor = '#d4cfc9'
+              ;(e.currentTarget as HTMLElement).style.background = '#fafafa'
+            }
+          }}
+          onMouseLeave={e => {
+            if (!userMenuOpen) {
+              (e.currentTarget as HTMLElement).style.borderColor = '#e8e4de'
+              ;(e.currentTarget as HTMLElement).style.background = 'white'
+            }
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '26px', height: '26px', background: '#e05a2b', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.7rem', fontWeight: 700 }}>
               {userInitial}
             </div>
-            <span style={{ fontSize: '0.78rem', color: '#6b6563', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: '0.78rem', color: '#6b6563', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
               {userEmail}
             </span>
           </div>
-          <button
-            onClick={handleLogout}
-            style={{ background: 'transparent', border: 'none', color: '#9b9896', fontSize: '0.75rem', cursor: 'pointer', padding: '2px 4px', fontFamily: 'inherit' }}
-          >
-            {loaded ? t('sidebar.logout' as const, language) : 'Logout'}
-          </button>
-        </div>
+          <span style={{ fontSize: '0.7rem', color: '#9b9896', transition: 'transform 0.2s', transform: userMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+            ▾
+          </span>
+        </button>
+
+        {/* User menu dropdown */}
+        {userMenuOpen && (
+          <div style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: '10px',
+            right: '10px',
+            background: 'white',
+            border: '1px solid #e8e4de',
+            borderRadius: '10px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            zIndex: 1000,
+            marginBottom: '8px',
+          }}>
+            {/* Settings option (only for admin) */}
+            {isAdmin(userEmail) && (
+              <>
+                <button
+                  onClick={handleSettings}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#1a1a1a',
+                    fontSize: '0.8375rem',
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    borderBottom: '1px solid #f0f0f0',
+                  }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f9f9f9'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                >
+                  <span style={{ fontSize: '0.95rem' }}>⚙️</span>
+                  {loaded ? t('sidebar.settings' as const, language) : 'Settings'}
+                </button>
+              </>
+            )}
+
+            {/* Logout option */}
+            <button
+              onClick={() => {
+                setUserMenuOpen(false)
+                handleLogout()
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                width: '100%',
+                padding: '10px 12px',
+                border: 'none',
+                background: 'transparent',
+                color: '#ef4444',
+                fontSize: '0.8375rem',
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                textAlign: 'left',
+                borderRadius: '0 0 9px 9px',
+              }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#fef2f2'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+            >
+              <span style={{ fontSize: '0.95rem' }}>🚪</span>
+              {loaded ? t('sidebar.logout' as const, language) : 'Logout'}
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   )
