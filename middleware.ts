@@ -32,7 +32,7 @@ export function middleware(req: NextRequest) {
 
   // Handle myweb.factulista.com/{slug}/{page?} → /preview/{slug}/{page?}
   // But let app routes pass through (login, projects, preview, api)
-  const APP_ROUTES = ['/login', '/projects', '/preview', '/api', '/_next']
+  const APP_ROUTES = ['/login', '/projects', '/preview', '/api', '/_next', '/back-office']
   if (host === `${PREVIEW_SUBDOMAIN}.${ROOT_DOMAIN}`) {
     const segments = path.split('/').filter(Boolean)
     if (segments.length === 0 || APP_ROUTES.some(r => path.startsWith(r))) {
