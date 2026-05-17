@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import type { AgentRun } from '../../../lib/agents/run-logger'
+import { formatCost, formatCostTotal } from '../../../lib/agents/cost'
 
 const C = {
   bg: '#faf9f7',
@@ -27,6 +28,7 @@ type Stats = {
   totals: { success: number; error: number; running: number; total: number }
   tokens: { input: number; output: number; cache_read: number }
   avgDuration: number | null
+  totalCost: number
 }
 
 const AGENT_TYPES = ['pipeline', 'html', 'seo', 'design-update', 'content-update']
@@ -341,6 +343,11 @@ export default function RunsPage() {
           value={statsLoading ? '...' : formatTokens(totalTokens ?? 0)}
           sub={statsLoading ? '' : `in: ${formatTokens(stats?.tokens.input ?? 0)} / out: ${formatTokens(stats?.tokens.output ?? 0)}`}
         />
+        <MetricCard
+          label="Costo totale"
+          value={statsLoading ? '...' : formatCostTotal(stats?.totalCost ?? 0)}
+          sub="stimato (all-time)"
+        />
       </div>
 
       {/* Chart */}
@@ -433,7 +440,7 @@ export default function RunsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {['Data', 'Tipo', 'Progetto', 'Stato', 'Tokens', 'Durata', ''].map(h => (
+              {['Data', 'Tipo', 'Progetto', 'Stato', 'Tokens', 'Costo', 'Durata', ''].map(h => (
                 <th key={h} style={{
                   padding: '10px 14px', textAlign: 'left',
                   fontSize: '0.72rem', fontWeight: 600, color: C.textFaint,
@@ -448,13 +455,13 @@ export default function RunsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: C.textFaint }}>
+                <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textFaint }}>
                   Caricamento...
                 </td>
               </tr>
             ) : runs.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: C.textFaint }}>
+                <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textFaint }}>
                   Nessun run trovato.
                 </td>
               </tr>
@@ -480,6 +487,9 @@ export default function RunsPage() {
                   </td>
                   <td style={{ padding: '10px 14px', color: C.textMuted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                     {formatTokens(run.input_tokens + run.output_tokens)}
+                  </td>
+                  <td style={{ padding: '10px 14px', color: C.textMuted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, monospace', fontSize: '0.78rem' }}>
+                    {formatCost(run.cost_usd)}
                   </td>
                   <td style={{ padding: '10px 14px', color: C.textMuted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                     {formatDuration(run.duration_ms)}

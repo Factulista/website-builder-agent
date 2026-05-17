@@ -25,6 +25,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { computeCost } from './cost'
 
 function getClient() {
   return createClient(
@@ -51,6 +52,7 @@ export type AgentRun = {
   model: string | null
   created_at: string
   completed_at: string | null
+  cost_usd: number
 }
 
 export async function startRun(opts: {
@@ -150,7 +152,11 @@ export async function listRuns(opts?: {
   const { data, count, error } = await query
   if (error) throw new Error(error.message)
 
-  return { runs: (data ?? []) as AgentRun[], total: count ?? 0 }
+  const runs = (data ?? []).map((r: Omit<AgentRun, 'cost_usd'>) => ({
+    ...r,
+    cost_usd: computeCost(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens),
+  })) as AgentRun[]
+  return { runs, total: count ?? 0 }
 }
 
 export async function getRun(id: string): Promise<AgentRun | null> {
@@ -162,7 +168,11 @@ export async function getRun(id: string): Promise<AgentRun | null> {
     .single()
 
   if (error || !data) return null
-  return data as AgentRun
+  const r = data as Omit<AgentRun, 'cost_usd'>
+  return {
+    ...r,
+    cost_usd: computeCost(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens),
+  } as AgentRun
 }
 
 export async function getRunStats(): Promise<{
@@ -170,6 +180,7 @@ export async function getRunStats(): Promise<{
   totals: { success: number; error: number; running: number; total: number }
   tokens: { input: number; output: number; cache_read: number }
   avgDuration: number | null
+  totalCost: number
 }> {
   const supabase = getClient()
 
@@ -188,7 +199,7 @@ export async function getRunStats(): Promise<{
   // All-time totals
   const { data: allRows } = await supabase
     .from('agent_runs')
-    .select('status, input_tokens, output_tokens, cache_read_tokens, duration_ms')
+    .select('status, input_tokens, output_tokens, cache_read_tokens, duration_ms, model')
 
   // Build byDay from recent rows
   const dayMap: Record<string, { success: number; error: number; total: number }> = {}
@@ -214,6 +225,7 @@ export async function getRunStats(): Promise<{
   const tokens = { input: 0, output: 0, cache_read: 0 }
   let durationSum = 0
   let durationCount = 0
+  let totalCost = 0
 
   for (const row of allRows ?? []) {
     totals.total++
@@ -221,9 +233,13 @@ export async function getRunStats(): Promise<{
     else if (row.status === 'error') totals.error++
     else if (row.status === 'running') totals.running++
 
-    tokens.input += row.input_tokens ?? 0
-    tokens.output += row.output_tokens ?? 0
-    tokens.cache_read += row.cache_read_tokens ?? 0
+    const inp = row.input_tokens ?? 0
+    const out = row.output_tokens ?? 0
+    const cch = row.cache_read_tokens ?? 0
+    tokens.input += inp
+    tokens.output += out
+    tokens.cache_read += cch
+    totalCost += computeCost(row.model as string | null, inp, out, cch)
 
     if (row.duration_ms != null) {
       durationSum += row.duration_ms as number
@@ -236,5 +252,6 @@ export async function getRunStats(): Promise<{
     totals,
     tokens,
     avgDuration: durationCount > 0 ? Math.round(durationSum / durationCount) : null,
+    totalCost,
   }
 }

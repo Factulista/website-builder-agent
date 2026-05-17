@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
 import type { AgentRun } from '../../../../lib/agents/run-logger'
+import { formatCost } from '../../../../lib/agents/cost'
 
 const C = {
   bg: '#faf9f7',
@@ -182,6 +183,7 @@ export default function RunDetailPage() {
         <InfoCard label="Durata" value={formatDuration(run.duration_ms)} />
         <InfoCard label="Token input" value={formatTokens(run.input_tokens)} />
         <InfoCard label="Token output" value={formatTokens(run.output_tokens)} />
+        <InfoCard label="Costo stimato" value={formatCost(run.cost_usd)} />
       </div>
 
       {/* Input / Output */}
