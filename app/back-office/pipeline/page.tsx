@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { WORKFLOWS } from '../../../lib/agents/workflow-registry'
 
 const C = {
   bg: '#faf9f7',
@@ -19,10 +20,12 @@ type NodeProps = {
   label: string
   model?: string
   optional?: boolean
+  conditional?: boolean
   note?: string
 }
 
-function AgentNode({ id, label, model, optional, note }: NodeProps) {
+function AgentNode({ id, label, model, optional, conditional, note }: NodeProps) {
+  const isDashed = optional || conditional
   return (
     <Link
       href={`/back-office/agents/${id}`}
@@ -30,7 +33,7 @@ function AgentNode({ id, label, model, optional, note }: NodeProps) {
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         width: '148px', minHeight: '72px',
         background: C.white,
-        border: `${optional ? '1.5px dashed #cbd5e1' : `1.5px solid ${C.text}`}`,
+        border: `${isDashed ? '1.5px dashed #cbd5e1' : `1.5px solid ${C.text}`}`,
         borderRadius: '10px',
         padding: '10px 12px',
         textDecoration: 'none',
@@ -92,6 +95,47 @@ function ParallelGroup({ children }: { children: React.ReactNode }) {
   )
 }
 
+// ── Conditional group (vertical stack, dashed border, "o" separator) ─────────
+
+function ConditionalGroup({ children }: { children: React.ReactNode }) {
+  const nodes = Array.isArray(children) ? children : [children]
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: '0',
+      padding: '10px 14px',
+      border: `1.5px dashed #cbd5e1`,
+      borderRadius: '10px',
+      background: C.white,
+      position: 'relative',
+    }}>
+      <span style={{
+        position: 'absolute', top: '-9px', left: '12px',
+        fontSize: '0.6rem', fontWeight: 600, color: C.textFaint,
+        background: C.white, padding: '0 4px',
+        textTransform: 'uppercase', letterSpacing: '0.06em',
+      }}>
+        alternativo
+      </span>
+      {nodes.map((child, i) => (
+        <div key={i}>
+          {child}
+          {i < nodes.length - 1 && (
+            <div style={{
+              textAlign: 'center',
+              fontSize: '0.65rem', fontWeight: 700,
+              color: C.textFaint,
+              padding: '4px 0',
+              letterSpacing: '0.04em',
+            }}>
+              o
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Workflow card ────────────────────────────────────────────────────────────
 
 type WorkflowCardProps = {
@@ -124,9 +168,30 @@ function SingleAgent(props: NodeProps) {
   )
 }
 
+// Agent id → display label mapping (for pipeline card)
+const AGENT_LABELS: Record<string, string> = {
+  memory: 'Memory',
+  planner: 'Planner',
+  'site-analyzer': 'Site Analyzer',
+  content: 'Content',
+  design: 'Design',
+  html: 'HTML',
+  'html-template': 'HTML Template',
+  seo: 'SEO',
+}
+
+const AGENT_MODEL = 'claude-haiku-4-5-20251001'
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function WorkflowPage() {
+  // Derive orchestrator workflow list from WORKFLOWS for the header block
+  const workflowList = WORKFLOWS.map((w, i) => ({
+    num: String(i + 1),
+    label: w.name.replace(/^\d+ · /, ''),
+    trigger: w.trigger.replace(/«|»/g, '').replace(/^\"|\"$/g, ''),
+  }))
+
   return (
     <div style={{ padding: '32px 40px', maxWidth: '1100px' }}>
       <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Workflow</h1>
@@ -170,15 +235,9 @@ export default function WorkflowPage() {
           <Arrow />
         </div>
 
-        {/* Right: 5 workflow labels */}
+        {/* Right: workflow labels derived from WORKFLOWS */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '16px 20px', gap: '8px' }}>
-          {[
-            { num: '1', label: 'Creazione sito', trigger: 'crea, genera, nuovo sito — o nessun sito esistente' },
-            { num: '2', label: 'Modifica puntuale', trigger: 'qualsiasi richiesta generica su sito esistente' },
-            { num: '3', label: 'Ottimizzazione SEO', trigger: 'seo, meta tag, sitemap, robots' },
-            { num: '4', label: 'Aggiorna Design', trigger: 'colore, font, stile, tema, restyle' },
-            { num: '5', label: 'Aggiorna Contenuti', trigger: 'riscrivi, tono di voce, traduci' },
-          ].map(w => (
+          {workflowList.map(w => (
             <div key={w.num} style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, width: '16px', flexShrink: 0 }}>{w.num}</span>
               <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.text }}>{w.label}</span>
@@ -188,55 +247,58 @@ export default function WorkflowPage() {
         </div>
       </div>
 
-      {/* ── 1. Creazione sito ── */}
+      {/* ── 1. Creazione sito (pipeline) — rendered manually for complex layout ── */}
       <WorkflowCard
-        title="1 · Creazione sito"
-        trigger="«crea», «genera», «nuovo sito» — o nessun sito esistente"
+        title={WORKFLOWS[0].name}
+        trigger={WORKFLOWS[0].trigger}
       >
-        <AgentNode id="memory" label="Memory" model="claude-haiku-4-5-20251001" />
+        <AgentNode id="memory" label={AGENT_LABELS['memory']} model={AGENT_MODEL} />
         <Arrow />
-        <AgentNode id="planner" label="Planner" model="claude-haiku-4-5-20251001" />
+        <AgentNode id="planner" label={AGENT_LABELS['planner']} model={AGENT_MODEL} />
         <Arrow />
-        <AgentNode id="site-analyzer" label="Site Analyzer" model="claude-haiku-4-5-20251001" optional note="se URL" />
+        <AgentNode id="site-analyzer" label={AGENT_LABELS['site-analyzer']} model={AGENT_MODEL} optional note="se URL" />
         <Arrow />
         <ParallelGroup>
-          <AgentNode id="content" label="Content" model="claude-haiku-4-5-20251001" />
-          <AgentNode id="design" label="Design" model="claude-haiku-4-5-20251001" />
+          <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} />
+          <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} />
         </ParallelGroup>
         <Arrow />
-        <AgentNode id="html" label="HTML" model="claude-haiku-4-5-20251001" />
+        <ConditionalGroup>
+          <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} conditional note="senza template" />
+          <AgentNode id="html-template" label={AGENT_LABELS['html-template']} model={AGENT_MODEL} conditional note="con template business" />
+        </ConditionalGroup>
       </WorkflowCard>
 
       {/* ── 2. Modifica puntuale ── */}
       <WorkflowCard
-        title="2 · Modifica puntuale"
-        trigger="qualsiasi richiesta generica su sito esistente"
+        title={WORKFLOWS[1].name}
+        trigger={WORKFLOWS[1].trigger}
       >
-        <SingleAgent id="html" label="HTML" model="claude-haiku-4-5-20251001" />
+        <SingleAgent id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} />
       </WorkflowCard>
 
       {/* ── 3. SEO ── */}
       <WorkflowCard
-        title="3 · Ottimizzazione SEO"
-        trigger="«seo», «meta tag», «sitemap», «robots», «canonical»"
+        title={WORKFLOWS[2].name}
+        trigger={WORKFLOWS[2].trigger}
       >
-        <SingleAgent id="seo" label="SEO" model="claude-haiku-4-5-20251001" />
+        <SingleAgent id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} />
       </WorkflowCard>
 
       {/* ── 4. Aggiorna design ── */}
       <WorkflowCard
-        title="4 · Aggiorna Design"
-        trigger="«colore», «font», «stile», «tema», «restyle», «più moderno»"
+        title={WORKFLOWS[3].name}
+        trigger={WORKFLOWS[3].trigger}
       >
-        <SingleAgent id="design" label="Design Update" model="claude-haiku-4-5-20251001" />
+        <SingleAgent id="design" label="Design Update" model={AGENT_MODEL} />
       </WorkflowCard>
 
       {/* ── 5. Aggiorna contenuti ── */}
       <WorkflowCard
-        title="5 · Aggiorna Contenuti"
-        trigger="«riscrivi», «tono di voce», «più formale», «traduci»"
+        title={WORKFLOWS[4].name}
+        trigger={WORKFLOWS[4].trigger}
       >
-        <SingleAgent id="content" label="Content Update" model="claude-haiku-4-5-20251001" />
+        <SingleAgent id="content" label="Content Update" model={AGENT_MODEL} />
       </WorkflowCard>
 
       {/* Legend */}
@@ -247,7 +309,7 @@ export default function WorkflowPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ display: 'inline-block', width: '22px', height: '14px', border: '1.5px dashed #cbd5e1', borderRadius: '3px' }} />
-          Step condizionale
+          Step condizionale / alternativo
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ display: 'inline-block', width: '22px', height: '14px', border: `1px dashed ${C.border}`, borderRadius: '3px', background: C.bg }} />

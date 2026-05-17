@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { type AgentMeta } from '../../../lib/agents/manifest'
+import { getAgentWorkflows, getOrphanAgents, ALWAYS_ON_AGENTS, WORKFLOWS } from '../../../lib/agents/workflow-registry'
 
 const C = {
   bg: '#faf9f7',
@@ -32,6 +33,11 @@ const CATEGORY_COLORS: Record<AgentMeta['category'], string> = {
   utility: '#10b981',
 }
 
+// Map workflow id → display number
+const WORKFLOW_NUMBER: Record<string, string> = Object.fromEntries(
+  WORKFLOWS.map((w, i) => [w.id, String(i + 1)])
+)
+
 type AgentRow = {
   name: string
   model: string
@@ -46,6 +52,67 @@ type AgentRow = {
   outputs: string[]
   filePath: string
 }
+
+// ── Workflow pills ───────────────────────────────────────────────────────────
+
+function WorkflowPills({ agentName, allNames }: { agentName: string; allNames: string[] }) {
+  // orchestrator → special "entry" pill
+  if (ALWAYS_ON_AGENTS.includes(agentName)) {
+    return (
+      <span style={{
+        display: 'inline-block',
+        fontSize: '0.62rem', fontWeight: 700,
+        padding: '2px 7px', borderRadius: '999px',
+        background: '#7c3aed18',
+        color: '#7c3aed',
+        letterSpacing: '0.04em',
+        whiteSpace: 'nowrap',
+      }}>
+        entry
+      </span>
+    )
+  }
+
+  const orphans = getOrphanAgents(allNames)
+  if (orphans.includes(agentName)) {
+    return (
+      <span style={{
+        fontSize: '0.72rem', fontWeight: 600,
+        color: C.amber,
+        whiteSpace: 'nowrap',
+      }}>
+        ⚠ orfano
+      </span>
+    )
+  }
+
+  const workflows = getAgentWorkflows(agentName)
+  if (workflows.length === 0) return <span style={{ color: C.textFaint, fontSize: '0.72rem' }}>—</span>
+
+  return (
+    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+      {workflows.map(w => (
+        <span
+          key={w.id}
+          title={w.name}
+          style={{
+            display: 'inline-block',
+            fontSize: '0.62rem', fontWeight: 700,
+            padding: '2px 7px', borderRadius: '999px',
+            background: '#2563eb12',
+            color: '#2563eb',
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {WORKFLOW_NUMBER[w.id] ?? w.id}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// ── Page ────────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentRow[]>([])
@@ -82,9 +149,13 @@ export default function AgentsPage() {
   })
 
   const enabledCount = agents.filter(a => a.enabled).length
+  const allNames = agents.map(a => a.name)
+
+  // gridTemplateColumns: dot | name | category | model | maxTokens | stato | workflow | arrow
+  const GRID = '16px 1fr 140px 160px 100px 80px 110px 32px'
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '1100px' }}>
+    <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Agents</h1>
         <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: C.textMuted }}>
@@ -141,13 +212,13 @@ export default function AgentsPage() {
           {/* Table header */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '16px 1fr 140px 160px 100px 80px 32px',
+            gridTemplateColumns: GRID,
             gap: '0 16px',
             padding: '10px 20px',
             borderBottom: `1px solid ${C.border}`,
             background: C.bg,
           }}>
-            {['', 'Nome', 'Categoria', 'Modello', 'Max tokens', 'Stato', ''].map((h, i) => (
+            {['', 'Nome', 'Categoria', 'Modello', 'Max tokens', 'Stato', 'Workflow', ''].map((h, i) => (
               <span key={i} style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 {h}
               </span>
@@ -166,7 +237,7 @@ export default function AgentsPage() {
                 href={`/back-office/agents/${agent.name}`}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '16px 1fr 140px 160px 100px 80px 32px',
+                  gridTemplateColumns: GRID,
                   gap: '0 16px',
                   alignItems: 'center',
                   padding: '13px 20px',
@@ -228,6 +299,9 @@ export default function AgentsPage() {
                 }}>
                   {agent.enabled ? 'Attivo' : 'Off'}
                 </span>
+
+                {/* Workflow pills */}
+                <WorkflowPills agentName={agent.name} allNames={allNames} />
 
                 {/* Arrow */}
                 <span style={{ fontSize: '0.8rem', color: C.textFaint, justifySelf: 'end' }}>→</span>
