@@ -220,12 +220,42 @@ export default function AgentDetailPage({ params }: { params: Promise<{ name: st
   }
 
   if (error || !agent || !draft) {
+    const isMigration = error?.includes('migration') || error?.includes('Tabelle DB')
     return (
-      <div style={{ padding: '32px 40px' }}>
+      <div style={{ padding: '32px 40px', maxWidth: '720px' }}>
         <Link href="/back-office/agents" style={{ fontSize: '0.82rem', color: C.textMuted, textDecoration: 'none' }}>
           ← Tutti gli agenti
         </Link>
-        <p style={{ color: '#ef4444', marginTop: '16px' }}>{error ?? 'Agente non trovato'}</p>
+        {isMigration ? (
+          <div style={{ marginTop: '20px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: '10px', padding: '16px 20px' }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: '0.9rem', color: '#713f12' }}>⚠ Migration SQL richiesta</p>
+            <p style={{ margin: '0 0 12px', fontSize: '0.84rem', color: '#78350f', lineHeight: 1.6 }}>
+              Le tabelle <code style={{ fontFamily: 'monospace', background: '#fef08a', padding: '1px 4px', borderRadius: '3px' }}>agent_configs</code> e{' '}
+              <code style={{ fontFamily: 'monospace', background: '#fef08a', padding: '1px 4px', borderRadius: '3px' }}>agent_prompt_versions</code>{' '}
+              non esistono ancora. Esegui questo SQL nel tuo progetto Supabase:
+            </p>
+            <pre style={{ margin: 0, background: '#1e1e1e', color: '#d4d4d4', borderRadius: '8px', padding: '12px 14px', fontSize: '0.75rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>{`CREATE TABLE agent_configs (
+  name TEXT PRIMARY KEY,
+  model TEXT NOT NULL,
+  max_tokens INTEGER NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  system_prompt TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE agent_prompt_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_name TEXT NOT NULL REFERENCES agent_configs(name) ON DELETE CASCADE,
+  system_prompt TEXT NOT NULL,
+  model TEXT NOT NULL,
+  max_tokens INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  label TEXT
+);`}</pre>
+          </div>
+        ) : (
+          <p style={{ color: '#ef4444', marginTop: '16px', fontSize: '0.88rem' }}>{error ?? 'Agente non trovato'}</p>
+        )}
       </div>
     )
   }

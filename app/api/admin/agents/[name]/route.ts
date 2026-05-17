@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isAdmin } from '../../../../../lib/admin'
-import { getAgentConfig, updateAgentConfig } from '../../../../../lib/agents/db-config'
+import { getAgentConfig, getAgentConfigs, updateAgentConfig } from '../../../../../lib/agents/db-config'
 import { AGENTS_MANIFEST } from '../../../../../lib/agents/manifest'
 
 async function verifyAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -26,7 +26,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<Params
   const { name } = await params
 
   try {
-    const db = await getAgentConfig(name)
+    let db = await getAgentConfig(name)
+    // If not found, trigger seeding (first visit) then retry
+    if (!db) {
+      await getAgentConfigs()
+      db = await getAgentConfig(name)
+    }
     if (!db) return Response.json({ error: 'Agent not found' }, { status: 404 })
 
     const meta = AGENTS_MANIFEST.find(a => a.name === name)
@@ -40,7 +45,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<Params
       filePath: meta?.filePath ?? '',
     })
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 })
+    const msg = String(err)
+    const isMissingTable = msg.includes('agent_configs') && (msg.includes('does not exist') || msg.includes('42P01'))
+    if (isMissingTable) {
+      return Response.json({
+        error: 'Tabelle DB non trovate. Esegui la migration SQL in Supabase prima di usare il Back Office.',
+      }, { status: 503 })
+    }
+    return Response.json({ error: msg }, { status: 500 })
   }
 }
 
@@ -76,6 +88,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<Para
       filePath: meta?.filePath ?? '',
     })
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 })
+    const msg = String(err)
+    const isMissingTable = msg.includes('agent_configs') && (msg.includes('does not exist') || msg.includes('42P01'))
+    if (isMissingTable) {
+      return Response.json({
+        error: 'Tabelle DB non trovate. Esegui la migration SQL in Supabase prima di usare il Back Office.',
+      }, { status: 503 })
+    }
+    return Response.json({ error: msg }, { status: 500 })
   }
 }
