@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { AGENTS_MANIFEST, PIPELINE_FLOW, PIPELINE_EDGES } from '../../../lib/agents/manifest'
 
 const C = {
   bg: '#faf9f7',
@@ -13,155 +12,192 @@ const C = {
   white: '#ffffff',
 }
 
-// Canvas dimensions
-const COL_WIDTH = 220
-const ROW_HEIGHT = 130
-const NODE_WIDTH = 180
-const NODE_HEIGHT = 84
-const PADDING = 60
-const MAX_COL = Math.max(...PIPELINE_FLOW.map(n => n.column))
-const MAX_ROW = Math.max(...PIPELINE_FLOW.map(n => n.row))
-const CANVAS_W = (MAX_COL + 1) * COL_WIDTH + PADDING * 2
-const CANVAS_H = (MAX_ROW + 1) * ROW_HEIGHT + PADDING * 2
+// ── Agent node ──────────────────────────────────────────────────────────────
 
-const nodePos = (col: number, row: number) => ({
-  x: PADDING + col * COL_WIDTH,
-  y: PADDING + row * ROW_HEIGHT,
-})
-
-const nodeCenter = (col: number, row: number) => {
-  const p = nodePos(col, row)
-  return { x: p.x + NODE_WIDTH / 2, y: p.y + NODE_HEIGHT / 2 }
+type NodeProps = {
+  id: string
+  label: string
+  model?: string
+  optional?: boolean
+  note?: string
 }
 
-export default function PipelinePage() {
-  // Modifier/utility agents shown separately
-  const otherAgents = AGENTS_MANIFEST.filter(a => !PIPELINE_FLOW.some(p => p.id === a.name))
-
+function AgentNode({ id, label, model, optional, note }: NodeProps) {
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
-      <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Pipeline</h1>
-      <p style={{ margin: '6px 0 24px', fontSize: '0.88rem', color: C.textMuted }}>
-        Flusso degli agenti per la generazione di un nuovo sito. Le frecce indicano dipendenze di dati.
+    <Link
+      href={`/back-office/agents/${id}`}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        width: '148px', minHeight: '72px',
+        background: C.white,
+        border: `${optional ? '1.5px dashed #cbd5e1' : `1.5px solid ${C.text}`}`,
+        borderRadius: '10px',
+        padding: '10px 12px',
+        textDecoration: 'none',
+        gap: '2px',
+        flexShrink: 0,
+        transition: 'box-shadow 0.12s',
+      }}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
+      onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = 'none'}
+    >
+      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.text, textAlign: 'center', lineHeight: 1.3 }}>
+        {label}
+      </span>
+      {note && (
+        <span style={{ fontSize: '0.68rem', color: C.textFaint, textAlign: 'center' }}>{note}</span>
+      )}
+      {model && (
+        <span style={{ fontSize: '0.68rem', color: C.textFaint, fontFamily: 'ui-monospace, monospace', marginTop: '4px' }}>
+          {model.replace('claude-', '').replace('-20251001', '')}
+        </span>
+      )}
+    </Link>
+  )
+}
+
+// ── Arrow ───────────────────────────────────────────────────────────────────
+
+function Arrow() {
+  return (
+    <svg width="28" height="16" viewBox="0 0 28 16" style={{ flexShrink: 0 }}>
+      <line x1="0" y1="8" x2="20" y2="8" stroke={C.borderStrong} strokeWidth="1.5" />
+      <polygon points="20,4 28,8 20,12" fill={C.borderStrong} />
+    </svg>
+  )
+}
+
+// ── Parallel group (vertical stack with bracket) ─────────────────────────────
+
+function ParallelGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: '8px',
+      padding: '10px 14px',
+      border: `1px dashed ${C.border}`,
+      borderRadius: '10px',
+      background: C.bg,
+      position: 'relative',
+    }}>
+      <span style={{
+        position: 'absolute', top: '-9px', left: '12px',
+        fontSize: '0.6rem', fontWeight: 600, color: C.textFaint,
+        background: C.bg, padding: '0 4px',
+        textTransform: 'uppercase', letterSpacing: '0.06em',
+      }}>
+        parallelo
+      </span>
+      {children}
+    </div>
+  )
+}
+
+// ── Workflow card ────────────────────────────────────────────────────────────
+
+type WorkflowCardProps = {
+  title: string
+  trigger: string
+  children: React.ReactNode
+}
+
+function WorkflowCard({ title, trigger, children }: WorkflowCardProps) {
+  return (
+    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px 24px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '16px' }}>
+        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: C.text }}>{title}</h2>
+        <span style={{ fontSize: '0.78rem', color: C.textFaint }}>Trigger: <em>{trigger}</em></span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ── Single-agent workflow ────────────────────────────────────────────────────
+
+function SingleAgent(props: NodeProps) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <AgentNode {...props} />
+    </div>
+  )
+}
+
+// ── Page ────────────────────────────────────────────────────────────────────
+
+export default function WorkflowPage() {
+  return (
+    <div style={{ padding: '32px 40px', maxWidth: '1100px' }}>
+      <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Workflow</h1>
+      <p style={{ margin: '6px 0 28px', fontSize: '0.88rem', color: C.textMuted }}>
+        I 5 flussi di esecuzione degli agenti. Ogni nodo è cliccabile e apre la configurazione dell&apos;agente.
       </p>
 
-      {/* Canvas */}
-      <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px', overflowX: 'auto', marginBottom: '28px' }}>
-        <svg width={CANVAS_W} height={CANVAS_H} style={{ display: 'block', minWidth: '100%' }}>
-          <defs>
-            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill={C.borderStrong} />
-            </marker>
-          </defs>
+      {/* ── 1. Creazione sito ── */}
+      <WorkflowCard
+        title="1 · Creazione sito"
+        trigger="«crea», «genera», «nuovo sito» — o nessun sito esistente"
+      >
+        <AgentNode id="memory" label="Memory" model="claude-haiku-4-5-20251001" />
+        <Arrow />
+        <AgentNode id="planner" label="Planner" model="claude-haiku-4-5-20251001" />
+        <Arrow />
+        <AgentNode id="site-analyzer" label="Site Analyzer" model="claude-haiku-4-5-20251001" optional note="se URL" />
+        <Arrow />
+        <ParallelGroup>
+          <AgentNode id="content" label="Content" model="claude-haiku-4-5-20251001" />
+          <AgentNode id="design" label="Design" model="claude-haiku-4-5-20251001" />
+        </ParallelGroup>
+        <Arrow />
+        <AgentNode id="html" label="HTML" model="claude-haiku-4-5-20251001" />
+      </WorkflowCard>
 
-          {/* Edges */}
-          {PIPELINE_EDGES.map((edge, i) => {
-            const from = PIPELINE_FLOW.find(n => n.id === edge.from)
-            const to = PIPELINE_FLOW.find(n => n.id === edge.to)
-            if (!from || !to) return null
-            const fromPos = nodePos(from.column, from.row)
-            const toPos = nodePos(to.column, to.row)
-            const fromX = fromPos.x + NODE_WIDTH
-            const fromY = fromPos.y + NODE_HEIGHT / 2
-            const toX = toPos.x
-            const toY = toPos.y + NODE_HEIGHT / 2
-            // Bezier curve
-            const midX = (fromX + toX) / 2
-            const path = `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`
-            return (
-              <path
-                key={i}
-                d={path}
-                stroke={C.borderStrong}
-                strokeWidth={1.5}
-                fill="none"
-                markerEnd="url(#arrow)"
-              />
-            )
-          })}
+      {/* ── 2. Modifica puntuale ── */}
+      <WorkflowCard
+        title="2 · Modifica puntuale"
+        trigger="qualsiasi richiesta generica su sito esistente"
+      >
+        <SingleAgent id="html" label="HTML" model="claude-haiku-4-5-20251001" />
+      </WorkflowCard>
 
-          {/* Nodes */}
-          {PIPELINE_FLOW.map(node => {
-            const pos = nodePos(node.column, node.row)
-            const agent = AGENTS_MANIFEST.find(a => a.name === node.id)
-            const isOptional = 'optional' in node && node.optional
-            return (
-              <g key={node.id}>
-                <a href={`/back-office/agents/${node.id}`}>
-                  <rect
-                    x={pos.x} y={pos.y}
-                    width={NODE_WIDTH} height={NODE_HEIGHT}
-                    rx={10} ry={10}
-                    fill={C.white}
-                    stroke={isOptional ? '#cbd5e1' : C.text}
-                    strokeWidth={isOptional ? 1 : 1.5}
-                    strokeDasharray={isOptional ? '5 4' : 'none'}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <text
-                    x={pos.x + NODE_WIDTH / 2} y={pos.y + 30}
-                    textAnchor="middle"
-                    fontSize="14" fontWeight="600"
-                    fill={C.text}
-                    style={{ fontFamily: 'inherit' }}
-                  >{node.label.split('\n')[0]}</text>
-                  {node.label.includes('\n') && (
-                    <text
-                      x={pos.x + NODE_WIDTH / 2} y={pos.y + 47}
-                      textAnchor="middle"
-                      fontSize="10"
-                      fill={C.textFaint}
-                      style={{ fontFamily: 'inherit' }}
-                    >{node.label.split('\n')[1]}</text>
-                  )}
-                  <text
-                    x={pos.x + NODE_WIDTH / 2} y={pos.y + NODE_HEIGHT - 16}
-                    textAnchor="middle"
-                    fontSize="10"
-                    fill={C.textFaint}
-                    style={{ fontFamily: 'ui-monospace, monospace' }}
-                  >{agent?.model.replace('claude-', '').replace('-20251001', '') || ''}</text>
-                </a>
-              </g>
-            )
-          })}
-        </svg>
-      </div>
+      {/* ── 3. SEO ── */}
+      <WorkflowCard
+        title="3 · Ottimizzazione SEO"
+        trigger="«seo», «meta tag», «sitemap», «robots», «canonical»"
+      >
+        <SingleAgent id="seo" label="SEO" model="claude-haiku-4-5-20251001" />
+      </WorkflowCard>
+
+      {/* ── 4. Aggiorna design ── */}
+      <WorkflowCard
+        title="4 · Aggiorna Design"
+        trigger="«colore», «font», «stile», «tema», «restyle», «più moderno»"
+      >
+        <SingleAgent id="design" label="Design Update" model="claude-haiku-4-5-20251001" />
+      </WorkflowCard>
+
+      {/* ── 5. Aggiorna contenuti ── */}
+      <WorkflowCard
+        title="5 · Aggiorna Contenuti"
+        trigger="«riscrivi», «tono di voce», «più formale», «traduci»"
+      >
+        <SingleAgent id="content" label="Content Update" model="claude-haiku-4-5-20251001" />
+      </WorkflowCard>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '32px', fontSize: '0.78rem', color: C.textMuted }}>
+      <div style={{ display: 'flex', gap: '20px', marginTop: '8px', fontSize: '0.78rem', color: C.textMuted }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ display: 'inline-block', width: '20px', height: '12px', border: `1.5px solid ${C.text}`, borderRadius: '3px' }} />
+          <span style={{ display: 'inline-block', width: '22px', height: '14px', border: `1.5px solid ${C.text}`, borderRadius: '3px' }} />
           Step obbligatorio
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ display: 'inline-block', width: '20px', height: '12px', border: '1px dashed #cbd5e1', borderRadius: '3px' }} />
+          <span style={{ display: 'inline-block', width: '22px', height: '14px', border: '1.5px dashed #cbd5e1', borderRadius: '3px' }} />
           Step condizionale
         </div>
-      </div>
-
-      {/* Other agents */}
-      <div>
-        <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: C.text }}>Altri agenti</h2>
-        <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: C.textMuted }}>
-          Non parte della pipeline di creazione iniziale — invocati in modifiche puntuali o background.
-        </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
-          {otherAgents.map(a => (
-            <Link
-              key={a.name}
-              href={`/back-office/agents/${a.name}`}
-              style={{
-                background: C.white, border: `1px solid ${C.border}`,
-                borderRadius: '8px', padding: '10px 12px',
-                textDecoration: 'none', color: C.text,
-                fontSize: '0.85rem',
-              }}
-            >
-              <p style={{ margin: 0, fontWeight: 600 }}>{a.displayName}</p>
-              <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: C.textFaint, textTransform: 'capitalize' }}>{a.category}</p>
-            </Link>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ display: 'inline-block', width: '22px', height: '14px', border: `1px dashed ${C.border}`, borderRadius: '3px', background: C.bg }} />
+          Esecuzione parallela
         </div>
       </div>
     </div>

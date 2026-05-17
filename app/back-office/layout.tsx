@@ -87,7 +87,7 @@ export default function BackOfficeLayout({ children }: { children: React.ReactNo
             Menu
           </p>
           <NavItem icon="⌬" label="Agents" href="/back-office/agents" active={pathname.startsWith('/back-office/agents')} />
-          <NavItem icon="◇" label="Pipeline" href="/back-office/pipeline" active={pathname.startsWith('/back-office/pipeline')} />
+          <NavItem icon="◇" label="Workflow" href="/back-office/pipeline" active={pathname.startsWith('/back-office/pipeline')} />
           <NavItem icon="◉" label="Runs" href="/back-office/runs" active={pathname.startsWith('/back-office/runs')} />
         </nav>
 
