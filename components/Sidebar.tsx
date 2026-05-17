@@ -149,19 +149,9 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
         )}
       </nav>
 
-      {/* Bottom cards + user */}
-      <div style={{ padding: '8px 10px', borderTop: '1px solid #e8e4de', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ background: 'white', border: '1px solid #e8e4de', borderRadius: '10px', padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: '#1a1a1a' }}>Upgrade al Pro</p>
-            <p style={{ margin: 0, fontSize: '0.7rem', color: '#9b9896' }}>Sblocca più funzionalità</p>
-          </div>
-          <div style={{ width: '28px', height: '28px', background: '#7c3aed', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <span style={{ color: 'white', fontSize: '0.8rem' }}>⚡</span>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 2px' }}>
+      {/* User section */}
+      <div style={{ padding: '12px 10px', borderTop: '1px solid #e8e4de' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'white', border: '1px solid #e8e4de', borderRadius: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '26px', height: '26px', background: '#e05a2b', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.7rem', fontWeight: 700 }}>
               {userInitial}
