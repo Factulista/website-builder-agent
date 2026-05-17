@@ -178,6 +178,7 @@ const AGENT_LABELS: Record<string, string> = {
   html: 'HTML',
   'html-template': 'HTML Template',
   seo: 'SEO',
+  images: 'Images',
 }
 
 const AGENT_MODEL = 'claude-haiku-4-5-20251001'
@@ -279,6 +280,20 @@ export default function WorkflowPage() {
           <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} conditional note="aggiorna design" />
           <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} conditional note="aggiorna contenuti" />
           <AgentNode id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} conditional note="ottimizzazione SEO" />
+
+          {/* Images branch with triggered subagents */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <AgentNode id="images" label={AGENT_LABELS['images']} model={AGENT_MODEL} conditional note="crea/modifica" />
+              <Arrow />
+              <ParallelGroup>
+                <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} note="layout" />
+                <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} note="markup" />
+                <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} note="alt text" />
+                <AgentNode id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} note="metadata" />
+              </ParallelGroup>
+            </div>
+          </div>
         </ConditionalGroup>
       </WorkflowCard>
 

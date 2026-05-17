@@ -31,7 +31,7 @@ type Stats = {
   totalCost: number
 }
 
-const AGENT_TYPES = ['pipeline', 'html', 'seo', 'design-update', 'content-update']
+const AGENT_TYPES = ['pipeline', 'html', 'seo', 'design-update', 'content-update', 'images']
 const STATUSES = ['success', 'error', 'running']
 const PAGE_SIZE = 50
 
@@ -44,6 +44,7 @@ function agentColor(type: string): string {
     case 'seo': return C.green
     case 'design-update': return C.orange
     case 'content-update': return C.teal
+    case 'images': return '#ec4899' // pink
     default: return C.textMuted
   }
 }

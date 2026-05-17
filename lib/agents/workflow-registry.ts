@@ -7,6 +7,7 @@ export type WorkflowStepDef = {
   conditional?: boolean   // branch alternativo (es. html-template vs html)
   note?: string
   parallelWith?: string   // agentId con cui gira in parallelo
+  triggersAgents?: string[] // agenti che questo triggera dopo (es. images → design, html, content, seo)
 }
 
 export type WorkflowDef = {
@@ -40,6 +41,12 @@ export const WORKFLOWS: WorkflowDef[] = [
       { agentId: 'design-update', conditional: true, note: 'aggiorna design' },
       { agentId: 'content-update', conditional: true, note: 'aggiorna contenuti' },
       { agentId: 'seo', conditional: true, note: 'ottimizzazione SEO' },
+      {
+        agentId: 'images',
+        conditional: true,
+        note: 'crea/modifica immagini',
+        triggersAgents: ['design-update', 'html', 'content-update', 'seo'],
+      },
     ],
   },
 ]
