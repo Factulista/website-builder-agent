@@ -18,13 +18,14 @@ async function verifyAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await verifyAdmin(req)
   if (!auth.ok) return Response.json({ error: auth.error }, { status: 401 })
 
+  const { id } = await params
   try {
-    const run = await getRun(params.id)
+    const run = await getRun(id)
     if (!run) return Response.json({ error: 'Run not found' }, { status: 404 })
     return Response.json(run)
   } catch (err) {
