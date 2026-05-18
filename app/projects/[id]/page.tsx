@@ -1167,36 +1167,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </div>
         </div>
 
-        {/* Page tabs */}
-        {pages.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '6px 10px', borderBottom: `1px solid ${C.border}`, background: C.bg, overflowX: 'auto', flexShrink: 0 }}>
-            {pages.map(p => (
-              <div key={p.slug} style={{ display: 'flex', alignItems: 'center' }}>
-                <button
-                  onClick={() => setActiveSlug(p.slug)}
-                  style={{
-                    padding: '4px 12px', borderRadius: '6px', fontSize: '0.78rem', whiteSpace: 'nowrap',
-                    background: p.slug === activeSlug ? C.white : 'transparent',
-                    color: p.slug === activeSlug ? C.text : C.textMuted,
-                    border: p.slug === activeSlug ? `1px solid ${C.border}` : '1px solid transparent',
-                    fontWeight: p.slug === activeSlug ? 600 : 400,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                    boxShadow: p.slug === activeSlug ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-                  }}
-                >
-                  {p.name}
-                </button>
-                {p.slug !== 'home' && p.slug === activeSlug && (
-                  <button
-                    onClick={() => handleDeletePage(p.slug)}
-                    style={{ background: 'transparent', color: '#ef4444', border: 'none', padding: '2px 5px', fontSize: '0.85rem', cursor: 'pointer' }}
-                    title={t('project.deletePage' as const, language as any)}
-                  >×</button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Version history panel */}
         {showVersionHistory ? (
