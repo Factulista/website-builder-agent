@@ -175,8 +175,8 @@ export async function runFullPipeline(
   if (!content?.pages) throw new Error('Content agent non ha prodotto contenuti validi')
   if (!design?.tokens) throw new Error('Design agent non ha prodotto un design valido')
 
-  // Step 3: HTML — usa template se disponibile, altrimenti genera da zero
-  const templateName = detectTemplate(plan.businessType)
+  // Step 3: HTML — usa template SOLO alla prima run, altrimenti genera dal design system
+  const templateName = existingPages.length === 0 ? detectTemplate(plan.businessType) : null
   const templateHtml = templateName ? loadTemplate(templateName) : null
 
   emit?.('🏗️ HTML')
@@ -186,10 +186,23 @@ export async function runFullPipeline(
     : await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey, existingPagesMeta)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
 
-  // Merge: preserva le pagine esistenti, aggiunge/aggiorna solo le nuove
+  // Sync navbar: estrai la navbar dalla prima nuova pagina (che ha già tutti i link corretti)
+  // e applicala a tutte le pagine esistenti così la voce di menu appare ovunque
+  const updatedExistingPages = (() => {
+    if (existingPages.length === 0 || htmlOutput.pages.length === 0) return existingPages
+    const navMatch = htmlOutput.pages[0].html.match(/<nav[\s\S]*?<\/nav>/i)
+    if (!navMatch) return existingPages
+    const newNav = navMatch[0]
+    return existingPages.map(p => ({
+      ...p,
+      html: p.html.replace(/<nav[\s\S]*?<\/nav>/i, newNav),
+    }))
+  })()
+
+  // Merge: preserva le pagine esistenti (con navbar aggiornata), aggiunge/aggiorna solo le nuove
   const mergedPages = existingPages.length > 0
     ? [
-        ...existingPages.filter(ep => !htmlOutput.pages.some(np => np.slug === ep.slug)),
+        ...updatedExistingPages.filter(ep => !htmlOutput.pages.some(np => np.slug === ep.slug)),
         ...htmlOutput.pages,
       ]
     : htmlOutput.pages
