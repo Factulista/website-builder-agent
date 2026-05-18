@@ -19,6 +19,26 @@ export type AgentMeta = {
 
 export const AGENTS_MANIFEST: AgentMeta[] = [
   {
+    name: 'clarifier',
+    displayName: 'Clarifier',
+    description: 'Analizza la richiesta utente e, se ambigua, fa domande prima di avviare la pipeline. Evita assunzioni errate su lingua, business type ecc.',
+    model: 'claude-haiku-4-5-20251001',
+    maxTokens: 512,
+    category: 'orchestration',
+    inputs: ['user request', 'existing pages', 'project context'],
+    outputs: ['proceed: true | questions string'],
+    systemPromptPreview: 'Decidi se la richiesta è chiara o se mancano info critiche. Chiedi solo in 2 casi: business type ambiguo su prima run, lingua non deducibile.',
+    filePath: 'lib/agents/clarifier.ts',
+    enabled: true,
+    rules: [
+      'Gira solo su pipeline (non su html/seo/design-update/content-update)',
+      'Chiede solo se business type completamente assente o lingua non deducibile su prima run',
+      'Con pagine esistenti: procede sempre senza chiedere',
+      'In caso di errore o dubbio → procede (mai bloccare inutilmente)',
+      'Max 2 domande alla volta, tono amichevole, in italiano',
+    ],
+  },
+  {
     name: 'orchestrator',
     displayName: 'Orchestrator',
     description: 'Classifica il messaggio utente e instrada al pipeline o all\'agente appropriato (html, seo, design-update, content-update).',
@@ -261,15 +281,17 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
 ]
 
 export const PIPELINE_FLOW = [
-  { id: 'memory', label: 'Memory', column: 0, row: 0 },
-  { id: 'planner', label: 'Planner', column: 1, row: 0 },
-  { id: 'site-analyzer', label: 'Site Analyzer\n(se URL)', column: 1, row: 1, optional: true },
-  { id: 'content', label: 'Content', column: 2, row: 0 },
-  { id: 'design', label: 'Design', column: 2, row: 1 },
-  { id: 'html', label: 'HTML', column: 3, row: 0 },
+  { id: 'clarifier', label: 'Clarifier', column: 0, row: 0 },
+  { id: 'memory', label: 'Memory', column: 1, row: 0 },
+  { id: 'planner', label: 'Planner', column: 2, row: 0 },
+  { id: 'site-analyzer', label: 'Site Analyzer\n(se URL)', column: 2, row: 1, optional: true },
+  { id: 'content', label: 'Content', column: 3, row: 0 },
+  { id: 'design', label: 'Design', column: 3, row: 1 },
+  { id: 'html', label: 'HTML', column: 4, row: 0 },
 ] as const
 
 export const PIPELINE_EDGES = [
+  { from: 'clarifier', to: 'memory' },
   { from: 'memory', to: 'planner' },
   { from: 'planner', to: 'content' },
   { from: 'planner', to: 'design' },

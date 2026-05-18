@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isAdmin } from '../../../../lib/admin'
-import { getAgentConfigs } from '../../../../lib/agents/db-config'
+import { getAgentConfigs, syncAgentMetadata } from '../../../../lib/agents/db-config'
 import { AGENTS_MANIFEST } from '../../../../lib/agents/manifest'
 
 async function verifyAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -22,18 +22,23 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) return Response.json({ error: auth.error }, { status: 401 })
 
   try {
+    // Sync metadati in background (non-blocking)
+    syncAgentMetadata().catch(e => console.warn('[agents] syncAgentMetadata failed:', e))
+
     const dbConfigs = await getAgentConfigs()
 
     const merged = dbConfigs.map(db => {
+      // Fallback al manifest solo per campi non ancora nel DB
       const meta = AGENTS_MANIFEST.find(a => a.name === db.name)
       return {
         ...db,
-        displayName: meta?.displayName ?? db.name,
-        description: meta?.description ?? '',
-        category: meta?.category ?? 'utility',
-        inputs: meta?.inputs ?? [],
-        outputs: meta?.outputs ?? [],
-        filePath: meta?.filePath ?? '',
+        displayName: db.display_name ?? meta?.displayName ?? db.name,
+        description: db.description ?? meta?.description ?? '',
+        category: db.category ?? meta?.category ?? 'utility',
+        inputs: db.inputs ?? meta?.inputs ?? [],
+        outputs: db.outputs ?? meta?.outputs ?? [],
+        filePath: db.file_path ?? meta?.filePath ?? '',
+        rules: db.rules ?? meta?.rules ?? [],
       }
     })
 

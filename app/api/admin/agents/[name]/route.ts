@@ -37,12 +37,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<Params
     const meta = AGENTS_MANIFEST.find(a => a.name === name)
     return Response.json({
       ...db,
-      displayName: meta?.displayName ?? db.name,
-      description: meta?.description ?? '',
-      category: meta?.category ?? 'utility',
-      inputs: meta?.inputs ?? [],
-      outputs: meta?.outputs ?? [],
-      filePath: meta?.filePath ?? '',
+      displayName: db.display_name ?? meta?.displayName ?? db.name,
+      description: db.description ?? meta?.description ?? '',
+      category: db.category ?? meta?.category ?? 'utility',
+      inputs: db.inputs ?? meta?.inputs ?? [],
+      outputs: db.outputs ?? meta?.outputs ?? [],
+      filePath: db.file_path ?? meta?.filePath ?? '',
+      rules: db.rules ?? meta?.rules ?? [],
     })
   } catch (err) {
     const msg = String(err)
@@ -68,6 +69,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<Para
       max_tokens?: number
       enabled?: boolean
       system_prompt?: string
+      display_name?: string
+      description?: string
+      category?: string
+      file_path?: string
+      rules?: string[]
+      inputs?: string[]
+      outputs?: string[]
     }
 
     const patch: Parameters<typeof updateAgentConfig>[1] = {}
@@ -75,17 +83,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<Para
     if (body.max_tokens !== undefined) patch.max_tokens = body.max_tokens
     if (body.enabled !== undefined) patch.enabled = body.enabled
     if (body.system_prompt !== undefined) patch.system_prompt = body.system_prompt
+    if (body.display_name !== undefined) patch.display_name = body.display_name
+    if (body.description !== undefined) patch.description = body.description
+    if (body.category !== undefined) patch.category = body.category
+    if (body.file_path !== undefined) patch.file_path = body.file_path
+    if (body.rules !== undefined) patch.rules = body.rules
+    if (body.inputs !== undefined) patch.inputs = body.inputs
+    if (body.outputs !== undefined) patch.outputs = body.outputs
 
     const updated = await updateAgentConfig(name, patch)
     const meta = AGENTS_MANIFEST.find(a => a.name === name)
     return Response.json({
       ...updated,
-      displayName: meta?.displayName ?? updated.name,
-      description: meta?.description ?? '',
-      category: meta?.category ?? 'utility',
-      inputs: meta?.inputs ?? [],
-      outputs: meta?.outputs ?? [],
-      filePath: meta?.filePath ?? '',
+      displayName: updated.display_name ?? meta?.displayName ?? updated.name,
+      description: updated.description ?? meta?.description ?? '',
+      category: updated.category ?? meta?.category ?? 'utility',
+      inputs: updated.inputs ?? meta?.inputs ?? [],
+      outputs: updated.outputs ?? meta?.outputs ?? [],
+      filePath: updated.file_path ?? meta?.filePath ?? '',
+      rules: updated.rules ?? meta?.rules ?? [],
     })
   } catch (err) {
     const msg = String(err)

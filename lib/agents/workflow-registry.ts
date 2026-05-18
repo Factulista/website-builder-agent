@@ -23,6 +23,7 @@ export const WORKFLOWS: WorkflowDef[] = [
     name: '1 · Creazione sito',
     trigger: '«crea», «genera», «nuovo sito» — o nessun sito esistente',
     steps: [
+      { agentId: 'clarifier', optional: true, note: 'chiede chiarimenti se richiesta ambigua' },
       { agentId: 'memory' },
       { agentId: 'planner' },
       { agentId: 'site-analyzer', optional: true, note: 'se URL ispirazione' },

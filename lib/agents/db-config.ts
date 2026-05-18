@@ -10,6 +10,16 @@
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 
+  -- Migration 2: Aggiungi colonne metadati agli agent_configs
+  ALTER TABLE agent_configs
+    ADD COLUMN IF NOT EXISTS display_name TEXT,
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'utility',
+    ADD COLUMN IF NOT EXISTS file_path TEXT,
+    ADD COLUMN IF NOT EXISTS rules TEXT[] DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS inputs TEXT[] DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS outputs TEXT[] DEFAULT '{}';
+
   CREATE TABLE agent_prompt_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     agent_name TEXT NOT NULL REFERENCES agent_configs(name) ON DELETE CASCADE,
@@ -31,6 +41,14 @@ export type DbAgentConfig = {
   enabled: boolean
   system_prompt: string | null
   updated_at: string
+  // Nuovi campi metadati (nullable — potrebbero non essere ancora migrati)
+  display_name: string | null
+  description: string | null
+  category: string | null
+  file_path: string | null
+  rules: string[] | null
+  inputs: string[] | null
+  outputs: string[] | null
 }
 
 export type PromptVersion = {
@@ -70,6 +88,14 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
       max_tokens: a.maxTokens,
       enabled: a.enabled,
       system_prompt: a.systemPromptPreview,
+      // Metadati
+      display_name: a.displayName,
+      description: a.description,
+      category: a.category,
+      file_path: a.filePath,
+      rules: a.rules ?? [],
+      inputs: a.inputs,
+      outputs: a.outputs,
     }))
 
   if (toInsert.length > 0) {
@@ -91,6 +117,27 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
   return (existing ?? []) as DbAgentConfig[]
 }
 
+export async function syncAgentMetadata(): Promise<void> {
+  const supabase = getSupabase()
+
+  for (const meta of AGENTS_MANIFEST) {
+    // Aggiorna metadati solo se display_name è null (non ancora migrato)
+    await supabase
+      .from('agent_configs')
+      .update({
+        display_name: meta.displayName,
+        description: meta.description,
+        category: meta.category,
+        file_path: meta.filePath,
+        rules: meta.rules ?? [],
+        inputs: meta.inputs,
+        outputs: meta.outputs,
+      })
+      .eq('name', meta.name)
+      .is('display_name', null)  // solo se non ancora impostato
+  }
+}
+
 export async function getAgentConfig(name: string): Promise<DbAgentConfig | null> {
   const supabase = getSupabase()
   const { data, error } = await supabase
@@ -109,7 +156,7 @@ export async function getAgentConfig(name: string): Promise<DbAgentConfig | null
 
 export async function updateAgentConfig(
   name: string,
-  patch: Partial<Pick<DbAgentConfig, 'model' | 'max_tokens' | 'enabled' | 'system_prompt'>>
+  patch: Partial<Pick<DbAgentConfig, 'model' | 'max_tokens' | 'enabled' | 'system_prompt' | 'display_name' | 'description' | 'category' | 'file_path' | 'rules' | 'inputs' | 'outputs'>>
 ): Promise<DbAgentConfig> {
   const supabase = getSupabase()
 
