@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     const result = await listRuns({ agent_type, status, project_id, limit, offset, from_date, to_date })
     return Response.json(result)
   } catch (err) {
+    console.error('[admin/runs] listRuns error:', err)
     return Response.json({ error: String(err) }, { status: 500 })
   }
 }

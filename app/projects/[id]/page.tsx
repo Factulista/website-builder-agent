@@ -286,6 +286,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [editOutdated, setEditOutdated] = useState(false)
   const [chatHidden, setChatHidden] = useState(false)
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
+  const [pendingRequest, setPendingRequest] = useState<string | null>(null)
   const previewIframeRef = useRef<HTMLIFrameElement>(null)
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -577,6 +578,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const imagesBlock = effectiveImages.length
       ? (effectiveInput.trim() ? '\n\n' : '') + effectiveImages.map(u => `Immagine allegata: ${u}`).join('\n')
       : ''
+
+    // Se c'era una richiesta in sospeso (il clarifier aveva fatto domande), combina con la risposta
+    const savedPendingRequest = pendingRequest
+    if (pendingRequest) setPendingRequest(null)
+
     const userContent = (effectiveInput.trim() || 'Usa queste immagini.') + imagesBlock
     const userMsg: Message = { id: `u_${Date.now()}`, role: 'user', content: userContent }
     const updatedMessages = [...messages, userMsg]
@@ -602,12 +608,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setLoading(false)
     }
 
+    // Build the messages list sent to the API — if there was a pending request, combine it with the user's answer
+    const apiMessages = savedPendingRequest
+      ? [
+          ...messages.map(m => ({ role: m.role, content: m.content })),
+          { role: 'user', content: `${savedPendingRequest}\n\n[Risposta alle domande]: ${effectiveInput.trim()}${imagesBlock}` },
+        ]
+      : updatedMessages.map(m => ({ role: m.role, content: m.content }))
+
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         projectId: id,
-        messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
+        messages: apiMessages,
         pages,
         activePageSlug: activeSlug,
         customDomain: customDomainStatus === 'verified' ? customDomain : null,
@@ -689,6 +703,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       // Pipeline is asking which language — just show the message, don't touch pages
       const msg = (result.steps as string[] | undefined)?.[0] ?? result.input?.summary ?? '⚠️ In che lingua vuoi il sito?'
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
+      const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
+      await supabase.from('projects').update({
+        site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+      setLoading(false)
+      return
+    }
+
+    if (result.requestClarification) {
+      const msg = (result.steps as string[] | undefined)?.[0] ?? result.input?.summary ?? '🤔 Ho bisogno di qualche informazione in più.'
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
+      // Salva la richiesta originale per combinarla con la risposta
+      setPendingRequest(userContent)
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
         site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
