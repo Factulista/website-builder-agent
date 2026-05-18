@@ -3,6 +3,8 @@
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { WORKFLOWS } from '../../../lib/agents/workflow-registry'
+import { useLanguage } from '../../../lib/i18n/useLanguage'
+import { t } from '../../../lib/i18n/translations'
 
 const C = {
   bg: '#faf9f7',
@@ -72,7 +74,7 @@ function Arrow() {
 
 // ── Parallel group ──────────────────────────────────────────────────────────
 
-function ParallelGroup({ children }: { children: React.ReactNode }) {
+function ParallelGroup({ children, language }: { children: React.ReactNode; language: string }) {
   const childArray = Array.isArray(children) ? children : [children]
   return (
     <div style={{
@@ -89,7 +91,7 @@ function ParallelGroup({ children }: { children: React.ReactNode }) {
         background: C.bg, padding: '0 4px',
         textTransform: 'uppercase', letterSpacing: '0.06em',
       }}>
-        parallelo
+        {t('pipeline.parallel_label' as const, language as any)}
       </span>
       <div style={{ display: 'flex', gap: '8px' }}>
         {childArray.map((child, i) => (
@@ -131,6 +133,7 @@ const AGENT_LABELS: Record<string, string> = {
 const AGENT_MODEL = 'claude-haiku-4-5-20251001'
 
 export default function WorkflowPage() {
+  const { language } = useLanguage()
   const searchParams = useSearchParams()
   const router = useRouter()
   const selectedWorkflowId = searchParams.get('workflow') || WORKFLOWS[0].id
@@ -144,15 +147,15 @@ export default function WorkflowPage() {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '1100px' }}>
-      <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Workflow</h1>
+      <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>{t('pipeline.title' as const, language as any)}</h1>
       <p style={{ margin: '6px 0 20px', fontSize: '0.88rem', color: C.textMuted }}>
-        Visualizza il flusso di esecuzione degli agenti. Ogni nodo è cliccabile e apre la configurazione.
+        {t('pipeline.description' as const, language as any)}
       </p>
 
       {/* Workflow dropdown */}
       <div style={{ marginBottom: '24px' }}>
         <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
-          Seleziona workflow
+          {t('pipeline.selectWorkflow' as const, language as any)}
         </label>
         <select
           value={selectedWorkflowId}
@@ -194,7 +197,7 @@ export default function WorkflowPage() {
           {selectedWorkflow.name}
         </h2>
         <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: C.textMuted }}>
-          Trigger: <em>{selectedWorkflow.trigger}</em>
+          {t('pipeline.triggerLabel' as const, language as any)}: <em>{selectedWorkflow.trigger}</em>
         </p>
 
         {/* Flow visualization */}
@@ -210,12 +213,12 @@ export default function WorkflowPage() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Arrow />
-                <AgentNode id="site-analyzer" label={AGENT_LABELS['site-analyzer']} model={AGENT_MODEL} optional note="se URL" />
+                <AgentNode id="site-analyzer" label={AGENT_LABELS['site-analyzer']} model={AGENT_MODEL} optional note={t('pipeline.noteIfUrl' as const, language as any)} />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Arrow />
-                <ParallelGroup>
+                <ParallelGroup language={language}>
                   <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} />
                   <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} />
                 </ParallelGroup>
@@ -224,9 +227,9 @@ export default function WorkflowPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Arrow />
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                  <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} note="senza template" />
+                  <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} note={t('pipeline.noteNoTemplate' as const, language as any)} />
                   <OrSeparator />
-                  <AgentNode id="html-template" label={AGENT_LABELS['html-template']} model={AGENT_MODEL} note="con template" />
+                  <AgentNode id="html-template" label={AGENT_LABELS['html-template']} model={AGENT_MODEL} note={t('pipeline.noteWithTemplate' as const, language as any)} />
                 </div>
               </div>
             </>
@@ -234,22 +237,22 @@ export default function WorkflowPage() {
             <>
               {/* Modify site workflow */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '12px' }}>
-                <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} note="modifica struttura" />
+                <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} note={t('pipeline.noteModifyStructure' as const, language as any)} />
                 <OrSeparator />
-                <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} note="aggiorna design" />
+                <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} note={t('pipeline.noteUpdateDesign' as const, language as any)} />
                 <OrSeparator />
-                <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} note="aggiorna contenuti" />
+                <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} note={t('pipeline.noteUpdateContent' as const, language as any)} />
                 <OrSeparator />
-                <AgentNode id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} note="ottimizzazione SEO" />
+                <AgentNode id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} note={t('pipeline.noteOptimizeSEO' as const, language as any)} />
                 <OrSeparator />
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                  <AgentNode id="images" label={AGENT_LABELS['images']} model={AGENT_MODEL} note="crea/modifica" />
+                  <AgentNode id="images" label={AGENT_LABELS['images']} model={AGENT_MODEL} note={t('pipeline.noteCreateModify' as const, language as any)} />
                   <Arrow />
-                  <ParallelGroup>
-                    <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} note="layout" />
-                    <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} note="markup" />
-                    <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} note="alt text" />
-                    <AgentNode id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} note="metadata" />
+                  <ParallelGroup language={language}>
+                    <AgentNode id="design" label={AGENT_LABELS['design']} model={AGENT_MODEL} note={t('pipeline.noteLayout' as const, language as any)} />
+                    <AgentNode id="html" label={AGENT_LABELS['html']} model={AGENT_MODEL} note={t('pipeline.noteMarkup' as const, language as any)} />
+                    <AgentNode id="content" label={AGENT_LABELS['content']} model={AGENT_MODEL} note={t('pipeline.noteAltText' as const, language as any)} />
+                    <AgentNode id="seo" label={AGENT_LABELS['seo']} model={AGENT_MODEL} note={t('pipeline.noteMetadata' as const, language as any)} />
                   </ParallelGroup>
                 </div>
               </div>
@@ -262,19 +265,19 @@ export default function WorkflowPage() {
       <div style={{ display: 'flex', gap: '20px', fontSize: '0.78rem', color: C.textMuted }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ display: 'inline-block', width: '22px', height: '14px', border: `1.5px solid ${C.text}`, borderRadius: '3px' }} />
-          Step obbligatorio
+          {t('pipeline.required' as const, language as any)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ display: 'inline-block', width: '22px', height: '14px', border: '1.5px dashed #cbd5e1', borderRadius: '3px' }} />
-          Step condizionale / opzionale
+          {t('pipeline.optional' as const, language as any)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ display: 'inline-block', width: '22px', height: '14px', border: `1px dashed ${C.border}`, borderRadius: '3px', background: C.bg }} />
-          Esecuzione parallela
+          {t('pipeline.parallel' as const, language as any)}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontSize: '0.65rem', fontWeight: 700, color: C.textFaint }}>o</span>
-          Branch alternativo
+          {t('pipeline.alternative' as const, language as any)}
         </div>
       </div>
     </div>

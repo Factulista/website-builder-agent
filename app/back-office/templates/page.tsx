@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { getAllTemplates } from '../../../lib/templates/index'
+import { useLanguage } from '../../../lib/i18n/useLanguage'
+import { t } from '../../../lib/i18n/translations'
 
 const C = {
   bg: '#faf9f7',
@@ -16,6 +18,7 @@ const C = {
 }
 
 export default function TemplatesPage() {
+  const { language } = useLanguage()
   const templates = getAllTemplates()
 
   // Group templates by sector
@@ -28,15 +31,15 @@ export default function TemplatesPage() {
     <div style={{ padding: '32px 40px', maxWidth: '1100px' }}>
       <div style={{ marginBottom: '24px' }}>
         <Link href="/back-office" style={{ fontSize: '0.85rem', color: C.textMuted, textDecoration: 'none', display: 'inline-block', marginBottom: '20px' }}>
-          ← Back Office
+          ← {t('common.back' as const, language as any)}
         </Link>
       </div>
 
       <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text, marginBottom: '6px' }}>
-        Template
+        {t('templates.title' as const, language as any)}
       </h1>
       <p style={{ margin: '0 0 20px', fontSize: '0.88rem', color: C.textMuted }}>
-        Libreria dei template base per i siti web, organizzati per settore.
+        {t('templates.description' as const, language as any)}
       </p>
 
       {Object.entries(templatesBySector).map(([sector, sectorTemplates]) => (
@@ -164,7 +167,7 @@ export default function TemplatesPage() {
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#eff6ff'}
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                   >
-                    Visualizza →
+                    {t('templates.visualize' as const, language as any)} →
                   </Link>
                 </div>
               </div>
@@ -188,7 +191,7 @@ export default function TemplatesPage() {
             {templates.length}
           </p>
           <p style={{ margin: '2px 0 0', color: C.textFaint }}>
-            Template totali
+            {t('templates.totalTemplates' as const, language as any)}
           </p>
         </div>
         <div>
@@ -196,7 +199,7 @@ export default function TemplatesPage() {
             {sectors.length}
           </p>
           <p style={{ margin: '2px 0 0', color: C.textFaint }}>
-            Settori
+            {t('templates.sectors' as const, language as any)}
           </p>
         </div>
       </div>

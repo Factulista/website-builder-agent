@@ -168,9 +168,29 @@ function stripEditorArtifacts(html: string): string {
   return (hasDoctype ? '<!DOCTYPE html>\n' : '') + doc.documentElement.outerHTML
 }
 
+const SCROLL_LISTENER = `<script>
+window.addEventListener('message',function(e){
+  if(!e.data||e.data.type!=='scroll-to-text')return;
+  var text=e.data.text;if(!text)return;
+  var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
+  var node;
+  while((node=walker.nextNode())){
+    if(node.textContent&&node.textContent.trim().includes(text.trim())){
+      var el=node.parentElement;
+      if(el){el.scrollIntoView({behavior:'smooth',block:'center'});break;}
+    }
+  }
+});
+</script>`
+
 function injectBase(html: string, projectSlug: string): string {
   const clean = stripEditorArtifacts(html)
   const baseTag = `<base href="/preview/${projectSlug}/">`
+  if (/<\/body>/i.test(clean)) {
+    return clean
+      .replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
+      .replace(/<\/body>/i, `${SCROLL_LISTENER}</body>`)
+  }
   if (/<head[^>]*>/i.test(clean)) {
     return clean.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
   }
@@ -265,6 +285,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [editOutdated, setEditOutdated] = useState(false)
   const [chatHidden, setChatHidden] = useState(false)
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null)
+  const previewIframeRef = useRef<HTMLIFrameElement>(null)
   const verifyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -682,7 +704,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       newPages = rawPages as Page[]
       const steps = result.steps ? `\n${(result.steps as string[]).join('\n')}` : ''
       summary = `✨ ${result.input.summary}${steps}`
-      if (newPages.length > 0) newActiveSlug = newPages[0].slug
+      // Set active to first NEW page (not existing), fallback to first page
+      const newSlugs = result.input.newPageSlugs as string[] | undefined
+      const firstNew = newSlugs?.find(s => newPages.some(p => p.slug === s))
+      newActiveSlug = firstNew ?? (newPages.length > 0 ? newPages[0].slug : activeSlug)
     } else if (result.tool === 'edit_page') {
       const targetSlug = result.input.pageSlug as string
       const edits = result.input.edits as { find: string; replace: string }[]
@@ -733,6 +758,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
     setPages(newPages)
     setActiveSlug(newActiveSlug)
+    // Auto-switch to preview so the user sees the result immediately
+    if (viewMode !== 'preview') setViewMode('preview')
+    // Set scroll target for edits: first replaced text snippet
+    if (result.tool === 'edit_page') {
+      const firstEdit = (result.input.edits as { find: string; replace: string }[] | undefined)?.[0]
+      if (firstEdit?.replace) setScrollTarget(firstEdit.replace.replace(/<[^>]+>/g, '').slice(0, 40).trim())
+    }
     setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
     const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
     const newVersions = createVersion(summary.slice(0, 60).replace(/^[✨✏️➕🗑🔍🗺️🎨✍️]\s*/, ''), newPages, versions)
@@ -1596,10 +1628,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
               {activePage ? (
                 <iframe
+                  ref={previewIframeRef}
                   srcDoc={injectBase(activePage.html, projectSlug)}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"
                   sandbox="allow-scripts allow-same-origin"
+                  onLoad={() => {
+                    if (scrollTarget) {
+                      previewIframeRef.current?.contentWindow?.postMessage({ type: 'scroll-to-text', text: scrollTarget }, '*')
+                      setScrollTarget(null)
+                    }
+                  }}
                 />
               ) : (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textFaint, flexDirection: 'column', gap: '8px' }}>

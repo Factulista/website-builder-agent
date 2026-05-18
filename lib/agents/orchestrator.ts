@@ -75,7 +75,7 @@ export function classify(userMessage: string, hasPages: boolean): AgentType {
 
 export type PipelineResult = {
   tool: 'create_site'
-  input: { pages: Page[]; summary: string }
+  input: { pages: Page[]; summary: string; newPageSlugs?: string[] }
   agent: 'pipeline' | 'html' | 'design-update' | 'content-update' | 'seo' | 'images'
   steps: string[]
   updatedContext?: ProjectContext
@@ -207,7 +207,7 @@ export async function runFullPipeline(
 
   return {
     tool: 'create_site',
-    input: { pages: mergedPages, summary: summaryNote },
+    input: { pages: mergedPages, summary: summaryNote, newPageSlugs },
     agent: 'pipeline',
     steps,
     updatedContext: finalContext,
