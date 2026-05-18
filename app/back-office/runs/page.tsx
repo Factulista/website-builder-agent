@@ -203,8 +203,22 @@ export default function RunsPage() {
 
   const [filterAgent, setFilterAgent] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterFrom, setFilterFrom] = useState('')
-  const [filterTo, setFilterTo] = useState('')
+  const [filterFrom, setFilterFrom] = useState(() => {
+    const now = new Date()
+    const day = now.getDay() // 0=Sun,1=Mon,...6=Sat
+    const diff = (day === 0 ? -6 : 1 - day) // days back to Monday
+    const monday = new Date(now)
+    monday.setDate(now.getDate() + diff)
+    return monday.toISOString().slice(0, 10)
+  })
+  const [filterTo, setFilterTo] = useState(() => {
+    const now = new Date()
+    const day = now.getDay()
+    const diff = (day === 0 ? 0 : 7 - day) // days forward to Sunday
+    const sunday = new Date(now)
+    sunday.setDate(now.getDate() + diff)
+    return sunday.toISOString().slice(0, 10)
+  })
   const [page, setPage] = useState(0)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -291,10 +305,16 @@ export default function RunsPage() {
   }, [page])
 
   const resetFilters = () => {
+    const now = new Date()
+    const day = now.getDay()
+    const monday = new Date(now)
+    monday.setDate(now.getDate() + (day === 0 ? -6 : 1 - day))
+    const sunday = new Date(now)
+    sunday.setDate(now.getDate() + (day === 0 ? 0 : 7 - day))
     setFilterAgent('')
     setFilterStatus('')
-    setFilterFrom('')
-    setFilterTo('')
+    setFilterFrom(monday.toISOString().slice(0, 10))
+    setFilterTo(sunday.toISOString().slice(0, 10))
     setPage(0)
   }
 
