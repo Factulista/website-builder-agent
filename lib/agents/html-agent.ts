@@ -89,7 +89,7 @@ export async function runHtmlAgentWithPlan(
 REGOLE:
 - Genera HTML completo (<!DOCTYPE html>...) per ogni pagina del piano.
 - Usa ESCLUSIVAMENTE i testi forniti nel contenuto — non inventarne altri.
-- Incorpora il CSS fornito nel <head> di ogni pagina (o link se è separato).
+- Il CSS fornito contiene solo le variabili :root e il reset base. DEVI aggiungere tu tutto il CSS dei componenti (navbar, hero, button, card, footer, sezioni, media queries, ecc.) usando le CSS custom properties fornite.
 - Includi Google Fonts: ${design.googleFontsUrl ?? 'nessuno'}
 - Link tra pagine con href relativi senza .html (es: ./chi-siamo).
 - Includi Schema.org JSON-LD nel <head> dove fornito.

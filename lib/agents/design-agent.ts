@@ -40,7 +40,7 @@ const DESIGN_TOOLS = [
           },
           required: ['colors', 'fonts'],
         },
-        css: { type: 'string', description: 'CSS completo con variabili CSS, reset, e stili per tutti i componenti usati nel piano.' },
+        css: { type: 'string', description: 'SOLO (1) blocco :root con le CSS custom properties dei token e (2) reset base (box-sizing, margin/padding 0). NON stili di componenti — li scrive l\'HTML agent.' },
         googleFontsUrl: { type: 'string', description: 'URL Google Fonts per i font scelti.' },
         summary: { type: 'string' },
       },
@@ -87,9 +87,14 @@ REGOLE:
 - Se il contesto ha colori brand, usali come base della palette.
 - Se il contesto ha font brand, usali.
 - Altrimenti scegli colori e font appropriati al tipo di business.
-- CSS deve includere: variabili CSS custom, reset base, stili per tutte le sezioni del piano.
 - Contrasto colori: almeno 4.5:1 (WCAG AA).
-- Design mobile-first con media queries.`
+
+OUTPUT CSS — REGOLA CRITICA:
+Il campo "css" deve contenere ESCLUSIVAMENTE:
+1. Il blocco :root { } con tutte le CSS custom properties (--color-primary, --color-bg, --font-heading, --radius, --spacing, ecc.)
+2. Il reset base: *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+3. body { font-family, background-color, color }
+NON aggiungere stili per button, nav, card, section, hero o altri componenti. L'HTML agent li scrive da solo usando le variabili CSS.`
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await callClaude('design', system, [{ role: 'user', content: userRequest }], DESIGN_TOOLS, apiKey)
