@@ -141,6 +141,53 @@ function applyMediaMetaToPages(pages: Page[], url: string, meta: MediaMeta): Pag
   return anyChanged ? next : pages
 }
 
+/**
+ * syncNavigation — keeps navbars consistent across all pages after structural changes.
+ *
+ * add_page  → the new page was generated knowing all slugs, so its <nav> is the
+ *             source of truth. Copy it to every existing page.
+ * delete_page → use DOMParser to remove the deleted slug's <a> (and its parent <li>)
+ *               from every page's navbar.
+ * other ops → no-op (edit_page / create_site don't change page count).
+ */
+function syncNavigation(
+  pages: Page[],
+  op: 'add' | 'delete' | 'none',
+  targetSlug?: string
+): Page[] {
+  if (pages.length <= 1 || op === 'none') return pages
+
+  if (op === 'add' && targetSlug) {
+    // Source of truth: the newly added page (generated with full slug list)
+    const newPage = pages.find(p => p.slug === targetSlug)
+    if (!newPage) return pages
+    const navMatch = newPage.html.match(/<nav[\s\S]*?<\/nav>/i)
+    if (!navMatch) return pages
+    const newNav = navMatch[0]
+    return pages.map(p => {
+      if (p.slug === targetSlug) return p
+      if (!/<nav[\s\S]*?<\/nav>/i.test(p.html)) return p
+      return { ...p, html: p.html.replace(/<nav[\s\S]*?<\/nav>/i, newNav) }
+    })
+  }
+
+  if (op === 'delete' && targetSlug && typeof window !== 'undefined') {
+    return pages.map(p => {
+      if (!p.html.includes(targetSlug)) return p
+      const doc = new DOMParser().parseFromString(p.html, 'text/html')
+      doc.querySelectorAll(`a[href*="${targetSlug}"]`).forEach(a => {
+        const li = a.closest('li')
+        if (li) li.remove()
+        else a.remove()
+      })
+      const hasDoctype = /^\s*<!DOCTYPE/i.test(p.html)
+      return { ...p, html: (hasDoctype ? '<!DOCTYPE html>\n' : '') + doc.documentElement.outerHTML }
+    })
+  }
+
+  return pages
+}
+
 function stripEditorArtifacts(html: string): string {
   if (typeof window === 'undefined' || !html) return html
   // Quick exit if no markers present
@@ -753,7 +800,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       newActiveSlug = targetSlug
     } else if (result.tool === 'add_page') {
       const newPage: Page = { slug: result.input.slug, name: result.input.name, html: result.input.html }
-      newPages = [...pages, newPage]
+      newPages = syncNavigation([...pages, newPage], 'add', newPage.slug)
       summary = `➕ ${result.input.summary}`
       newActiveSlug = newPage.slug
     } else if (result.tool === 'delete_page') {
@@ -761,7 +808,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (targetSlug === 'home') {
         summary = '⚠️ La pagina "home" non può essere eliminata'
       } else {
-        newPages = pages.filter(p => p.slug !== targetSlug)
+        const filtered = pages.filter(p => p.slug !== targetSlug)
+        newPages = syncNavigation(filtered, 'delete', targetSlug)
         summary = `🗑 ${result.input.summary}`
         if (activeSlug === targetSlug) newActiveSlug = newPages[0]?.slug || 'home'
       }
