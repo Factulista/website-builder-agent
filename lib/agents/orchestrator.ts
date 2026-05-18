@@ -1,6 +1,6 @@
 import { runPlanner } from './planner'
 import { runContentAgent, runContentAgentUpdate } from './content-agent'
-import { runDesignAgent, runDesignAgentUpdate } from './design-agent'
+import { runDesignAgent, runDesignAgentUpdate, extractDesignFromHtml } from './design-agent'
 import { runHtmlAgentWithPlan, runHtmlAgent, runHtmlAgentFromTemplate } from './html-agent'
 import { runSeoAgent } from './seo-agent'
 import { runImagesAgent } from './images-agent'
@@ -162,10 +162,14 @@ export async function runFullPipeline(
   }
 
   // Step 2b: Content + Design in parallelo
-  emit?.('✍️ Content + Design')
+  // Se esistono già pagine, riusa il design dall'HTML esistente (evita Design agent e token spreading)
+  const isAddPage = existingPages.length > 0
+  emit?.(isAddPage ? '✍️ Content (design riusato dal sito)' : '✍️ Content + Design')
   const [content, design] = await Promise.all([
     runContentAgent(userRequest, plan, apiKey, activeContext),
-    runDesignAgent(userRequest, plan, apiKey, activeContext, inspirationBriefs),
+    isAddPage
+      ? Promise.resolve(extractDesignFromHtml(existingPages[0].html))
+      : runDesignAgent(userRequest, plan, apiKey, activeContext, inspirationBriefs),
   ])
   if (!content?.pages) throw new Error('Content agent non ha prodotto contenuti validi')
   if (!design?.tokens) throw new Error('Design agent non ha prodotto un design valido')
