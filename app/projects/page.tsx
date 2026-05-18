@@ -8,6 +8,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { confirmDialog } from '../../lib/dialog'
 import { Sidebar } from '../../components/Sidebar'
+import { useLanguage } from '../../lib/i18n/useLanguage'
+import { t } from '../../lib/i18n/translations'
 
 type Page = { slug: string; name: string; html: string }
 type Project = {
@@ -21,7 +23,7 @@ type Project = {
 
 function getHomeHtml(project: Project): string | undefined {
   const config = project.site_config
-  if (config?.pages && config.pages.length > 0) {
+  if (config?.pages && Array.isArray(config.pages) && config.pages.length > 0) {
     return config.pages.find(p => p.slug === 'home')?.html ?? config.pages[0].html
   }
   return config?.html
@@ -48,11 +50,12 @@ function groupByRecency(projects: Project[]) {
 }
 
 function ProjectCard({
-  project, onDelete, onRename,
+  project, onDelete, onRename, language,
 }: {
   project: Project
   onDelete: () => void
   onRename: (name: string) => void
+  language: string
 }) {
   const [renaming, setRenaming] = useState(false)
   const [nameVal, setNameVal] = useState(project.name)
@@ -73,7 +76,7 @@ function ProjectCard({
             />
           ) : (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b0aba7', fontSize: '0.8rem' }}>
-              Nessun sito generato
+              {t('projects.noSiteGenerated' as const, language as any)}
             </div>
           )}
         </div>
@@ -107,19 +110,19 @@ function ProjectCard({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.72rem', color: '#9b9896' }}>Modificato {timeStr}</span>
+          <span style={{ fontSize: '0.72rem', color: '#9b9896' }}>{t('projects.modified' as const, language as any)} {timeStr}</span>
           <div style={{ display: 'flex', gap: '4px' }}>
             <button
               onClick={() => setRenaming(true)}
               style={{ background: 'transparent', color: '#9b9896', border: '1px solid #e8e4de', padding: '3px 8px', fontSize: '0.72rem', borderRadius: '5px', cursor: 'pointer', fontFamily: 'inherit' }}
             >
-              Rinomina
+              {t('projects.rename' as const, language as any)}
             </button>
             <button
               onClick={onDelete}
               style={{ background: 'transparent', color: '#ef4444', border: '1px solid #fecaca', padding: '3px 8px', fontSize: '0.72rem', borderRadius: '5px', cursor: 'pointer', fontFamily: 'inherit' }}
             >
-              Elimina
+              {t('projects.delete' as const, language as any)}
             </button>
           </div>
         </div>
@@ -128,11 +131,12 @@ function ProjectCard({
   )
 }
 
-function ProjectGroup({ title, projects, onDelete, onRename }: {
+function ProjectGroup({ title, projects, onDelete, onRename, language }: {
   title: string
   projects: Project[]
   onDelete: (id: string, name: string) => void
   onRename: (id: string, name: string) => void
+  language: string
 }) {
   if (projects.length === 0) return null
   return (
@@ -145,6 +149,7 @@ function ProjectGroup({ title, projects, onDelete, onRename }: {
             project={p}
             onDelete={() => onDelete(p.id, p.name)}
             onRename={(name) => onRename(p.id, name)}
+            language={language}
           />
         ))}
       </div>
@@ -153,6 +158,7 @@ function ProjectGroup({ title, projects, onDelete, onRename }: {
 }
 
 export default function ProjectsPage() {
+  const { language } = useLanguage()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [userEmail, setUserEmail] = useState('')
@@ -175,9 +181,9 @@ export default function ProjectsPage() {
 
   const handleDelete = async (id: string, name: string) => {
     const ok = await confirmDialog({
-      title: 'Eliminare progetto',
-      message: `"${name}" verrà spostato nel cestino.`,
-      confirmLabel: 'Elimina',
+      title: t('projects.deleteProject' as const, language as any),
+      message: `"${name}" ${t('projects.deleteConfirm' as const, language as any)}`,
+      confirmLabel: t('common.delete' as const, language as any),
       variant: 'danger',
     })
     if (!ok) return
@@ -204,7 +210,7 @@ export default function ProjectsPage() {
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem' }}>
-            <h1 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Progetti</h1>
+            <h1 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>{t('projects.title' as const, language as any)}</h1>
             <Link href="/projects/new" style={{ textDecoration: 'none' }}>
               <button style={{
                 background: '#1a1a1a', color: 'white', border: 'none',
@@ -212,27 +218,27 @@ export default function ProjectsPage() {
                 fontSize: '0.8375rem', cursor: 'pointer', fontFamily: 'inherit',
                 display: 'flex', alignItems: 'center', gap: '5px',
               }}>
-                Crea <span style={{ opacity: 0.6 }}>▾</span>
+                {t('projects.create' as const, language as any)} <span style={{ opacity: 0.6 }}>▾</span>
               </button>
             </Link>
           </div>
 
           {loading ? (
-            <p style={{ color: '#9b9896', fontSize: '0.875rem' }}>Caricamento...</p>
+            <p style={{ color: '#9b9896', fontSize: '0.875rem' }}>{t('common.loading' as const, language as any)}</p>
           ) : projects.length === 0 ? (
             <div style={{ textAlign: 'center', paddingTop: '5rem' }}>
-              <p style={{ fontSize: '1rem', color: '#6b6563', marginBottom: '1rem' }}>Nessun sito ancora</p>
+              <p style={{ fontSize: '1rem', color: '#6b6563', marginBottom: '1rem' }}>{t('projects.noSites' as const, language as any)}</p>
               <Link href="/projects/new">
                 <button style={{ background: '#1a1a1a', color: 'white', border: 'none', padding: '8px 20px', borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  Crea il tuo primo sito
+                  {t('projects.createFirst' as const, language as any)}
                 </button>
               </Link>
             </div>
           ) : (
             <>
-              <ProjectGroup title="Attivi negli ultimi 14 giorni" projects={recent} onDelete={handleDelete} onRename={handleRename} />
-              <ProjectGroup title="Attivi negli ultimi 60 giorni" projects={active} onDelete={handleDelete} onRename={handleRename} />
-              <ProjectGroup title="Più vecchi" projects={older} onDelete={handleDelete} onRename={handleRename} />
+              <ProjectGroup title={t('projects.recent' as const, language as any)} projects={recent} onDelete={handleDelete} onRename={handleRename} language={language} />
+              <ProjectGroup title={t('projects.active' as const, language as any)} projects={active} onDelete={handleDelete} onRename={handleRename} language={language} />
+              <ProjectGroup title={t('projects.older' as const, language as any)} projects={older} onDelete={handleDelete} onRename={handleRename} language={language} />
             </>
           )}
         </div>

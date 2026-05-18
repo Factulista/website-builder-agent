@@ -659,7 +659,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     let newActiveSlug = activeSlug
 
     if (result.tool === 'create_site') {
-      newPages = result.input.pages as Page[]
+      const rawPages = result.input.pages
+      if (!Array.isArray(rawPages)) { markFailed('risposta non valida dal server'); return }
+      newPages = rawPages as Page[]
       const steps = result.steps ? `\n${(result.steps as string[]).join('\n')}` : ''
       summary = `✨ ${result.input.summary}${steps}`
       if (newPages.length > 0) newActiveSlug = newPages[0].slug
