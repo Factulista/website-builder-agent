@@ -439,6 +439,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[], newMedia?: Record<string, MediaMeta>) => {
+    // Safety guard: never overwrite existing pages with an empty array
+    if (!Array.isArray(newPages) || (newPages.length === 0 && latestPagesRef.current.length > 0)) {
+      console.warn('saveState: skipping — refusing to overwrite existing pages with empty array')
+      return
+    }
     const vers = newVersions ?? versions
     const med = newMedia ?? mediaMeta
     await supabase.from('projects').update({
@@ -657,6 +662,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     let newPages: Page[] = pages
     let summary = ''
     let newActiveSlug = activeSlug
+
+    if (result.requestLanguage) {
+      // Pipeline is asking which language — just show the message, don't touch pages
+      const msg = (result.steps as string[] | undefined)?.[0] ?? result.input?.summary ?? '⚠️ In che lingua vuoi il sito?'
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
+      const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
+      await supabase.from('projects').update({
+        site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+      setLoading(false)
+      return
+    }
 
     if (result.tool === 'create_site') {
       const rawPages = result.input.pages
