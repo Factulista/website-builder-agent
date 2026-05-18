@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './fetch-retry'
+
 const ACCESSIBILITY_TOOLS = [
   {
     name: 'fix_accessibility',
@@ -66,7 +68,7 @@ CONTROLLA (in ordine di priorità):
 
 Usa edits con find/replace per correggere ogni problema trovato. Se non ci sono problemi, ritorna edits vuoto e score PASS.`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -81,7 +83,7 @@ Usa edits con find/replace per correggere ogni problema trovato. Se non ci sono 
       tool_choice: { type: 'any' },
       messages: [{ role: 'user', content: `Analizza e correggi l'accessibilità di questa pagina (slug: ${pageSlug}):\n\n${pageHtml}` }],
     }),
-  })
+  }, 'accessibility')
 
   if (!res.ok) throw new Error(`Accessibility Agent API error: ${await res.text()}`)
   const data = await res.json()

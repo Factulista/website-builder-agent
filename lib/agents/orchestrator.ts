@@ -191,6 +191,12 @@ export async function runFullPipeline(
     : await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey, existingPagesMeta)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
 
+  // Normalize slugs: models sometimes return './' or '/' for home → always use 'home'
+  htmlOutput.pages = htmlOutput.pages.map(p => ({
+    ...p,
+    slug: p.slug === './' || p.slug === '/' || p.slug === '' ? 'home' : p.slug.replace(/^\/|\/$/g, ''),
+  }))
+
   // Sync navbar: estrai la navbar dalla prima nuova pagina (che ha già tutti i link corretti)
   // e applicala a tutte le pagine esistenti così la voce di menu appare ovunque
   const updatedExistingPages = (() => {

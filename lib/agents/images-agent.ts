@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './fetch-retry'
+
 const IMAGES_TOOLS = [
   {
     name: 'optimize_images',
@@ -46,7 +48,7 @@ REGOLE:
 - Non modificare src o design, solo ottimizza il markup.
 - Business type: ${businessType} — usa questo contesto per alt text più specifici.`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -61,7 +63,7 @@ REGOLE:
       tool_choice: { type: 'any' },
       messages: [{ role: 'user', content: `Ottimizza le immagini in questa pagina (slug: ${pageSlug}):\n\n${pageHtml}` }],
     }),
-  })
+  }, 'images')
 
   if (!res.ok) throw new Error(`Images Agent API error: ${await res.text()}`)
   const data = await res.json()

@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './fetch-retry'
+
 export type AgentConfig = {
   model: string
   maxTokens: number
@@ -105,7 +107,7 @@ export async function callClaude(
     : system // fallback stringa se troppo corto per la cache
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
@@ -122,7 +124,7 @@ export async function callClaude(
         tool_choice: { type: 'any' },
         messages,
       }),
-    })
+    }, agentName)
 
     if (res.ok) return res
 

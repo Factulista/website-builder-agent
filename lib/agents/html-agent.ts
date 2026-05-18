@@ -1,4 +1,5 @@
 import { callClaude } from './config'
+import { fetchWithRetry } from './fetch-retry'
 
 type Page = { slug: string; name: string; html: string }
 
@@ -170,7 +171,7 @@ Schema: ${p.schemaOrg ?? 'nessuno'}
     },
   ]
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -181,7 +182,7 @@ Schema: ${p.schemaOrg ?? 'nessuno'}
       tool_choice: { type: 'any' },
       messages: [{ role: 'user', content: userMessage }],
     }),
-  })
+  }, 'html')
 
   if (!res.ok) throw new Error(`HTML Agent (pipeline) error: ${await res.text()}`)
   const data = await res.json()
@@ -252,7 +253,7 @@ ${templateHtml}`
     },
   }]
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -270,7 +271,7 @@ ${templateHtml}`
       tool_choice: { type: 'any' },
       messages: [{ role: 'user', content: userMessage }],
     }),
-  })
+  }, 'html')
 
   if (!res.ok) throw new Error(`HTML Template Agent error: ${await res.text()}`)
   const data = await res.json()
@@ -336,7 +337,7 @@ ${activePageContext}`
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -351,7 +352,7 @@ ${activePageContext}`
       tool_choice: { type: 'any' },
       messages: recentMessages.map(m => ({ role: m.role, content: m.content })),
     }),
-  })
+  }, 'html')
 
   if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
   const data = await res.json()

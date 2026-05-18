@@ -1,3 +1,4 @@
+import { fetchWithRetry } from './fetch-retry'
 import type { ProjectContext } from './memory-agent'
 
 export type ClarifierResult =
@@ -82,7 +83,7 @@ REGOLA GLOBALE: in caso di dubbio → procedi. È meglio generare qualcosa che b
 Se fai domande: max 2, sintetiche, tono amichevole, in italiano.`
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
@@ -97,7 +98,7 @@ Se fai domande: max 2, sintetiche, tono amichevole, in italiano.`
         tool_choice: { type: 'any' },
         messages: [{ role: 'user', content: userRequest }],
       }),
-    })
+    }, 'clarifier')
 
     if (!res.ok) return { proceed: true }
 

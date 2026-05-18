@@ -1,3 +1,5 @@
+import { fetchWithRetry } from './fetch-retry'
+
 type Page = { slug: string; name: string; html: string }
 
 const PLANNER_TOOLS = [
@@ -66,7 +68,7 @@ ${isFirstRun
 - PAGINE GIÀ ESISTENTI (non ri-pianificare): ${existingPages.map(p => `${p.slug} (${p.name})`).join(', ')}`}
 `
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -81,11 +83,19 @@ ${isFirstRun
       tool_choice: { type: 'any' },
       messages: [{ role: 'user', content: userRequest }],
     }),
-  })
+  }, 'planner')
 
   if (!res.ok) throw new Error(`Planner API error: ${await res.text()}`)
   const data = await res.json()
   const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
   if (!toolUse) throw new Error('No tool use in Planner response')
-  return toolUse.input as SitePlan
+  const plan = toolUse.input as SitePlan
+  // Normalize slugs: model sometimes uses './' or '/' for home
+  if (plan.pages) {
+    plan.pages = plan.pages.map(p => ({
+      ...p,
+      slug: p.slug === './' || p.slug === '/' || p.slug === '' ? 'home' : p.slug.replace(/^\/|\/$/g, ''),
+    }))
+  }
+  return plan
 }
