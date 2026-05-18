@@ -14,7 +14,19 @@ type Message = { id: string; role: 'user' | 'assistant'; content: string; failed
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
-const INLINE_EDIT_SCRIPT = `(function(){
+function buildInlineEditScript(pages: { slug: string; name: string }[]) {
+  // Build the pages data to embed in the script
+  const pagesJson = JSON.stringify(
+    pages.map(p => ({ slug: p.slug, name: p.name, href: p.slug === 'home' ? './' : `./${p.slug}` }))
+  )
+  return buildInlineEditScriptTemplate(pagesJson)
+}
+
+const INLINE_EDIT_SCRIPT = buildInlineEditScript([]) // fallback, overridden at inject time
+
+function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
+  var FACT_PAGES=${pagesJson};`
+  + `
   var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','SVG']);
 
   // Freeze all interactions — re-enable only on editable elements and editor UI
@@ -193,20 +205,25 @@ const INLINE_EDIT_SCRIPT = `(function(){
       'display:flex;align-items:center;justify-content:center;';
 
     var box=document.createElement('div');
-    box.style.cssText='background:#fff;border-radius:13px;padding:22px 22px 18px;width:360px;'+
+    box.style.cssText='background:#fff;border-radius:13px;padding:22px 22px 18px;width:380px;'+
       'box-shadow:0 8px 40px rgba(0,0,0,0.18);font-family:system-ui,sans-serif;';
 
     box.innerHTML=
       '<p style="margin:0 0 3px;font-size:14px;font-weight:700;color:#1a1a1a">Inserisci link</p>'+
-      '<p style="margin:0 0 14px;font-size:12px;color:#6b7280">'+
-        'Relativo: <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">./precios</code> &nbsp;'+
-        'Assoluto: <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">https://…</code>'+
+      '<p style="margin:0 0 12px;font-size:12px;color:#6b7280">'+
+        'Scrivi <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">/</code> per pagine interne &nbsp;·&nbsp;'+
+        '<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">https://</code> per link esterni'+
       '</p>'+
-      '<input id="fact-link-input" type="text" placeholder="./precios" '+
-        'style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #cbd5e1;'+
-        'border-radius:8px;font-size:14px;font-family:monospace;outline:none;color:#1a1a1a;" '+
-        'value="'+(currentHref||'./')+'">'+
-      '<p id="fact-link-hint" style="margin:6px 0 0;font-size:11px;color:#6b7280;min-height:16px"></p>'+
+      '<div style="position:relative">'+
+        '<input id="fact-link-input" type="text" placeholder="/ oppure https://…" autocomplete="off" '+
+          'style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #cbd5e1;'+
+          'border-radius:8px;font-size:14px;font-family:monospace;outline:none;color:#1a1a1a;" '+
+          'value="'+(currentHref||'')+'">'+
+        '<div id="fact-link-dd" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;'+
+          'background:#fff;border:1px solid #e2e8f0;border-radius:8px;'+
+          'box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100001;overflow:hidden;"></div>'+
+      '</div>'+
+      '<p id="fact-link-hint" style="margin:6px 0 0;font-size:11px;min-height:16px;color:#6b7280"></p>'+
       '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">'+
         '<button id="fact-link-cancel" style="padding:8px 18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:#374151;">Annulla</button>'+
         '<button id="fact-link-ok" style="padding:8px 18px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;">Conferma</button>'+
@@ -217,16 +234,69 @@ const INLINE_EDIT_SCRIPT = `(function(){
 
     var input=box.querySelector('#fact-link-input');
     var hint=box.querySelector('#fact-link-hint');
-    setTimeout(function(){input.focus();input.select();},40);
+    var dd=box.querySelector('#fact-link-dd');
+    setTimeout(function(){input.focus();if(currentHref)input.select();},40);
 
-    // Live hint
+    // ── Suggestions dropdown ────────────────────────────────────────────────
+    function renderDD(filter){
+      dd.innerHTML='';
+      var q=(filter||'').toLowerCase().replace(/^\\.?\\//,'');
+      var matches=FACT_PAGES.filter(function(p){
+        return !q||p.name.toLowerCase().includes(q)||p.slug.toLowerCase().includes(q);
+      });
+      if(!matches.length){dd.style.display='none';return;}
+      matches.forEach(function(p,i){
+        var row=document.createElement('div');
+        row.style.cssText='padding:9px 13px;cursor:pointer;display:flex;align-items:center;'+
+          'justify-content:space-between;font-size:13px;'+
+          (i<matches.length-1?'border-bottom:1px solid #f1f5f9;':'');
+        row.innerHTML=
+          '<span style="font-weight:600;color:#1a1a1a">'+p.name+'</span>'+
+          '<code style="font-size:12px;color:#2563eb;background:#eff6ff;padding:2px 7px;border-radius:5px">'+p.href+'</code>';
+        row.onmouseenter=function(){row.style.background='#f8fafc';};
+        row.onmouseleave=function(){row.style.background='';};
+        row.addEventListener('mousedown',function(e){
+          e.preventDefault();
+          input.value=p.href;
+          dd.style.display='none';
+          updateHint(p.href);
+        });
+        dd.appendChild(row);
+      });
+      dd.style.display='block';
+    }
+
+    function updateHint(v){
+      if(!v){hint.textContent='';return;}
+      if(/^https?:\\/\\//.test(v)){hint.style.color='#059669';hint.textContent='✓ Link esterno';}
+      else if(v==='./'){hint.style.color='#2563eb';hint.textContent='✓ Home page';}
+      else if(/^\\.?\\//.test(v)){hint.style.color='#2563eb';hint.textContent='✓ Pagina interna';}
+      else if(v.startsWith('#')){hint.style.color='#7c3aed';hint.textContent='✓ Ancora interna';}
+      else{hint.style.color='#dc2626';hint.textContent='⚠ Usa / per pagine interne o https:// per esterni';}
+    }
+
     input.addEventListener('input',function(){
-      var v=input.value.trim();
-      if(!v) { hint.textContent=''; return; }
-      if(/^https?:\\/\\//.test(v)) hint.textContent='✓ Link assoluto (apertura esterna)';
-      else if(/^\\.?\\//.test(v)||v.startsWith('./')) hint.textContent='✓ Link relativo (pagina interna)';
-      else if(v.startsWith('#')) hint.textContent='✓ Ancora sulla stessa pagina';
-      else hint.textContent='⚠ Aggiungi ./ per link interno o https:// per link esterno';
+      var v=input.value;
+      updateHint(v.trim());
+      var isInternal=v===''||v==='/'||v==='./'||(/^\\.?\\//.test(v)&&!v.startsWith('http'));
+      if(isInternal) renderDD(v); else dd.style.display='none';
+    });
+
+    // Show all pages on first focus if field is empty
+    input.addEventListener('focus',function(){
+      if(!input.value||input.value==='/'||input.value==='./') renderDD('');
+    });
+    input.addEventListener('blur',function(){
+      setTimeout(function(){dd.style.display='none';},160);
+    });
+
+    // Keyboard navigation in dropdown
+    var ddIdx=-1;
+    input.addEventListener('keydown',function(e){
+      var rows=dd.querySelectorAll('div');
+      if(e.key==='ArrowDown'){e.preventDefault();ddIdx=Math.min(ddIdx+1,rows.length-1);rows.forEach(function(r,i){r.style.background=i===ddIdx?'#eff6ff':'';});}
+      else if(e.key==='ArrowUp'){e.preventDefault();ddIdx=Math.max(ddIdx-1,0);rows.forEach(function(r,i){r.style.background=i===ddIdx?'#eff6ff':'';});}
+      else if(e.key==='Tab'&&dd.style.display!=='none'&&ddIdx>=0){e.preventDefault();rows[ddIdx].dispatchEvent(new MouseEvent('mousedown'));}
     });
 
     function confirm(){
@@ -278,6 +348,7 @@ const INLINE_EDIT_SCRIPT = `(function(){
   }
 
 })();`
+} // end buildInlineEditScriptTemplate
 
 function stripHtmlFromChat(content: string, language: string): string {
   if (!content) return ''
@@ -803,7 +874,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     iframe.contentDocument.head.appendChild(marker)
     const script = iframe.contentDocument.createElement('script')
     script.id = 'fact-edit-script'
-    script.textContent = INLINE_EDIT_SCRIPT
+    script.textContent = buildInlineEditScript(pages.map(p => ({ slug: p.slug, name: p.name })))
     iframe.contentDocument.body.appendChild(script)
   }
 
