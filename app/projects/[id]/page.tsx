@@ -1646,13 +1646,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             )}
           </div>
         ) : (
-          /* Preview mode with sidebar */
+          /* Preview mode — no sidebar, full width */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-            <EditorSidebar
-              pages={pages}
-              activeSlug={activeSlug}
-              onPageSelect={(slug) => setActiveSlug(slug)}
-            />
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
               {activePage ? (
                 <iframe

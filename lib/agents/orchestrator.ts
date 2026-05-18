@@ -38,8 +38,9 @@ const SEO_KEYWORDS = [
 ]
 
 const CREATE_KEYWORDS = [
-  'crea', 'genera', 'costruisci', 'fai', 'nuovo sito', 'nuova homepage',
-  'rifai', 'ricrea', 'da zero',
+  'crea', 'genera', 'costruisci', 'fai', 'fammi', 'nuovo sito', 'nuova homepage',
+  'rifai', 'ricrea', 'da zero', 'make me', 'create', 'build', 'generate',
+  'voglio un sito', 'voglio una pagina', 'ho bisogno di un sito',
 ]
 
 const DESIGN_UPDATE_KEYWORDS = [
