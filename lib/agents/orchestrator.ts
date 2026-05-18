@@ -147,9 +147,12 @@ export async function runFullPipeline(
     language: detectedLanguage || context.language || 'it',
   }
 
-  // Step 1: Planner
+  // Step 1: Planner — aggiungi lingua al prompt se non rilevabile dal testo
   emit?.('🗺️ Planner')
-  const plan = await runPlanner(userRequest, existingPages, apiKey)
+  const plannerRequest = activeContext.language && activeContext.language !== 'it'
+    ? `[LINGUA DEL SITO: ${activeContext.language}]\n${userRequest}`
+    : userRequest
+  const plan = await runPlanner(plannerRequest, existingPages, apiKey)
   if (!plan?.pages?.length) throw new Error('Planner non ha prodotto un piano valido')
   steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
 
@@ -212,10 +215,11 @@ export async function runFullPipeline(
     ? `${htmlOutput.summary} (aggiunt${newPageSlugs.length > 1 ? 'e' : 'a'}: ${newPageSlugs.join(', ')})`
     : htmlOutput.summary
 
-  // Persisti il design nel contesto così i prossimi add-page lo riusano senza chiamare il Design agent
+  // Persisti design e lingua nel contesto così le run successive li ereditano
   const finalContext: ProjectContext = {
     ...(updatedContext ?? context),
     design,
+    language: activeContext.language,
   }
 
   return {
