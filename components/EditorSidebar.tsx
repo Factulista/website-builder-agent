@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { Page } from '../app/projects/[id]/page'
+import type { Page } from '../lib/types'
 
 const C = {
   bg: '#faf9f7',

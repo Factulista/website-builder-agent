@@ -8,9 +8,9 @@ import { EditorSidebar } from '../../../components/EditorSidebar'
 import { HtmlCodeEditor } from '../../../components/HtmlCodeEditor'
 import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
+import type { Page } from '../../../lib/types'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; failed?: boolean; retryInput?: string; retryImages?: string[] }
-export type Page = { slug: string; name: string; html: string }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
