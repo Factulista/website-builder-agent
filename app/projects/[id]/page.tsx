@@ -713,7 +713,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (activeSlug === targetSlug) newActiveSlug = newPages[0]?.slug || 'home'
       }
     } else if (result.tool === 'update_seo') {
-      const seoPages = result.input.pages as { pageSlug: string; edits: { find: string; replace: string }[] }[]
+      const rawSeoPages = result.input.pages
+      const seoPages = Array.isArray(rawSeoPages) ? rawSeoPages as { pageSlug: string; edits: { find: string; replace: string }[] }[] : []
       let skipped = 0
       newPages = pages.map(p => {
         const seoPage = seoPages.find(sp => sp.pageSlug === p.slug)
