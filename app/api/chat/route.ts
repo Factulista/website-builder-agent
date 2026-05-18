@@ -37,6 +37,10 @@ function encodeMessage(msg: ProgressMessage | DoneMessage): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Declared outside try so the catch block can call failRun on any error
+  let runId = ''
+  let runStartTime = Date.now()
+
   try {
     const { projectId, messages, pages, activePageSlug, customDomain } = await req.json() as {
       projectId: string
@@ -105,8 +109,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Logging setup — non-blocking
-    let runId = ''
-    const runStartTime = Date.now()
+    runStartTime = Date.now()
     const agentModel = dbConfigs.find(c => c.name === agent)?.model ?? AGENT_CONFIGS[agent]?.model ?? ''
     try {
       runId = await startRun({
@@ -254,6 +257,13 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     console.error('Chat API error:', err)
+    // Log the error run if a run was started
+    if (runId) {
+      failRun(runId, {
+        error_message: String(err).slice(0, 500),
+        duration_ms: Date.now() - runStartTime,
+      }).catch(() => null)
+    }
     return Response.json({ error: String(err) }, { status: 500 })
   }
 }
