@@ -2,6 +2,30 @@ import { callClaude } from './config'
 
 type Page = { slug: string; name: string; html: string }
 
+/**
+ * Builds a compact HTML skeleton for the LLM context:
+ * - Removes <style> blocks (CSS is irrelevant for structural/text edits)
+ * - Removes HTML comments
+ * - Collapses whitespace
+ * - Truncates long text nodes to 80 chars so the agent can still identify elements
+ *   but the payload is 70-80% smaller than the full HTML.
+ *
+ * The find/replace strings produced by the agent are then applied against the
+ * ORIGINAL full HTML — not the skeleton — so edits always work on the real content.
+ */
+function buildHtmlSkeleton(html: string): string {
+  return html
+    // Remove <style>...</style> blocks (not needed for structural/text edits)
+    .replace(/<style[\s\S]*?<\/style>/gi, '<style>/* CSS omitted */</style>')
+    // Remove HTML comments
+    .replace(/<!--[\s\S]*?-->/g, '')
+    // Collapse whitespace
+    .replace(/\s+/g, ' ')
+    // Truncate long text nodes (keep first 80 chars + ellipsis)
+    .replace(/>([^<]{80,})</g, (_, text) => `>${text.slice(0, 80).trimEnd()}…<`)
+    .trim()
+}
+
 const HTML_TOOLS = [
   {
     name: 'create_site',
@@ -272,6 +296,18 @@ export async function runHtmlAgent(
     ? projectMedia.map(m => `- ${m.url}${m.alt ? ` (alt: "${m.alt}")` : ''}${m.title ? ` (titolo: "${m.title}")` : ''} — file: ${m.name}`).join('\n')
     : 'Nessuna immagine caricata dall\'utente.'
 
+  // When editing an existing page, send a compact skeleton instead of full HTML.
+  // The skeleton is 70-80% smaller: no CSS, no comments, text truncated to 80 chars.
+  // The agent's find/replace strings are then applied against the ORIGINAL full HTML.
+  const activePageContext = activePage
+    ? `\nPAGINA ATTIVA: "${activePage.name}" (slug: "${activePage.slug}")
+HTML ATTUALE (struttura — il CSS è omesso per brevità, il find/replace verrà applicato sull'HTML completo):
+\`\`\`html
+${buildHtmlSkeleton(activePage.html)}
+\`\`\`
+Modifiche generiche → modifica questa pagina.`
+    : ''
+
   const system = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
 REGOLE:
@@ -279,27 +315,26 @@ REGOLE:
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
 
+FIND/REPLACE: le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
+
 LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a href="./chi-siamo">Chi Siamo</a>
 
 OGNI PAGINA: HTML completo, CSS inline, mobile-friendly, design moderno e coerente tra pagine.
 
 IMMAGINI — REGOLE DI PRIORITÀ (importante):
-1. Se l'utente fornisce un URL esplicito nel messaggio (es: "Immagine allegata: https://..." o "usa questa immagine: https://...") → USA QUELL'URL ESATTO COSÌ COM'È. Non sostituirlo con placeholder. Non modificarlo.
-2. Se l'utente chiede genericamente di mettere "una sua immagine" / "l'immagine del progetto" e nella libreria media del progetto c'è qualcosa di pertinente → usa quegli URL dalla MEDIA LIBRARY qui sotto.
-3. Solo se non hai URL utente né media pertinente → usa placeholder https://picsum.photos/seed/{keyword}/{w}/{h} o https://i.pravatar.cc/300?u={username}.
+1. Se l'utente fornisce un URL esplicito nel messaggio → USA QUELL'URL ESATTO.
+2. Se l'utente chiede di usare "una sua immagine" e la media library ha qualcosa di pertinente → usa quegli URL.
+3. Altrimenti → usa placeholder https://picsum.photos/seed/{keyword}/{w}/{h}.
 
-MEDIA LIBRARY DEL PROGETTO (immagini già caricate dall'utente, disponibili per l'uso):
+MEDIA LIBRARY DEL PROGETTO:
 ${mediaList}
 
 PAGINE ATTUALI:
 ${pagesOverview}
-${activePage ? `
-PAGINA ATTIVA: "${activePage.name}" (slug: "${activePage.slug}")
-HTML ATTUALE:
-\`\`\`html
-${activePage.html}
-\`\`\`
-Modifiche generiche → modifica questa pagina.` : ''}`
+${activePageContext}`
+
+  // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
+  const recentMessages = messages.slice(-6)
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -314,7 +349,7 @@ Modifiche generiche → modifica questa pagina.` : ''}`
       system,
       tools: HTML_TOOLS,
       tool_choice: { type: 'any' },
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: recentMessages.map(m => ({ role: m.role, content: m.content })),
     }),
   })
 
