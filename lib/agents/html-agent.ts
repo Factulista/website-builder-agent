@@ -289,32 +289,68 @@ export async function runHtmlAgent(
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
-  const pagesOverview = hasPages
-    ? pages.map(p => `- /${p.slug === 'home' ? '' : p.slug} ("${p.name}")`).join('\n')
-    : 'Nessuna pagina ancora.'
 
   const mediaList = projectMedia.length > 0
     ? projectMedia.map(m => `- ${m.url}${m.alt ? ` (alt: "${m.alt}")` : ''}${m.title ? ` (titolo: "${m.title}")` : ''} — file: ${m.name}`).join('\n')
     : 'Nessuna immagine caricata dall\'utente.'
 
-  // When editing an existing page, send a compact skeleton instead of full HTML.
-  // The skeleton is 70-80% smaller: no CSS, no comments, text truncated to 80 chars.
-  // The agent's find/replace strings are then applied against the ORIGINAL full HTML.
-  const activePageContext = activePage
-    ? `\nPAGINA ATTIVA: "${activePage.name}" (slug: "${activePage.slug}")
-HTML ATTUALE (struttura — il CSS è omesso per brevità, il find/replace verrà applicato sull'HTML completo):
+  // Build context: active page gets full CSS, other pages get skeleton.
+  // When user asks to copy styles FROM another page, we include that page's <style> block too.
+  const userMsg = messages[messages.length - 1]?.content?.toLowerCase() ?? ''
+
+  // Detect pages mentioned in the user's message (by slug or name) so we can provide their CSS
+  const mentionedPages = pages.filter(p => {
+    const slug = p.slug.toLowerCase()
+    const name = p.name.toLowerCase()
+    return userMsg.includes(slug) || userMsg.includes(name)
+  })
+
+  // Extract <style> block from a page's HTML
+  const extractStyle = (html: string): string => {
+    const match = html.match(/<style[\s\S]*?<\/style>/i)
+    return match ? match[0] : ''
+  }
+
+  // Build per-page context blocks
+  const pageContextBlocks = pages.map(p => {
+    const isActive = p.slug === activePage?.slug
+    const isMentioned = mentionedPages.some(mp => mp.slug === p.slug)
+
+    if (isActive) {
+      return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
+HTML ATTUALE (struttura — CSS omesso per brevità, il find/replace si applica sull'HTML completo):
 \`\`\`html
-${buildHtmlSkeleton(activePage.html)}
+${buildHtmlSkeleton(p.html)}
+\`\`\``
+    } else if (isMentioned) {
+      // For explicitly mentioned pages: show skeleton + full <style> so agent can reference/copy CSS
+      const styleBlock = extractStyle(p.html)
+      return `\n=== PAGINA CITATA: "${p.name}" (slug: "${p.slug}") ===
+HTML STRUTTURA:
+\`\`\`html
+${buildHtmlSkeleton(p.html)}
 \`\`\`
-Modifiche generiche → modifica questa pagina.`
-    : ''
+${styleBlock ? `CSS COMPLETO (per copiare stili da questa pagina):
+\`\`\`css
+${styleBlock}
+\`\`\`` : ''}`
+    } else {
+      return `- "${p.name}" (slug: "${p.slug}") — disponibile per modifica`
+    }
+  }).join('\n')
 
   const system = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
-REGOLE:
+REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
+
+TARGETING DELLA PAGINA — IMPORTANTISSIMO:
+- Se l'utente nomina esplicitamente una pagina (es: "nella pagina precios", "sulla pagina contatti", "per la pagina about"), usa edit_page su QUELLA pagina — NON sulla pagina attiva.
+- "Anche nella pagina X" = edita la pagina X.
+- Se l'utente dice "fai X come nella home" = la home è il RIFERIMENTO (sorgente), non il target da editare.
+- La pagina attiva è solo il default quando l'utente non specifica.
 
 FIND/REPLACE: le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
 
@@ -330,9 +366,8 @@ IMMAGINI — REGOLE DI PRIORITÀ (importante):
 MEDIA LIBRARY DEL PROGETTO:
 ${mediaList}
 
-PAGINE ATTUALI:
-${pagesOverview}
-${activePageContext}`
+PAGINE DEL SITO:
+${pageContextBlocks}`
 
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)

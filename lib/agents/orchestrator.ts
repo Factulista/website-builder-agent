@@ -38,9 +38,22 @@ const SEO_KEYWORDS = [
 ]
 
 const CREATE_KEYWORDS = [
-  'crea', 'genera', 'costruisci', 'fai', 'fammi', 'nuovo sito', 'nuova homepage',
-  'rifai', 'ricrea', 'da zero', 'make me', 'create', 'build', 'generate',
-  'voglio un sito', 'voglio una pagina', 'ho bisogno di un sito',
+  // Frasi specifiche di creazione — NON parole singole generiche come 'fai', 'crea', 'build'
+  // che potrebbero matchare richieste di modifica tipo "fai questo header nero"
+  'crea un sito', 'crea il sito', 'crea una homepage', 'crea una pagina web',
+  'genera un sito', 'genera il sito', 'genera una homepage',
+  'costruisci un sito', 'costruisci il sito',
+  'fammi un sito', 'fammi una homepage', 'fammi un website',
+  'fai un sito', 'fai una homepage', 'fai un website', 'fai da zero',
+  'nuovo sito', 'nuova homepage', 'nuovo website',
+  'rifai', 'ricrea', 'da zero',
+  'make me a', 'make me a website', 'make me a site',
+  'create a website', 'create a site', 'create a homepage',
+  'build a website', 'build a site',
+  'generate a website', 'generate a site',
+  'voglio un sito', 'voglio una pagina web', 'voglio un website',
+  'ho bisogno di un sito', 'ho bisogno di un website',
+  'aggiungi una pagina', 'aggiungi pagina', 'nuova pagina', 'add a page', 'add page',
 ]
 
 const DESIGN_UPDATE_KEYWORDS = [
@@ -64,8 +77,10 @@ const IMAGES_KEYWORDS = [
 
 export function classify(userMessage: string, hasPages: boolean): AgentType {
   const lower = userMessage.toLowerCase()
-  // Creazione nuovo sito o nessun sito esistente → pipeline
-  if (!hasPages || CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
+  // Nessun sito esistente → pipeline sempre
+  if (!hasPages) return 'pipeline'
+  // Sito esistente → pipeline SOLO se la richiesta è esplicitamente di creazione/aggiunta pagina
+  if (CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
   // Modifica sito — classifica ulteriormente quale tipo
   if (IMAGES_KEYWORDS.some(k => lower.includes(k))) return 'images'
   if (SEO_KEYWORDS.some(k => lower.includes(k))) return 'seo'
@@ -146,7 +161,12 @@ export async function runFullPipeline(
   ).catch(() => null)
   const activeContext = {
     ...(updatedContext ?? context),
-    language: detectedLanguage || context.language || 'it',
+    // Se il sito esiste già, la lingua è sempre quella salvata nel contesto — NON quella rilevata
+    // dal messaggio dell'utente (che scrive in italiano anche se il sito è in spagnolo).
+    // Solo alla prima creazione usiamo la lingua rilevata dal prompt.
+    language: existingPages.length > 0
+      ? (context.language || (updatedContext as { language?: string } | null)?.language || 'it')
+      : (detectedLanguage || context.language || 'it'),
   }
 
   // Step 1: Planner — aggiungi lingua al prompt se non rilevabile dal testo
