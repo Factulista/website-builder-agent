@@ -17,22 +17,23 @@ type MediaItem = { path: string; name: string; size: number; createdAt: string; 
 const INLINE_EDIT_SCRIPT = `(function(){
   var SKIP=new Set(['SCRIPT','STYLE','HEAD','META','LINK','IMG','VIDEO','AUDIO','IFRAME','INPUT','TEXTAREA','SELECT','CANVAS','NOSCRIPT','OBJECT','EMBED','SVG']);
 
-  // Freeze all interactions: disable pointer events and hover effects on everything,
-  // then re-enable only on elements we mark as editable.
+  // Freeze all interactions — re-enable only on editable elements and editor UI
   var globalStyle=document.createElement('style');
   globalStyle.id='fact-edit-global';
   globalStyle.textContent=
     '*{pointer-events:none!important;user-select:none!important;-webkit-user-select:none!important;'+
     'transition:none!important;animation-play-state:paused!important;}'+
     '[data-fact-edit]{pointer-events:auto!important;user-select:text!important;'+
-    '-webkit-user-select:text!important;cursor:text!important;}';
+    '-webkit-user-select:text!important;cursor:text!important;}'+
+    '#fact-ctx-menu,#fact-ctx-menu *,#fact-link-overlay,#fact-link-overlay *'+
+    '{pointer-events:auto!important;user-select:auto!important;-webkit-user-select:auto!important;}';
   document.head.appendChild(globalStyle);
 
+  // ── Attach contenteditable ──────────────────────────────────────────────────
   function attach(el){
     if(el.getAttribute('contenteditable')==='true') return;
     el.contentEditable='true';
     el.dataset.factEdit='1';
-    // Prevent any navigation or default click behaviour
     el.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();});
     el.addEventListener('mouseenter',function(){
       if(document.activeElement!==el){el.style.outline='2px dashed rgba(37,99,235,0.5)';el.style.outlineOffset='3px';el.style.borderRadius='3px';}
@@ -40,19 +41,15 @@ const INLINE_EDIT_SCRIPT = `(function(){
     el.addEventListener('mouseleave',function(){
       if(document.activeElement!==el){el.style.outline='';el.style.outlineOffset='';}
     });
-    el.addEventListener('focus',function(){
-      el.style.outline='2px solid #2563eb';el.style.outlineOffset='3px';el.style.borderRadius='3px';
-    });
-    el.addEventListener('blur',function(){
-      el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
-    });
+    el.addEventListener('focus',function(){el.style.outline='2px solid #2563eb';el.style.outlineOffset='3px';el.style.borderRadius='3px';});
+    el.addEventListener('blur',function(){el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';});
     el.addEventListener('keydown',function(e){
       if(e.key==='Enter'&&/^(H[1-6]|BUTTON|A)$/.test(el.tagName)){e.preventDefault();}
     });
   }
 
   function run(){
-    var walker=document.createTreeWalker(document.body,4/*NodeFilter.SHOW_TEXT*/);
+    var walker=document.createTreeWalker(document.body,4);
     var node;
     while((node=walker.nextNode())){
       try{
@@ -63,27 +60,187 @@ const INLINE_EDIT_SCRIPT = `(function(){
       }catch(e){}
     }
   }
-
   run();
   setTimeout(run,300);
 
-  var timer;
-  document.addEventListener('input',function(){
-    clearTimeout(timer);
-    timer=setTimeout(function(){
+  // ── Save helper ────────────────────────────────────────────────────────────
+  function triggerSave(){
+    setTimeout(function(){
       var clone=document.documentElement.cloneNode(true);
       clone.querySelectorAll('[data-fact-edit]').forEach(function(el){
-        el.removeAttribute('contenteditable');
-        el.removeAttribute('data-fact-edit');
+        el.removeAttribute('contenteditable');el.removeAttribute('data-fact-edit');
         el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
       });
-      // Remove all editor artefacts so the saved HTML is clean
-      ['#fact-edit-global','#fact-edit-script','#fact-edit-marker'].forEach(function(sel){
-        var el=clone.querySelector(sel); if(el) el.remove();
+      ['#fact-edit-global','#fact-edit-script','#fact-edit-marker','#fact-ctx-menu','#fact-link-overlay'].forEach(function(sel){
+        var el=clone.querySelector(sel);if(el)el.remove();
       });
       window.parent.postMessage({type:'html-change',html:'<!DOCTYPE html>\\n'+clone.outerHTML},'*');
-    },400);
+    },80);
+  }
+
+  // ── Auto-save on text input ────────────────────────────────────────────────
+  var saveTimer;
+  document.addEventListener('input',function(){
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(triggerSave,400);
   });
+
+  // ── Selection helpers ──────────────────────────────────────────────────────
+  var savedRange=null;
+  function saveSelection(){
+    var sel=window.getSelection();
+    if(sel&&sel.rangeCount>0) savedRange=sel.getRangeAt(0).cloneRange();
+  }
+  function restoreSelection(){
+    if(!savedRange) return;
+    var sel=window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+  }
+  function getAnchorLink(){
+    var sel=window.getSelection();
+    if(!sel||!sel.anchorNode) return null;
+    var node=sel.anchorNode;
+    while(node&&node!==document.body){
+      if(node.tagName==='A') return node;
+      node=node.parentElement;
+    }
+    return null;
+  }
+
+  // ── Context menu ──────────────────────────────────────────────────────────
+  var ctxMenu=null;
+  function removeCtxMenu(){if(ctxMenu){ctxMenu.remove();ctxMenu=null;}}
+
+  document.addEventListener('contextmenu',function(e){
+    // Only inside editable areas
+    var t=e.target;
+    while(t&&t!==document.body){
+      if((t.dataset&&t.dataset.factEdit)||t.tagName==='A') break;
+      t=t.parentElement;
+    }
+    if(!t||t===document.body) return;
+
+    e.preventDefault();
+    removeCtxMenu();
+    saveSelection();
+    var anchorEl=getAnchorLink();
+
+    var menu=document.createElement('div');
+    menu.id='fact-ctx-menu';
+    menu.style.cssText='position:fixed;z-index:99999;background:#fff;border:1px solid #e2e8f0;'+
+      'border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,0.13);padding:5px;min-width:190px;'+
+      'font-family:system-ui,sans-serif;font-size:13px;';
+    menu.style.left=Math.min(e.clientX,window.innerWidth-210)+'px';
+    menu.style.top=Math.min(e.clientY,window.innerHeight-220)+'px';
+
+    function item(icon,label,danger,onClick){
+      var d=document.createElement('div');
+      d.style.cssText='padding:8px 12px;cursor:pointer;border-radius:6px;display:flex;'+
+        'align-items:center;gap:9px;color:'+(danger?'#dc2626':'#1a1a1a')+';';
+      d.innerHTML='<span style="font-size:15px;width:18px;text-align:center">'+icon+'</span><span>'+label+'</span>';
+      d.onmouseenter=function(){d.style.background=danger?'#fef2f2':'#f1f5f9';};
+      d.onmouseleave=function(){d.style.background='transparent';};
+      d.addEventListener('mousedown',function(e){e.preventDefault();removeCtxMenu();onClick();});
+      return d;
+    }
+    function sep(){var s=document.createElement('div');s.style.cssText='height:1px;background:#f1f5f9;margin:4px 0;';return s;}
+
+    // Link actions
+    menu.appendChild(item('🔗', anchorEl?'Modifica link':'Inserisci link', false, function(){
+      showLinkDialog(anchorEl?anchorEl.getAttribute('href'):null);
+    }));
+    if(anchorEl){
+      menu.appendChild(item('✂️','Rimuovi link',true,function(){
+        restoreSelection();
+        document.execCommand('unlink');
+        triggerSave();
+      }));
+    }
+
+    menu.appendChild(sep());
+
+    // Text formatting
+    menu.appendChild(item('𝐁','Grassetto',false,function(){restoreSelection();document.execCommand('bold');triggerSave();}));
+    menu.appendChild(item('𝐼','Corsivo',false,function(){restoreSelection();document.execCommand('italic');triggerSave();}));
+    menu.appendChild(item('U̲','Sottolineato',false,function(){restoreSelection();document.execCommand('underline');triggerSave();}));
+
+    document.body.appendChild(menu);
+    ctxMenu=menu;
+  });
+
+  document.addEventListener('click',function(e){if(ctxMenu&&!ctxMenu.contains(e.target))removeCtxMenu();});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')removeCtxMenu();});
+
+  // ── Link dialog ────────────────────────────────────────────────────────────
+  function showLinkDialog(currentHref){
+    var overlay=document.createElement('div');
+    overlay.id='fact-link-overlay';
+    overlay.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.28);'+
+      'display:flex;align-items:center;justify-content:center;';
+
+    var box=document.createElement('div');
+    box.style.cssText='background:#fff;border-radius:13px;padding:22px 22px 18px;width:360px;'+
+      'box-shadow:0 8px 40px rgba(0,0,0,0.18);font-family:system-ui,sans-serif;';
+
+    box.innerHTML=
+      '<p style="margin:0 0 3px;font-size:14px;font-weight:700;color:#1a1a1a">Inserisci link</p>'+
+      '<p style="margin:0 0 14px;font-size:12px;color:#6b7280">'+
+        'Relativo: <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">./precios</code> &nbsp;'+
+        'Assoluto: <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px">https://…</code>'+
+      '</p>'+
+      '<input id="fact-link-input" type="text" placeholder="./precios" '+
+        'style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #cbd5e1;'+
+        'border-radius:8px;font-size:14px;font-family:monospace;outline:none;color:#1a1a1a;" '+
+        'value="'+(currentHref||'./')+'">'+
+      '<p id="fact-link-hint" style="margin:6px 0 0;font-size:11px;color:#6b7280;min-height:16px"></p>'+
+      '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">'+
+        '<button id="fact-link-cancel" style="padding:8px 18px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:#374151;">Annulla</button>'+
+        '<button id="fact-link-ok" style="padding:8px 18px;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;">Conferma</button>'+
+      '</div>';
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    var input=box.querySelector('#fact-link-input');
+    var hint=box.querySelector('#fact-link-hint');
+    setTimeout(function(){input.focus();input.select();},40);
+
+    // Live hint
+    input.addEventListener('input',function(){
+      var v=input.value.trim();
+      if(!v) { hint.textContent=''; return; }
+      if(/^https?:\\/\\//.test(v)) hint.textContent='✓ Link assoluto (apertura esterna)';
+      else if(/^\\.?\\//.test(v)||v.startsWith('./')) hint.textContent='✓ Link relativo (pagina interna)';
+      else if(v.startsWith('#')) hint.textContent='✓ Ancora sulla stessa pagina';
+      else hint.textContent='⚠ Aggiungi ./ per link interno o https:// per link esterno';
+    });
+
+    function confirm(){
+      var url=input.value.trim();
+      if(!url){overlay.remove();return;}
+      overlay.remove();
+      restoreSelection();
+      document.execCommand('createLink',false,url);
+      // Prevent link navigation while in edit mode
+      document.querySelectorAll('a[href]').forEach(function(a){
+        if(!a.__factLinkBound){
+          a.__factLinkBound=true;
+          a.addEventListener('click',function(e){e.preventDefault();});
+        }
+      });
+      triggerSave();
+    }
+
+    box.querySelector('#fact-link-ok').addEventListener('click',confirm);
+    box.querySelector('#fact-link-cancel').addEventListener('click',function(){overlay.remove();});
+    input.addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();confirm();}
+      if(e.key==='Escape'){e.preventDefault();overlay.remove();}
+    });
+    overlay.addEventListener('mousedown',function(e){if(e.target===overlay)overlay.remove();});
+  }
+
 })();`
 
 function stripHtmlFromChat(content: string, language: string): string {
