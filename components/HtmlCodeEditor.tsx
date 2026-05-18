@@ -360,7 +360,8 @@ export function HtmlCodeEditor({
               resize: 'none',
               zIndex: 2,
               caretColor: C.text,
-              overflow: 'hidden',
+              overflowY: 'auto',
+              overflowX: 'auto',
               whiteSpace: 'pre-wrap',
               wordWrap: 'break-word',
             }}
