@@ -14,6 +14,53 @@ export const maxDuration = 300
 
 type Page = { slug: string; name: string; html: string }
 
+/**
+ * normalizeInternalLinks — post-processing step that runs after every agent operation.
+ *
+ * The LLM often generates absolute links like href="/precios" or href="precios"
+ * instead of the correct relative href="./precios". Since the preview is served
+ * under a base path (e.g. /preview/{slug}/), absolute links navigate to the wrong
+ * place and relative links without "./" may also break.
+ *
+ * This function:
+ * 1. Converts href="/slug" → href="./slug" for all known page slugs
+ * 2. Converts href="slug" (bare, no slash) → href="./slug"
+ * 3. Converts href="/home" or href="/" → href="./"
+ * 4. Leaves external links (http/https/mailto/tel/#) untouched
+ */
+function normalizeInternalLinks(pages: Page[]): Page[] {
+  const slugs = new Set(pages.map(p => p.slug))
+
+  return pages.map(page => {
+    let html = page.html
+
+    // Fix absolute paths: href="/precios" → href="./precios"
+    // and href="/home" or href="/" → href="./"
+    html = html.replace(/href="\/([^"#?]*)"/g, (match, path) => {
+      if (!path || path === 'home') return 'href="./"'
+      const slug = path.replace(/\/$/, '')
+      if (slugs.has(slug)) return `href="./${slug}"`
+      return match // unknown path — leave as-is
+    })
+
+    // Fix bare slugs without dot-slash: href="precios" → href="./precios"
+    // Only for known slugs, to avoid breaking real external refs
+    for (const slug of slugs) {
+      if (slug === 'home') continue
+      // href="slug" but NOT href="./slug" or href="http..." or href="#..."
+      html = html.replace(
+        new RegExp(`href="${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g'),
+        `href="./${slug}"`
+      )
+    }
+
+    // href="./home" → href="./" (home is always the root)
+    html = html.replace(/href="\.\/home"/g, 'href="./"')
+
+    return { ...page, html }
+  })
+}
+
 type ProgressMessage = {
   type: 'progress'
   step: string
@@ -188,6 +235,8 @@ export async function POST(req: NextRequest) {
               duration_ms: Date.now() - runStartTime,
             }).catch(() => null)
           }
+          // Normalize internal links before sending to client
+          if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
           const done: DoneMessage = { type: 'done', result }
           streamController?.enqueue(encoder.encode(encodeMessage(done)))
           streamController?.close()
@@ -211,6 +260,7 @@ export async function POST(req: NextRequest) {
 
     if (agent === 'design-update') {
       const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context)
+      if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
       if (runId) {
         const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
         completeRun(runId, {
@@ -226,6 +276,7 @@ export async function POST(req: NextRequest) {
 
     if (agent === 'content-update') {
       const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
+      if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
       if (runId) {
         const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
         completeRun(runId, {
@@ -256,6 +307,15 @@ export async function POST(req: NextRequest) {
 
     // HTML agent — also update context from conversation
     const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia)
+
+    // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
+    if (result.tool === 'create_site' && result.input?.pages) {
+      result.input.pages = normalizeInternalLinks(result.input.pages as Page[])
+    }
+    if (result.tool === 'add_page' && result.input?.html) {
+      const normalized = normalizeInternalLinks([{ slug: result.input.slug as string, name: result.input.name as string, html: result.input.html as string }, ...(pages ?? [])])
+      result.input.html = normalized[0].html
+    }
 
     if (runId) {
       const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
