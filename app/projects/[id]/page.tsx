@@ -148,10 +148,23 @@ const INLINE_EDIT_SCRIPT = `(function(){
 
     // Link actions
     menu.appendChild(item('🔗', anchorEl?'Modifica link':'Inserisci link', false, function(){
+      // If editing an existing anchor, ensure savedRange is inside it
+      if(anchorEl){
+        var r=document.createRange();
+        r.selectNodeContents(anchorEl);
+        savedRange=r;
+      }
       showLinkDialog(anchorEl?anchorEl.getAttribute('href'):null);
     }));
     if(anchorEl){
       menu.appendChild(item('✂️','Rimuovi link',true,function(){
+        // For unlink: select the whole anchor content first
+        var r=document.createRange();
+        r.selectNodeContents(anchorEl);
+        savedRange=r;
+        var node=anchorEl;
+        while(node&&!node.isContentEditable) node=node.parentElement;
+        if(node) node.focus();
         restoreSelection();
         document.execCommand('unlink');
         triggerSave();
@@ -220,8 +233,31 @@ const INLINE_EDIT_SCRIPT = `(function(){
       var url=input.value.trim();
       if(!url){overlay.remove();return;}
       overlay.remove();
+
+      // Critical: refocus the contenteditable that owned the selection
+      // before calling execCommand — otherwise the command acts on the
+      // input field (which is not contenteditable) and does nothing.
+      if(savedRange){
+        var node=savedRange.startContainer;
+        var el=node.nodeType===3?node.parentElement:node;
+        while(el&&!el.isContentEditable) el=el.parentElement;
+        if(el) el.focus();
+      }
+
       restoreSelection();
-      document.execCommand('createLink',false,url);
+
+      // If editing an existing <a>, update its href directly instead of
+      // wrapping again (execCommand('createLink') can double-wrap)
+      var existingAnchor=getAnchorLink();
+      if(existingAnchor){
+        existingAnchor.setAttribute('href',url);
+      } else {
+        // Bail if selection collapsed — nothing to wrap
+        var sel=window.getSelection();
+        if(!sel||sel.isCollapsed) return;
+        document.execCommand('createLink',false,url);
+      }
+
       // Prevent link navigation while in edit mode
       document.querySelectorAll('a[href]').forEach(function(a){
         if(!a.__factLinkBound){
