@@ -76,7 +76,12 @@ export async function startRun(opts: {
     .select('id')
     .single()
 
-  if (error || !data) throw new Error(error?.message ?? 'startRun: no data returned')
+  if (error || !data) {
+    const msg = error?.code === '42P01'
+      ? 'TABLE_MISSING: agent_runs table does not exist. Run the SQL migration in Supabase.'
+      : (error?.message ?? 'startRun: no data returned')
+    throw new Error(msg)
+  }
   return data.id as string
 }
 
@@ -150,7 +155,10 @@ export async function listRuns(opts?: {
   if (opts?.to_date) query = query.lte('created_at', opts.to_date)
 
   const { data, count, error } = await query
-  if (error) throw new Error(error.message)
+  if (error) {
+    if (error.code === '42P01') throw new Error('TABLE_MISSING')
+    throw new Error(error.message)
+  }
 
   const runs = (data ?? []).map((r: Omit<AgentRun, 'cost_usd'>) => ({
     ...r,
@@ -190,11 +198,13 @@ export async function getRunStats(): Promise<{
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
   sevenDaysAgo.setHours(0, 0, 0, 0)
 
-  const { data: recentRows } = await supabase
+  const { data: recentRows, error: recentError } = await supabase
     .from('agent_runs')
     .select('created_at, status, input_tokens, output_tokens, cache_read_tokens, duration_ms')
     .gte('created_at', sevenDaysAgo.toISOString())
     .order('created_at', { ascending: true })
+
+  if (recentError?.code === '42P01') throw new Error('TABLE_MISSING')
 
   // All-time totals
   const { data: allRows } = await supabase

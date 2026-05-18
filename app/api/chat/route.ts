@@ -119,8 +119,8 @@ export async function POST(req: NextRequest) {
         input_summary: lastUserMessage.slice(0, 300),
         model: agentModel,
       })
-    } catch {
-      // Non-blocking — continue without logging
+    } catch (runErr) {
+      console.error('[run-logger] startRun failed:', String(runErr))
     }
 
     if (agent === 'pipeline') {

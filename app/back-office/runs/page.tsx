@@ -224,7 +224,12 @@ export default function RunsPage() {
       if (!res.ok) throw new Error(await res.text())
       setStats(await res.json() as Stats)
     } catch (e) {
-      console.error('Stats fetch error:', e)
+      const msg = String(e)
+      if (msg.includes('TABLE_MISSING')) {
+        setError('TABLE_MISSING')
+      } else {
+        console.error('Stats fetch error:', e)
+      }
     } finally {
       setStatsLoading(false)
     }
@@ -434,11 +439,58 @@ export default function RunsPage() {
       </div>
 
       {/* Table */}
-      {error && (
+      {error && error.includes('TABLE_MISSING') ? (
+        <div style={{
+          background: '#fffbeb', border: `1px solid #fcd34d`,
+          borderRadius: '10px', padding: '20px 24px', marginBottom: '12px',
+        }}>
+          <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: '0.95rem', color: '#92400e' }}>
+            ⚠️ Tabella <code style={{ fontFamily: 'ui-monospace, monospace', background: '#fef3c7', padding: '1px 5px', borderRadius: '4px' }}>agent_runs</code> non trovata
+          </p>
+          <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: '#78350f' }}>
+            La tabella non esiste ancora nel database Supabase. Esegui questo SQL nell&apos;editor SQL di Supabase per crearla:
+          </p>
+          <pre style={{
+            background: '#1e1e2e', color: '#cdd6f4', borderRadius: '8px',
+            padding: '14px 16px', fontSize: '0.76rem', lineHeight: 1.6,
+            overflowX: 'auto', margin: '0 0 12px', fontFamily: 'ui-monospace, monospace',
+          }}>{`CREATE TABLE agent_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id TEXT,
+  user_id TEXT,
+  agent_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  input_summary TEXT,
+  output_summary TEXT,
+  error_message TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER,
+  model TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ
+);
+CREATE INDEX agent_runs_created_at_idx ON agent_runs (created_at DESC);
+CREATE INDEX agent_runs_agent_type_idx ON agent_runs (agent_type);
+CREATE INDEX agent_runs_status_idx ON agent_runs (status);
+CREATE INDEX agent_runs_project_id_idx ON agent_runs (project_id);`}</pre>
+          <button
+            onClick={() => { fetchStats(); fetchRuns('', '', '', '', 0) }}
+            style={{
+              padding: '7px 16px', borderRadius: '6px',
+              border: `1px solid #fcd34d`, background: '#fef3c7',
+              color: '#92400e', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 600,
+            }}
+          >
+            🔄 Riprova dopo aver eseguito lo script
+          </button>
+        </div>
+      ) : error ? (
         <div style={{ background: '#fef2f2', border: `1px solid #fca5a5`, borderRadius: '8px', padding: '10px 14px', color: C.red, fontSize: '0.85rem', marginBottom: '12px' }}>
           {error}
         </div>
-      )}
+      ) : null}
 
       <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
