@@ -603,8 +603,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (!reader) { markFailed('no readable stream'); return }
       const decoder = new TextDecoder()
       let buffer = ''
+      let streamError: string | null = null
       try {
-        while (true) {
+        outer: while (true) {
           const { done, value } = await reader.read()
           if (done) break
           buffer += decoder.decode(value, { stream: true })
@@ -623,7 +624,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               } else if (msg.type === 'done') {
                 result = msg.result
               } else if (msg.type === 'error') {
-                throw new Error(msg.error)
+                // Store error and exit stream immediately — don't swallow in the JSON parse catch
+                streamError = msg.error as string
+                break outer
               }
             } catch (e) {
               console.error('Errore parsing messaggio:', e)
@@ -632,6 +635,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       } catch (err) {
         markFailed(`stream error: ${err instanceof Error ? err.message : String(err)}`)
+        return
+      }
+      if (streamError) {
+        markFailed(streamError)
         return
       }
     } else {
