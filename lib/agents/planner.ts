@@ -56,12 +56,15 @@ Il tuo output è un piano strutturale: quali pagine servono e quali sezioni deve
 SEZIONI DISPONIBILI: hero, navbar, features, benefits, testimonials, pricing, faq, cta, gallery, team, contact-form, map, footer, blog-list, blog-post, about, stats, clients, portfolio
 
 REGOLE:
-${isFirstRun ? `- PRIMA RUN: genera SOLO la pagina "home". L'utente aggiungerà altre pagine via chat successivamente.
-- Home deve avere sezioni essenziali: hero, features/benefits, cta, footer.` : `- Includi sempre "home" come prima pagina.
-- Suggerisci solo le pagine davvero utili per il tipo di business.
-- Scegli le sezioni più appropriate per ogni pagina, in ordine logico dall'alto al basso.
-- Non includere sezioni ridondanti.`}
-${hasPages ? `\nPAGINE ESISTENTI: ${existingPages.map(p => p.slug).join(', ')} — pianifica solo aggiunte o modifiche necessarie.` : ''}`
+${isFirstRun
+  ? `- PRIMA RUN: genera SOLO la pagina "home". L'utente aggiungerà altre pagine via chat successivamente.
+- Home deve avere sezioni essenziali: navbar, hero, features/benefits, cta, footer.`
+  : `- AGGIUNGI PAGINE: il sito esiste già. Pianifica SOLO le nuove pagine richieste dall'utente.
+- NON includere "home" né le pagine esistenti nel piano — esistono già e non vanno toccate.
+- Scegli le sezioni più appropriate per ogni nuova pagina, in ordine logico dall'alto al basso.
+- Includi sempre navbar e footer nelle nuove pagine per coerenza.
+- PAGINE GIÀ ESISTENTI (non ri-pianificare): ${existingPages.map(p => `${p.slug} (${p.name})`).join(', ')}`}
+`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

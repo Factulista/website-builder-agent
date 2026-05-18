@@ -82,8 +82,14 @@ export async function runHtmlAgentWithPlan(
   plan: import('./planner').SitePlan,
   content: import('./content-agent').ContentOutput,
   design: import('./design-agent').DesignOutput,
-  apiKey: string
+  apiKey: string,
+  existingPages: { slug: string; name: string }[] = []
 ) {
+  const allPages = [
+    ...existingPages,
+    ...plan.pages.filter(p => !existingPages.some(ep => ep.slug === p.slug)),
+  ]
+
   const system = `Sei un esperto sviluppatore HTML. Generi siti web HTML completi usando il contenuto e il design forniti.
 
 REGOLE:
@@ -93,7 +99,8 @@ REGOLE:
 - Includi Google Fonts: ${design.googleFontsUrl ?? 'nessuno'}
 - Link tra pagine con href relativi senza .html (es: ./chi-siamo).
 - Includi Schema.org JSON-LD nel <head> dove fornito.
-- Mobile-first, semantico, accessibile.`
+- Mobile-first, semantico, accessibile.
+${allPages.length > plan.pages.length ? `- TUTTE LE PAGINE DEL SITO (per i link navbar): ${allPages.map(p => `${p.name} → ./${p.slug === 'home' ? '' : p.slug}`).join(', ')}` : ''}`
 
   const userMessage = `Richiesta: ${userRequest}
 

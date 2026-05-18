@@ -180,10 +180,24 @@ export async function runFullPipeline(
   const templateHtml = templateName ? loadTemplate(templateName) : null
 
   emit?.('🏗️ HTML')
+  const existingPagesMeta = existingPages.map(p => ({ slug: p.slug, name: p.name }))
   const htmlOutput = templateHtml
     ? await runHtmlAgentFromTemplate(userRequest, plan, content, design, templateHtml, apiKey)
-    : await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey)
+    : await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey, existingPagesMeta)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
+
+  // Merge: preserva le pagine esistenti, aggiunge/aggiorna solo le nuove
+  const mergedPages = existingPages.length > 0
+    ? [
+        ...existingPages.filter(ep => !htmlOutput.pages.some(np => np.slug === ep.slug)),
+        ...htmlOutput.pages,
+      ]
+    : htmlOutput.pages
+
+  const newPageSlugs = htmlOutput.pages.map(p => p.slug).filter(s => !existingPages.some(ep => ep.slug === s))
+  const summaryNote = newPageSlugs.length > 0
+    ? `${htmlOutput.summary} (aggiunt${newPageSlugs.length > 1 ? 'e' : 'a'}: ${newPageSlugs.join(', ')})`
+    : htmlOutput.summary
 
   // Persisti il design nel contesto così i prossimi add-page lo riusano senza chiamare il Design agent
   const finalContext: ProjectContext = {
@@ -193,7 +207,7 @@ export async function runFullPipeline(
 
   return {
     tool: 'create_site',
-    input: { pages: htmlOutput.pages, summary: htmlOutput.summary },
+    input: { pages: mergedPages, summary: summaryNote },
     agent: 'pipeline',
     steps,
     updatedContext: finalContext,
