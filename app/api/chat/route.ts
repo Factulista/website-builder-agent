@@ -4,6 +4,7 @@ import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '..
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
+import { runClarifier } from '../../../lib/agents/clarifier'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
@@ -96,6 +97,29 @@ export async function POST(req: NextRequest) {
 
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
     const agent = classify(lastUserMessage, pages?.length > 0)
+
+    // Clarifier — runs before any agent if the request is ambiguous
+    const clarifierConfig = dbConfigs.find(c => c.name === 'clarifier')
+    const clarifierEnabled = clarifierConfig?.enabled !== false
+    if (clarifierEnabled) {
+      const clarification = await runClarifier(
+        lastUserMessage,
+        (pages ?? []).map(p => ({ slug: p.slug, name: p.name })),
+        context,
+        apiKey,
+        agent
+      ).catch(() => ({ proceed: true as const }))
+
+      if (!clarification.proceed) {
+        return Response.json({
+          tool: 'create_site',
+          input: { pages: pages ?? [], summary: clarification.message },
+          agent,
+          steps: [clarification.message],
+          requestClarification: true,
+        })
+      }
+    }
 
     // Check if the html agent is disabled before running html-only requests
     if (agent === 'html' && dbConfigs.length > 0) {

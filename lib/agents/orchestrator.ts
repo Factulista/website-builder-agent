@@ -1,4 +1,3 @@
-import { runClarifier } from './clarifier'
 import { runPlanner } from './planner'
 import { runContentAgent, runContentAgentUpdate } from './content-agent'
 import { runDesignAgent, runDesignAgentUpdate } from './design-agent'
@@ -138,25 +137,7 @@ export async function runFullPipeline(
     }
   }
 
-  // Step 0b: Clarifier — chiedi domande se la richiesta è ambigua
-  const clarification = await runClarifier(
-    userRequest,
-    existingPages.map(p => ({ slug: p.slug, name: p.name })),
-    context,
-    apiKey
-  ).catch(() => ({ proceed: true as const }))
-
-  if (!clarification.proceed) {
-    return {
-      tool: 'create_site',
-      input: { pages: existingPages, summary: clarification.message },
-      agent: 'pipeline',
-      steps: [clarification.message],
-      requestClarification: true,
-    }
-  }
-
-  // Step 0c: Memory
+  // Step 0b: Memory
   const updatedContext = await runMemoryAgent(
     [{ role: 'user', content: userRequest }],
     context,

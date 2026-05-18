@@ -23,12 +23,40 @@ const CLARIFIER_TOOL = {
   },
 }
 
+type AgentType = 'pipeline' | 'html' | 'design-update' | 'content-update' | 'seo' | 'images'
+
+const AGENT_CLARIFICATION_RULES: Record<AgentType, string> = {
+  pipeline: `QUANDO CHIEDERE (SOLO questi casi):
+1. Prima run E business type completamente assente/ambiguo (es: "fammi un sito" senza dettagli)
+2. Prima run E lingua non specificata né deducibile (se scrive in un'altra lingua → quella è la lingua)
+PROCEDI SEMPRE SE: pagine esistenti, lingua nel contesto, richiesta menziona settore/nome, aggiunta pagina specifica`,
+
+  html: `QUANDO CHIEDERE (SOLO se richiesta totalmente vuota di contenuto):
+- "modifica il sito", "miglioralo", "aggiustalo" senza NESSUN dettaglio su cosa cambiare
+PROCEDI SEMPRE SE: qualsiasi indicazione su cosa modificare (colore, testo, sezione, layout, ecc.)`,
+
+  'design-update': `QUANDO CHIEDERE (SOLO se non c'è assolutamente nessun indirizzo stilistico):
+- "cambia il design" o "restyle" senza specificare nulla (colore, stile, mood, ecc.)
+PROCEDI SEMPRE SE: qualsiasi preferenza di stile, colore, font, mood, settore, brand`,
+
+  'content-update': `QUANDO CHIEDERE (SOLO se manca sia la lingua che il tono):
+- "aggiorna i testi" senza lingua né tono di voce
+PROCEDI SEMPRE SE: lingua specificata, tono specificato, settore deducibile dal contesto`,
+
+  seo: `PROCEDI SEMPRE. Le ottimizzazioni SEO standard non richiedono chiarimenti.`,
+  images: `PROCEDI SEMPRE. Le ottimizzazioni immagini non richiedono chiarimenti.`,
+}
+
 export async function runClarifier(
   userRequest: string,
   existingPages: { slug: string; name: string }[],
   context: ProjectContext,
-  apiKey: string
+  apiKey: string,
+  agentType: AgentType = 'pipeline'
 ): Promise<ClarifierResult> {
+  // SEO e images: procedi sempre senza chiamata LLM
+  if (agentType === 'seo' || agentType === 'images') return { proceed: true }
+
   const isFirstRun = existingPages.length === 0
   const { design: _design, ...contextWithoutDesign } = context
   const contextSummary = Object.entries(contextWithoutDesign)
@@ -36,27 +64,22 @@ export async function runClarifier(
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join('\n')
 
-  const system = `Sei il quality controller di un website builder AI. Prima di generare il sito, verifica che la richiesta sia sufficientemente chiara per produrre un buon risultato.
+  const agentRules = AGENT_CLARIFICATION_RULES[agentType]
+
+  const system = `Sei il quality controller di un website builder AI. L'agente che sta per girare è: **${agentType}**.
+Verifica se la richiesta è abbastanza chiara per quell'agente, oppure se mancano info critiche.
 
 STATO ATTUALE:
 - Prima run (nessuna pagina): ${isFirstRun ? 'SÌ' : 'NO'}
-- Contesto progetto già noto:
+- Contesto progetto:
 ${contextSummary || '(nessuno)'}
 - Pagine esistenti: ${existingPages.length > 0 ? existingPages.map(p => p.slug).join(', ') : 'nessuna'}
 
-QUANDO CHIEDERE CHIARIMENTI (SOLO in questi casi specifici):
-1. Prima run E il tipo/settore del business è completamente assente o ambiguo (es: "fammi un sito" senza nessun dettaglio sul business)
-2. Prima run E la lingua non è specificata né deducibile dal testo (es: l'utente scrive in italiano ma non dice in che lingua vuole il sito — se scrive in un'altra lingua, quella È la lingua del sito)
+REGOLE PER AGENTE "${agentType}":
+${agentRules}
 
-QUANDO PROCEDERE SEMPRE (non chiedere):
-- Esistono già pagine nel sito → il contesto è noto, procedi
-- La lingua è già nel contesto del progetto
-- L'utente scrive in una lingua diversa dall'italiano → quella è la lingua del sito
-- La richiesta menziona il settore, il nome o il pubblico del business
-- Si tratta di aggiungere una pagina specifica (es: "crea la pagina pricing")
-- Qualsiasi dubbio non critico → procedi, è meglio generare qualcosa che bloccarsi
-
-Se fai domande: max 2 domande, sintetiche, tono amichevole, in italiano. Non fare domande su cose che puoi dedurre.`
+REGOLA GLOBALE: in caso di dubbio → procedi. È meglio generare qualcosa che bloccarsi.
+Se fai domande: max 2, sintetiche, tono amichevole, in italiano.`
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -68,7 +91,7 @@ Se fai domande: max 2 domande, sintetiche, tono amichevole, in italiano. Non far
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
+        max_tokens: 256,
         system,
         tools: [CLARIFIER_TOOL],
         tool_choice: { type: 'any' },
