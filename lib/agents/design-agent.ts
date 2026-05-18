@@ -63,49 +63,6 @@ export type DesignOutput = {
   summary: string
 }
 
-/**
- * Estrae design tokens e CSS dall'HTML di una pagina esistente.
- * Usato quando si aggiunge una pagina a un sito già creato:
- * evita di rigenerare il design da zero (costoso e soggetto a troncatura).
- */
-export function extractDesignFromHtml(html: string): DesignOutput {
-  // Estrai blocchi <style>
-  const styleBlocks = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
-  const css = styleBlocks.map(m => m[1]).join('\n').trim()
-
-  // Estrai Google Fonts URL dal link href
-  const fontsMatch = html.match(/<link[^>]*href="(https:\/\/fonts\.googleapis\.com[^"]+)"[^>]*>/)
-  const googleFontsUrl = fontsMatch?.[1] ?? undefined
-
-  // Estrai colore primario da CSS custom properties
-  const primaryMatch = css.match(/--(?:primary|accent|color-primary)[^:]*:\s*(#[0-9a-fA-F]{3,8}|[\w-]+)/)
-  const bgMatch = css.match(/--(?:background|bg|color-bg)[^:]*:\s*(#[0-9a-fA-F]{3,8}|[\w-]+)/)
-  const textMatch = css.match(/--(?:text|color-text|foreground)[^:]*:\s*(#[0-9a-fA-F]{3,8}|[\w-]+)/)
-
-  // Estrai font family dalle CSS vars o dalle regole @import
-  const headingFontMatch = css.match(/--font-heading[^:]*:\s*['"]?([^'";,]+)/)
-    ?? css.match(/font-family[^:]*:\s*['"]?([A-Z][^'";,]+)/)
-  const bodyFontMatch = css.match(/--font-body[^:]*:\s*['"]?([^'";,]+)/)
-
-  return {
-    tokens: {
-      colors: {
-        primary: primaryMatch?.[1] ?? '#6366f1',
-        secondary: '#64748b',
-        background: bgMatch?.[1] ?? '#ffffff',
-        text: textMatch?.[1] ?? '#1a1a1a',
-      },
-      fonts: {
-        heading: headingFontMatch?.[1]?.trim() ?? 'Inter',
-        body: bodyFontMatch?.[1]?.trim() ?? 'Inter',
-      },
-    },
-    css,
-    googleFontsUrl,
-    summary: 'Design estratto dal sito esistente',
-  }
-}
-
 export async function runDesignAgent(
   userRequest: string,
   plan: SitePlan,

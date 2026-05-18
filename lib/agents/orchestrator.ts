@@ -1,6 +1,6 @@
 import { runPlanner } from './planner'
 import { runContentAgent, runContentAgentUpdate } from './content-agent'
-import { runDesignAgent, runDesignAgentUpdate, extractDesignFromHtml } from './design-agent'
+import { runDesignAgent, runDesignAgentUpdate } from './design-agent'
 import { runHtmlAgentWithPlan, runHtmlAgent, runHtmlAgentFromTemplate } from './html-agent'
 import { runSeoAgent } from './seo-agent'
 import { runImagesAgent } from './images-agent'
@@ -162,13 +162,14 @@ export async function runFullPipeline(
   }
 
   // Step 2b: Content + Design in parallelo
-  // Se esistono già pagine, riusa il design dall'HTML esistente (evita Design agent e token spreading)
-  const isAddPage = existingPages.length > 0
-  emit?.(isAddPage ? '✍️ Content (design riusato dal sito)' : '✍️ Content + Design')
+  // Se il contesto ha già un design salvato (sito esistente), riusalo — evita di rigenerare CSS da zero
+  const savedDesign = activeContext.design
+  const isAddPage = existingPages.length > 0 && !!savedDesign
+  emit?.(isAddPage ? '✍️ Content (design dal contesto)' : '✍️ Content + Design')
   const [content, design] = await Promise.all([
     runContentAgent(userRequest, plan, apiKey, activeContext),
     isAddPage
-      ? Promise.resolve(extractDesignFromHtml(existingPages[0].html))
+      ? Promise.resolve(savedDesign)
       : runDesignAgent(userRequest, plan, apiKey, activeContext, inspirationBriefs),
   ])
   if (!content?.pages) throw new Error('Content agent non ha prodotto contenuti validi')
@@ -184,11 +185,17 @@ export async function runFullPipeline(
     : await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
 
+  // Persisti il design nel contesto così i prossimi add-page lo riusano senza chiamare il Design agent
+  const finalContext: ProjectContext = {
+    ...(updatedContext ?? context),
+    design,
+  }
+
   return {
     tool: 'create_site',
     input: { pages: htmlOutput.pages, summary: htmlOutput.summary },
     agent: 'pipeline',
     steps,
-    updatedContext: updatedContext ?? undefined,
+    updatedContext: finalContext,
   }
 }

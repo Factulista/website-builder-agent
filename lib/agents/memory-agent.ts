@@ -1,4 +1,5 @@
 import { callClaude } from './config'
+import type { DesignOutput } from './design-agent'
 
 export type ProjectContext = {
   businessName?: string
@@ -13,6 +14,8 @@ export type ProjectContext = {
   contactInfo?: { phone?: string; email?: string; address?: string }
   language?: string
   updatedAt?: string
+  /** Design generato dal Design agent — riusato su add-page per coerenza e risparmio token */
+  design?: DesignOutput
 }
 
 const MEMORY_TOOLS = [
