@@ -1238,26 +1238,62 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             />
           </div>
 
-          {/* URL bar */}
+          {/* URL bar — selectable text + slug dropdown for page navigation */}
           <div style={{
-            flex: 1, maxWidth: '340px',
-            display: 'flex', alignItems: 'center', gap: '6px',
+            flex: 1, maxWidth: '400px',
+            display: 'flex', alignItems: 'center', gap: '0',
             background: C.white, border: `1px solid ${C.border}`,
-            borderRadius: '7px', padding: '4px 8px',
+            borderRadius: '7px', padding: '0 6px 0 8px',
+            overflow: 'hidden',
           }}>
-            <span style={{ fontSize: '0.75rem', color: C.textFaint }}>□</span>
-            {publicUrl ? (
-              <a
-                href={publicUrl} target="_blank" rel="noopener noreferrer"
-                style={{ flex: 1, fontSize: '0.75rem', color: C.text, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}
-              >
-                {publicUrl.replace(/^https?:\/\//, '')}
-              </a>
+            <span style={{ fontSize: '0.75rem', color: C.textFaint, flexShrink: 0, marginRight: '6px' }}>□</span>
+            {publicBaseUrl ? (
+              <>
+                {/* Selectable base URL */}
+                <input
+                  readOnly
+                  value={publicBaseUrl.replace(/^https?:\/\//, '') + (activeSlug === 'home' ? '' : '/')}
+                  onClick={e => (e.target as HTMLInputElement).select()}
+                  title="Clicca per selezionare l'URL"
+                  style={{
+                    border: 'none', outline: 'none', background: 'transparent',
+                    fontSize: '0.75rem', fontFamily: 'monospace', color: C.textMuted,
+                    width: `${(publicBaseUrl.replace(/^https?:\/\//, '').length + (activeSlug === 'home' ? 0 : 1))}ch`,
+                    minWidth: 0, cursor: 'text', padding: 0, flexShrink: 1,
+                  }}
+                />
+                {/* Slug — dropdown if multiple pages, static text if single */}
+                {pages.length > 1 ? (
+                  <select
+                    value={activeSlug}
+                    onChange={e => setActiveSlug(e.target.value)}
+                    title="Naviga tra le pagine"
+                    style={{
+                      border: 'none', outline: 'none', background: 'transparent',
+                      fontSize: '0.75rem', fontFamily: 'monospace', color: C.text, fontWeight: 600,
+                      cursor: 'pointer', padding: '5px 0',
+                      appearance: 'none', WebkitAppearance: 'none',
+                    }}
+                  >
+                    {pages.map(p => (
+                      <option key={p.slug} value={p.slug}>
+                        {p.slug === 'home' ? '' : p.slug}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  activeSlug !== 'home' && (
+                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: C.text, fontWeight: 600 }}>
+                      {activeSlug}
+                    </span>
+                  )
+                )}
+              </>
             ) : (
-              <span style={{ flex: 1, fontSize: '0.75rem', color: C.textFaint }}>—</span>
+              <span style={{ flex: 1, fontSize: '0.75rem', color: C.textFaint, padding: '5px 0' }}>—</span>
             )}
             {publicUrl && (
-              <button onClick={copyUrl} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: copied ? '#10b981' : C.textFaint, fontSize: '0.75rem', flexShrink: 0 }} title={t('project.copyUrl' as const, language as any)}>
+              <button onClick={copyUrl} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: copied ? '#10b981' : C.textFaint, fontSize: '0.75rem', flexShrink: 0, marginLeft: '4px' }} title={t('project.copyUrl' as const, language as any)}>
                 {copied ? '✓' : '⧉'}
               </button>
             )}
