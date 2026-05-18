@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { type AgentMeta } from '../../../lib/agents/manifest'
 import { getAgentWorkflows, getOrphanAgents, ALWAYS_ON_AGENTS, WORKFLOWS } from '../../../lib/agents/workflow-registry'
+import { useLanguage } from '../../../lib/i18n/useLanguage'
+import { t } from '../../../lib/i18n/translations'
 
 const C = {
   bg: '#faf9f7',
@@ -17,7 +19,8 @@ const C = {
   amber: '#f59e0b',
 }
 
-const CATEGORY_LABELS: Record<AgentMeta['category'], string> = {
+// Category labels will be handled dynamically based on language
+const CATEGORY_LABEL_KEYS: Record<AgentMeta['category'], string> = {
   orchestration: 'Orchestrazione',
   pipeline: 'Pipeline principale',
   modifier: 'Modificatori',
@@ -55,7 +58,7 @@ type AgentRow = {
 
 // ── Workflow pills ───────────────────────────────────────────────────────────
 
-function WorkflowPills({ agentName, allNames }: { agentName: string; allNames: string[] }) {
+function WorkflowPills({ agentName, allNames, language }: { agentName: string; allNames: string[]; language: string }) {
   // orchestrator → special "entry" pill
   if (ALWAYS_ON_AGENTS.includes(agentName)) {
     return (
@@ -68,7 +71,7 @@ function WorkflowPills({ agentName, allNames }: { agentName: string; allNames: s
         letterSpacing: '0.04em',
         whiteSpace: 'nowrap',
       }}>
-        entry
+        {t('agents.entry' as const, language as any)}
       </span>
     )
   }
@@ -81,7 +84,7 @@ function WorkflowPills({ agentName, allNames }: { agentName: string; allNames: s
         color: C.amber,
         whiteSpace: 'nowrap',
       }}>
-        ⚠ orfano
+        ⚠ {t('agents.orphan' as const, language as any)}
       </span>
     )
   }
@@ -115,6 +118,7 @@ function WorkflowPills({ agentName, allNames }: { agentName: string; allNames: s
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
+  const { language } = useLanguage()
   const [agents, setAgents] = useState<AgentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -125,14 +129,14 @@ export default function AgentsPage() {
   const fetchAgents = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     const token = session?.access_token
-    if (!token) { setError('Non autenticato'); setLoading(false); return }
+    if (!token) { setError(t('common.error' as const, language as any)); setLoading(false); return }
 
     const res = await fetch('/api/admin/agents', {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) {
       const body = await res.json() as { error?: string }
-      setError(body.error ?? 'Errore nel caricamento')
+      setError(body.error ?? t('common.error' as const, language as any))
       setLoading(false)
       return
     }
@@ -155,12 +159,14 @@ export default function AgentsPage() {
   // gridTemplateColumns: dot | name | category | model | maxTokens | stato | workflow | arrow
   const GRID = '16px 1fr 140px 160px 100px 80px 110px 32px'
 
+  const CATEGORY_LABELS = CATEGORY_LABEL_KEYS
+
   return (
     <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
       <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Agents</h1>
+        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>{t('agents.title' as const, language as any)}</h1>
         <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: C.textMuted }}>
-          {loading ? 'Caricamento…' : `${agents.length} agenti · ${enabledCount} attivi`}
+          {loading ? t('agents.loading' as const, language as any) : `${agents.length} ${t('agents.totalAgents' as const, language as any)} · ${enabledCount} ${t('agents.activeAgents' as const, language as any)}`}
         </p>
       </div>
 
@@ -174,7 +180,7 @@ export default function AgentsPage() {
       <div style={{ marginBottom: '20px' }}>
         <input
           type="text"
-          placeholder="Cerca agente..."
+          placeholder={t('agents.search' as const, language as any)}
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{
@@ -189,7 +195,7 @@ export default function AgentsPage() {
       {/* Table */}
       {loading ? (
         <div style={{ color: C.textFaint, fontSize: '0.88rem', padding: '40px 0', textAlign: 'center' }}>
-          Caricamento agenti…
+          {t('agents.loading' as const, language as any)}
         </div>
       ) : (
         <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden', position: 'relative' }}>
@@ -209,13 +215,13 @@ export default function AgentsPage() {
 
             {/* Nome header */}
             <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Nome
+              {t('agents.name' as const, language as any)}
             </span>
 
             {/* Categoria header with filter icon */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Categoria
+                {t('agents.category' as const, language as any)}
               </span>
               <button
                 onClick={() => setOpenFilterMenu(!openFilterMenu)}
@@ -228,7 +234,7 @@ export default function AgentsPage() {
                   padding: '2px 4px',
                   fontWeight: 600,
                 }}
-                title={filter !== 'all' ? `Filtro attivo: ${CATEGORY_LABELS[filter as AgentMeta['category']]}` : 'Mostra filtri'}
+                title={filter !== 'all' ? `${t('agents.filterLabel' as const, language as any)}: ${CATEGORY_LABELS[filter as AgentMeta['category']]}` : t('agents.filterLabel' as const, language as any)}
               >
                 ☰
               </button>
@@ -275,7 +281,7 @@ export default function AgentsPage() {
                         }
                       }}
                     >
-                      {cat === 'all' ? '✓ Tutti' : CATEGORY_LABELS[cat as AgentMeta['category']]}
+                      {cat === 'all' ? `✓ ${t('agents.allCategories' as const, language as any)}` : CATEGORY_LABELS[cat as AgentMeta['category']]}
                     </button>
                   ))}
                 </div>
@@ -284,22 +290,22 @@ export default function AgentsPage() {
 
             {/* Modello header */}
             <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Modello
+              {t('agents.model' as const, language as any)}
             </span>
 
             {/* Max tokens header */}
             <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Max tokens
+              {t('agents.maxTokens' as const, language as any)}
             </span>
 
             {/* Stato header */}
             <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Stato
+              {t('agents.status' as const, language as any)}
             </span>
 
             {/* Workflow header */}
             <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Workflow
+              {t('agents.workflowHeader' as const, language as any)}
             </span>
 
             {/* Arrow header */}
@@ -309,7 +315,7 @@ export default function AgentsPage() {
           {/* Rows */}
           {filtered.length === 0 ? (
             <div style={{ padding: '32px', textAlign: 'center', color: C.textFaint, fontSize: '0.88rem' }}>
-              Nessun agente trovato
+              {t('agents.notFound' as const, language as any)}
             </div>
           ) : (
             filtered.map((agent, idx) => (
@@ -378,11 +384,11 @@ export default function AgentsPage() {
                   fontSize: '0.72rem', fontWeight: 600,
                   color: agent.enabled ? C.green : C.amber,
                 }}>
-                  {agent.enabled ? 'Attivo' : 'Off'}
+                  {agent.enabled ? t('agents.active' as const, language as any) : t('agents.off' as const, language as any)}
                 </span>
 
                 {/* Workflow pills */}
-                <WorkflowPills agentName={agent.name} allNames={allNames} />
+                <WorkflowPills agentName={agent.name} allNames={allNames} language={language} />
 
                 {/* Arrow */}
                 <span style={{ fontSize: '0.8rem', color: C.textFaint, justifySelf: 'end' }}>→</span>

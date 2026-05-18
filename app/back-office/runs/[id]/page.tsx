@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
 import type { AgentRun } from '../../../../lib/agents/run-logger'
 import { formatCost } from '../../../../lib/agents/cost'
+import { useLanguage } from '../../../../lib/i18n/useLanguage'
+import { t } from '../../../../lib/i18n/translations'
 
 const C = {
   bg: '#faf9f7',
@@ -110,6 +112,7 @@ function TextBlock({ label, content, isError }: { label: string; content: string
 }
 
 export default function RunDetailPage() {
+  const { language } = useLanguage()
   const params = useParams()
   const id = params?.id as string
   const [run, setRun] = useState<AgentRun | null>(null)
@@ -125,7 +128,7 @@ export default function RunDetailPage() {
         const res = await fetch(`/api/admin/runs/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-        if (res.status === 404) { setError('Run non trovato.'); return }
+        if (res.status === 404) { setError(t('runs.notFound' as const, language as any)); return }
         if (!res.ok) throw new Error(await res.text())
         setRun(await res.json() as AgentRun)
       } catch (e) {
@@ -140,7 +143,7 @@ export default function RunDetailPage() {
   if (loading) {
     return (
       <div style={{ padding: '32px 40px', color: C.textFaint, fontSize: '0.9rem' }}>
-        Caricamento...
+        {t('common.loading' as const, language as any)}
       </div>
     )
   }
@@ -149,10 +152,10 @@ export default function RunDetailPage() {
     return (
       <div style={{ padding: '32px 40px' }}>
         <Link href="/back-office/runs" style={{ fontSize: '0.85rem', color: C.textMuted, textDecoration: 'none' }}>
-          ← Runs
+          ← {t('runs.title' as const, language as any)}
         </Link>
         <div style={{ marginTop: '20px', color: C.red, fontSize: '0.9rem' }}>
-          {error || 'Run non trovato.'}
+          {error || t('runs.notFound' as const, language as any)}
         </div>
       </div>
     )
@@ -162,7 +165,7 @@ export default function RunDetailPage() {
     <div style={{ padding: '32px 40px', maxWidth: '900px' }}>
       {/* Back */}
       <Link href="/back-office/runs" style={{ fontSize: '0.85rem', color: C.textMuted, textDecoration: 'none', display: 'inline-block', marginBottom: '20px' }}>
-        ← Runs
+        ← {t('runs.title' as const, language as any)}
       </Link>
 
       {/* Header */}
@@ -180,18 +183,18 @@ export default function RunDetailPage() {
 
       {/* Metadata grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginBottom: '24px' }}>
-        <InfoCard label="Model" value={run.model ?? '—'} />
-        <InfoCard label="Durata" value={formatDuration(run.duration_ms)} />
-        <InfoCard label="Token input" value={formatTokens(run.input_tokens)} />
-        <InfoCard label="Token output" value={formatTokens(run.output_tokens)} />
-        <InfoCard label="Costo stimato" value={formatCost(run.cost_usd)} />
+        <InfoCard label={t('runs.model' as const, language as any)} value={run.model ?? '—'} />
+        <InfoCard label={t('runs.duration' as const, language as any)} value={formatDuration(run.duration_ms)} />
+        <InfoCard label={t('runs.inputTokens' as const, language as any)} value={formatTokens(run.input_tokens)} />
+        <InfoCard label={t('runs.outputTokens' as const, language as any)} value={formatTokens(run.output_tokens)} />
+        <InfoCard label={t('runs.estimatedCost' as const, language as any)} value={formatCost(run.cost_usd)} />
       </div>
 
       {/* Input / Output */}
-      <TextBlock label="Input" content={run.input_summary} />
+      <TextBlock label={t('runs.input' as const, language as any)} content={run.input_summary} />
       {run.status === 'error'
-        ? <TextBlock label="Errore" content={run.error_message} isError />
-        : <TextBlock label="Output" content={run.output_summary} />
+        ? <TextBlock label={t('runs.error' as const, language as any)} content={run.error_message} isError />
+        : <TextBlock label={t('runs.output' as const, language as any)} content={run.output_summary} />
       }
 
       {/* Footer meta */}
@@ -200,20 +203,20 @@ export default function RunDetailPage() {
         display: 'flex', gap: '24px', flexWrap: 'wrap',
       }}>
         <div>
-          <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Project ID</p>
+          <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('runs.projectId' as const, language as any)}</p>
           <p style={{ margin: '2px 0 0', fontSize: '0.8rem', fontFamily: 'ui-monospace, monospace', color: C.textMuted }}>
             {run.project_id ?? '—'}
           </p>
         </div>
         <div>
-          <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>User ID</p>
+          <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('runs.userId' as const, language as any)}</p>
           <p style={{ margin: '2px 0 0', fontSize: '0.8rem', fontFamily: 'ui-monospace, monospace', color: C.textMuted }}>
             {run.user_id ?? '—'}
           </p>
         </div>
         {run.cache_read_tokens > 0 && (
           <div>
-            <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Cache read tokens</p>
+            <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('runs.cacheReadTokens' as const, language as any)}</p>
             <p style={{ margin: '2px 0 0', fontSize: '0.8rem', fontFamily: 'ui-monospace, monospace', color: C.textMuted }}>
               {formatTokens(run.cache_read_tokens)}
             </p>
@@ -221,7 +224,7 @@ export default function RunDetailPage() {
         )}
         {run.completed_at && (
           <div>
-            <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Completato</p>
+            <p style={{ margin: 0, fontSize: '0.68rem', color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{t('runs.completed' as const, language as any)}</p>
             <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: C.textMuted }}>
               {formatFull(run.completed_at)}
             </p>

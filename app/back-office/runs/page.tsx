@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import type { AgentRun } from '../../../lib/agents/run-logger'
 import { formatCost, formatCostTotal } from '../../../lib/agents/cost'
+import { useLanguage } from '../../../lib/i18n/useLanguage'
+import { t } from '../../../lib/i18n/translations'
 
 const C = {
   bg: '#faf9f7',
@@ -191,6 +193,7 @@ function BarChart({ byDay }: { byDay: Stats['byDay'] }) {
 }
 
 export default function RunsPage() {
+  const { language } = useLanguage()
   const [stats, setStats] = useState<Stats | null>(null)
   const [runs, setRuns] = useState<AgentRun[]>([])
   const [total, setTotal] = useState(0)
@@ -318,36 +321,36 @@ export default function RunsPage() {
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
-      <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>Runs</h1>
+      <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>{t('runs.title' as const, language as any)}</h1>
       <p style={{ margin: '6px 0 24px', fontSize: '0.88rem', color: C.textMuted }}>
-        Osservabilità completa di ogni esecuzione degli agenti AI.
+        {t('runs.description' as const, language as any)}
       </p>
 
       {/* Stats bar */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <MetricCard
-          label="Totale runs"
+          label={t('runs.totalRuns' as const, language as any)}
           value={statsLoading ? '...' : String(stats?.totals.total ?? 0)}
-          sub={statsLoading ? '' : `${stats?.totals.running ?? 0} in corso`}
+          sub={statsLoading ? '' : `${stats?.totals.running ?? 0} ${t('runs.running' as const, language as any)}`}
         />
         <MetricCard
-          label="Success rate"
+          label={t('runs.successRate' as const, language as any)}
           value={statsLoading ? '...' : `${successRate ?? 0}%`}
-          sub={statsLoading ? '' : `${stats?.totals.success ?? 0} ok / ${stats?.totals.error ?? 0} errori`}
+          sub={statsLoading ? '' : `${stats?.totals.success ?? 0} ${t('runs.ok' as const, language as any)} / ${stats?.totals.error ?? 0} ${t('runs.errors' as const, language as any)}`}
         />
         <MetricCard
-          label="Durata media"
+          label={t('runs.avgDuration' as const, language as any)}
           value={statsLoading ? '...' : formatDuration(stats?.avgDuration ?? null)}
         />
         <MetricCard
-          label="Token totali"
+          label={t('runs.totalTokens' as const, language as any)}
           value={statsLoading ? '...' : formatTokens(totalTokens ?? 0)}
           sub={statsLoading ? '' : `in: ${formatTokens(stats?.tokens.input ?? 0)} / out: ${formatTokens(stats?.tokens.output ?? 0)}`}
         />
         <MetricCard
-          label="Costo totale"
+          label={t('runs.totalCost' as const, language as any)}
           value={statsLoading ? '...' : formatCostTotal(stats?.totalCost ?? 0)}
-          sub="stimato (all-time)"
+          sub={t('runs.estimated' as const, language as any)}
         />
       </div>
 
@@ -358,7 +361,7 @@ export default function RunsPage() {
           borderRadius: '10px', padding: '16px 20px', marginBottom: '20px',
         }}>
           <p style={{ margin: '0 0 12px', fontSize: '0.78rem', fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Ultimi 7 giorni
+            {t('runs.last7Days' as const, language as any)}
           </p>
           <BarChart byDay={stats.byDay} />
         </div>
@@ -375,9 +378,9 @@ export default function RunsPage() {
           value={filterAgent}
           onChange={e => setFilterAgent(e.target.value)}
         >
-          <option value="">Tutti i tipi</option>
-          {AGENT_TYPES.map(t => (
-            <option key={t} value={t}>{t}</option>
+          <option value="">{t('runs.allTypes' as const, language as any)}</option>
+          {AGENT_TYPES.map(agentType => (
+            <option key={agentType} value={agentType}>{agentType}</option>
           ))}
         </select>
 
@@ -386,14 +389,14 @@ export default function RunsPage() {
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
         >
-          <option value="">Tutti gli stati</option>
+          <option value="">{t('runs.allStatuses' as const, language as any)}</option>
           {STATUSES.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '0.78rem', color: C.textMuted }}>Dal</span>
+          <span style={{ fontSize: '0.78rem', color: C.textMuted }}>{t('runs.from' as const, language as any)}</span>
           <input
             type="date"
             style={inputStyle}
@@ -403,7 +406,7 @@ export default function RunsPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '0.78rem', color: C.textMuted }}>Al</span>
+          <span style={{ fontSize: '0.78rem', color: C.textMuted }}>{t('runs.to' as const, language as any)}</span>
           <input
             type="date"
             style={inputStyle}
@@ -421,12 +424,12 @@ export default function RunsPage() {
               color: C.textMuted, fontSize: '0.8rem', cursor: 'pointer',
             }}
           >
-            Reset
+            {t('runs.reset' as const, language as any)}
           </button>
         )}
 
         <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: C.textFaint }}>
-          {total} risultati
+          {total} {t('runs.results' as const, language as any)}
         </span>
       </div>
 
@@ -441,7 +444,16 @@ export default function RunsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {['Data', 'Tipo', 'Progetto', 'Stato', 'Tokens', 'Costo', 'Durata', ''].map(h => (
+              {[
+                t('runs.date' as const, language as any),
+                t('runs.type' as const, language as any),
+                t('runs.project' as const, language as any),
+                t('runs.state' as const, language as any),
+                t('runs.tokens' as const, language as any),
+                t('runs.cost' as const, language as any),
+                t('runs.duration' as const, language as any),
+                ''
+              ].map(h => (
                 <th key={h} style={{
                   padding: '10px 14px', textAlign: 'left',
                   fontSize: '0.72rem', fontWeight: 600, color: C.textFaint,
@@ -457,13 +469,13 @@ export default function RunsPage() {
             {loading ? (
               <tr>
                 <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textFaint }}>
-                  Caricamento...
+                  {t('runs.tableLoading' as const, language as any)}
                 </td>
               </tr>
             ) : runs.length === 0 ? (
               <tr>
                 <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: C.textFaint }}>
-                  Nessun run trovato.
+                  {t('runs.noRunsFound' as const, language as any)}
                 </td>
               </tr>
             ) : (
@@ -526,7 +538,7 @@ export default function RunsPage() {
               fontSize: '0.82rem', cursor: page === 0 ? 'default' : 'pointer',
             }}
           >
-            ← Prec
+            ← {t('runs.previous' as const, language as any)}
           </button>
           <button
             onClick={() => setPage(p => p + 1)}
@@ -539,7 +551,7 @@ export default function RunsPage() {
               fontSize: '0.82rem', cursor: (page + 1) * PAGE_SIZE >= total ? 'default' : 'pointer',
             }}
           >
-            Succ →
+            {t('runs.next' as const, language as any)} →
           </button>
         </div>
       )}

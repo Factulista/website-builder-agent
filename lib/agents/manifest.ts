@@ -14,6 +14,7 @@ export type AgentMeta = {
   systemPromptPreview: string
   filePath: string
   enabled: boolean
+  rules?: string[]  // Regole operative visibili in back office (read-only)
 }
 
 export const AGENTS_MANIFEST: AgentMeta[] = [
@@ -29,6 +30,12 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Regole keyword-based: CREATE_KEYWORDS → pipeline, SEO_KEYWORDS → seo, DESIGN_UPDATE_KEYWORDS → design-update, ecc.',
     filePath: 'lib/agents/orchestrator.ts',
     enabled: true,
+    rules: [
+      'Non usa Claude: logica rule-based pura su keyword matching',
+      'Se hasPages=false e messaggio generico → pipeline (crea sito)',
+      'Se hasPages=true → instrada a html/seo/design-update/content-update in base alle keyword',
+      'In caso di ambiguità, preferisce html (modifica puntuale)',
+    ],
   },
   {
     name: 'memory',
@@ -42,6 +49,12 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Estrai informazioni chiave sul progetto dell\'utente (settore, target, tono) e aggiorna il contesto persistente.',
     filePath: 'lib/agents/memory-agent.ts',
     enabled: true,
+    rules: [
+      'Gira in background ad ogni messaggio, non blocca la pipeline',
+      'Estrae: business type, target audience, tone of voice, preferenze di stile',
+      'Non genera HTML, solo aggiorna il contesto JSON del progetto',
+      'Il contesto prodotto viene passato a tutti gli altri agenti',
+    ],
   },
   {
     name: 'planner',
@@ -55,6 +68,13 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Genera un piano del sito multi-pagina con sezioni per pagina, identificando il business type.',
     filePath: 'lib/agents/planner.ts',
     enabled: true,
+    rules: [
+      '🔴 Prima run (nessuna pagina esistente): genera SOLO la pagina "home"',
+      '🏠 Struttura home obbligatoria: hero → features (max 3) → CTA → footer',
+      'Run successive: può suggerire pagine aggiuntive (about, contact, ecc.) se pertinenti',
+      'Identifica sempre il business type (ristorante, studio, e-commerce, ecc.)',
+      'Non genera HTML, solo il piano strutturale che passa a Content e Design',
+    ],
   },
   {
     name: 'content',
@@ -68,6 +88,13 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Scrivi contenuti SEO-friendly nella lingua specificata, con tone of voice coerente al contesto.',
     filePath: 'lib/agents/content-agent.ts',
     enabled: true,
+    rules: [
+      'Scrive nella lingua rilevata dal messaggio utente (auto-detect)',
+      'Genera: title, meta description, h1, testo sezioni, CTA label, schema.org JSON-LD',
+      'Usa il tone of voice dal contesto Memory Agent (se disponibile)',
+      'Non genera CSS o layout, solo testi',
+      'Produce JSON strutturato, non HTML',
+    ],
   },
   {
     name: 'design',
@@ -81,6 +108,13 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Crea un design system coerente con il business type, includendo palette colori, tipografia, e CSS base.',
     filePath: 'lib/agents/design-agent.ts',
     enabled: true,
+    rules: [
+      'Genera palette colori coerente con il business type (es: ristorante → caldi, studio legale → sobri)',
+      'Sceglie font Google da caricare via CDN (max 2 font: heading + body)',
+      'Produce CSS custom properties (design tokens), non inline styles',
+      'Se riceve inspirationBriefs da Site Analyzer, li usa come riferimento stilistico',
+      'Non genera HTML o testi',
+    ],
   },
   {
     name: 'html',
@@ -94,6 +128,13 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Genera HTML multi-pagina mobile-first. Per le immagini segue gerarchia: URL utente → media library → placeholder.',
     filePath: 'lib/agents/html-agent.ts',
     enabled: true,
+    rules: [
+      'Output: HTML completo con <!DOCTYPE html>, <head> e <body>',
+      'Mobile-first: viewport meta, layout responsive con CSS flexbox/grid',
+      'Immagini: URL utente → media library del progetto → placeholder Unsplash',
+      'Non usa framework esterni (React, Vue): solo HTML/CSS/JS vanilla',
+      'Per le modifiche usa tool use: edit_page (find/replace), add_page, delete_page',
+    ],
   },
   {
     name: 'html-template',
@@ -120,6 +161,13 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Ottimizza l\'aspetto SEO del sito: meta, sitemap, robots, schema.org, OG tags.',
     filePath: 'lib/agents/seo-agent.ts',
     enabled: true,
+    rules: [
+      'Agisce solo su richiesta esplicita SEO (non gira automaticamente nel pipeline base)',
+      'Ottimizza: <title>, <meta description>, Open Graph, Twitter Card, canonical',
+      'Genera sitemap.xml con tutte le pagine del sito',
+      'Genera robots.txt con regole base',
+      'Non modifica il layout o i testi visibili, solo i meta tag',
+    ],
   },
   {
     name: 'design-update',
@@ -133,6 +181,12 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Cambia esclusivamente CSS/colori/tipografia senza modificare il testo del sito.',
     filePath: 'lib/agents/design-agent.ts',
     enabled: true,
+    rules: [
+      'Modifica SOLO CSS: colori, font, spaziatura, bordi, ombre',
+      'Non tocca mai il testo visibile (h1, paragrafi, CTA label)',
+      'Non aggiunge o rimuove sezioni o elementi HTML',
+      'Usa find/replace per aggiornare solo le proprietà CSS cambiate',
+    ],
   },
   {
     name: 'content-update',
@@ -146,6 +200,12 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Modifica solo i testi delle pagine secondo le istruzioni utente (tone, traduzione).',
     filePath: 'lib/agents/content-agent.ts',
     enabled: true,
+    rules: [
+      'Modifica SOLO i testi: headings, paragrafi, label CTA, alt text',
+      'Non tocca mai CSS, classi, o struttura HTML',
+      'Mantiene la stessa struttura semantica (h1 resta h1, ecc.)',
+      'Può tradurre in un\'altra lingua se richiesto',
+    ],
   },
   {
     name: 'site-analyzer',
@@ -172,6 +232,12 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Migliora <img> aggiungendo alt SEO, loading=lazy, width/height. Non modificare src.',
     filePath: 'lib/agents/images-agent.ts',
     enabled: true,
+    rules: [
+      'Non modifica mai l\'attributo src delle immagini',
+      'Aggiunge alt text descrittivo e SEO-friendly se mancante',
+      'Aggiunge loading="lazy" a tutte le immagini non above-the-fold',
+      'Aggiunge width e height se assenti (per prevenire layout shift)',
+    ],
   },
   {
     name: 'accessibility',
@@ -185,6 +251,12 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     systemPromptPreview: 'Audit WCAG: aggiungi aria-*, fix headings, contrasto, struttura semantica.',
     filePath: 'lib/agents/accessibility-agent.ts',
     enabled: true,
+    rules: [
+      'Standard di riferimento: WCAG 2.1 livello AA',
+      'Controlla: gerarchia heading (h1→h2→h3), aria-label su bottoni, alt su immagini',
+      'Aggiunge aria-*, role, tabindex dove necessario',
+      'Non modifica il contenuto visibile o il layout',
+    ],
   },
 ]
 

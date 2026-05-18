@@ -3,6 +3,8 @@
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getTemplate } from '../../../../lib/templates/index'
+import { useLanguage } from '../../../../lib/i18n/useLanguage'
+import { t } from '../../../../lib/i18n/translations'
 
 const C = {
   bg: '#faf9f7',
@@ -17,6 +19,7 @@ const C = {
 }
 
 export default function TemplateDetailPage() {
+  const { language } = useLanguage()
   const params = useParams()
   const id = params?.id as string
   const template = getTemplate(id)
@@ -25,10 +28,10 @@ export default function TemplateDetailPage() {
     return (
       <div style={{ padding: '32px 40px' }}>
         <Link href="/back-office/templates" style={{ fontSize: '0.85rem', color: C.textMuted, textDecoration: 'none' }}>
-          ← Template
+          ← {t('templates.title' as const, language as any)}
         </Link>
         <div style={{ marginTop: '20px', color: C.red, fontSize: '0.9rem' }}>
-          Template non trovato.
+          {t('templates.notFound' as const, language as any)}
         </div>
       </div>
     )
@@ -38,7 +41,7 @@ export default function TemplateDetailPage() {
     <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
       {/* Back link */}
       <Link href="/back-office/templates" style={{ fontSize: '0.85rem', color: C.textMuted, textDecoration: 'none', display: 'inline-block', marginBottom: '20px' }}>
-        ← Template
+        ← {t('templates.title' as const, language as any)}
       </Link>
 
       {/* Header */}
@@ -86,7 +89,7 @@ export default function TemplateDetailPage() {
         </div>
         <div>
           <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Settore
+            {t('templates.sectors' as const, language as any)}
           </p>
           <p style={{ margin: '8px 0 0', fontSize: '0.9rem', color: C.text, fontWeight: 500 }}>
             {template.sector}
@@ -94,7 +97,7 @@ export default function TemplateDetailPage() {
         </div>
         <div>
           <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Dimensione HTML
+            {t('templates.htmlSize' as const, language as any)}
           </p>
           <p style={{ margin: '8px 0 0', fontSize: '0.9rem', color: C.text, fontWeight: 500 }}>
             {(template.html.length / 1024).toFixed(1)} kB
@@ -105,7 +108,7 @@ export default function TemplateDetailPage() {
       {/* Keywords section */}
       <div style={{ marginBottom: '32px' }}>
         <h2 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 600, color: C.text, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          Keywords per rilevamento
+          {t('templates.keywords' as const, language as any)}
         </h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {template.keywords.map(keyword => (
@@ -129,7 +132,7 @@ export default function TemplateDetailPage() {
       {/* HTML Preview */}
       <div style={{ marginBottom: '32px' }}>
         <h2 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 600, color: C.text, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          Preview HTML
+          {t('templates.previewHtml' as const, language as any)}
         </h2>
         <div style={{
           background: C.white,
@@ -153,7 +156,7 @@ export default function TemplateDetailPage() {
       {/* HTML Code */}
       <div style={{ marginBottom: '32px' }}>
         <h2 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 600, color: C.text, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          Codice HTML
+          {t('templates.htmlCode' as const, language as any)}
         </h2>
         <div style={{
           background: '#1a1a1a',

@@ -3,6 +3,7 @@
 import { use, useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../../lib/supabase'
+import { AGENTS_MANIFEST } from '../../../../lib/agents/manifest'
 
 const C = {
   bg: '#faf9f7',
@@ -317,6 +318,50 @@ CREATE TABLE agent_prompt_versions (
       <p style={{ margin: '14px 0 24px', fontSize: '0.92rem', color: C.textMuted, lineHeight: 1.6 }}>
         {agent.description}
       </p>
+
+      {/* Regole operative */}
+      {(() => {
+        const meta = AGENTS_MANIFEST.find(a => a.name === agent.name)
+        if (!meta?.rules?.length) return null
+        return (
+          <div style={{
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: '10px',
+            padding: '14px 16px',
+            marginBottom: '24px',
+          }}>
+            <p style={{
+              margin: '0 0 10px',
+              fontSize: '0.68rem',
+              color: '#92400e',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}>
+              📋 Regole operative
+            </p>
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {meta.rules.map((rule, i) => (
+                <li key={i} style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  fontSize: '0.84rem',
+                  color: '#78350f',
+                  lineHeight: 1.5,
+                }}>
+                  <span style={{ color: '#d97706', flexShrink: 0, marginTop: '1px' }}>·</span>
+                  {rule}
+                </li>
+              ))}
+            </ul>
+            <p style={{ margin: '10px 0 0', fontSize: '0.68rem', color: '#a16207' }}>
+              Queste regole sono definite nel manifest dell'agente ({agent.filePath})
+            </p>
+          </div>
+        )
+      })()}
 
       {/* Stats row: model + max_tokens */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '24px' }}>

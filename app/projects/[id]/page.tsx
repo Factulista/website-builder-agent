@@ -4,9 +4,13 @@ import { useState, use, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
+import { EditorSidebar } from '../../../components/EditorSidebar'
+import { HtmlCodeEditor } from '../../../components/HtmlCodeEditor'
+import { useLanguage } from '../../../lib/i18n/useLanguage'
+import { t } from '../../../lib/i18n/translations'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; failed?: boolean; retryInput?: string; retryImages?: string[] }
-type Page = { slug: string; name: string; html: string }
+export type Page = { slug: string; name: string; html: string }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
@@ -82,16 +86,16 @@ const INLINE_EDIT_SCRIPT = `(function(){
   });
 })();`
 
-function stripHtmlFromChat(content: string): string {
+function stripHtmlFromChat(content: string, language: string): string {
   if (!content) return ''
   const codeMatch = content.indexOf('```')
   const htmlTagMatch = content.search(/<[a-zA-Z!]/)
   const candidates = [codeMatch, htmlTagMatch].filter(i => i >= 0)
   const cutAt = candidates.length > 0 ? Math.min(...candidates) : -1
   const prose = cutAt >= 0 ? content.slice(0, cutAt).trim() : content.trim()
-  const isComplete = /<\/html>\s*(```)?\s*$/i.test(content) || /```\s*$/.test(content.trim())
+  const htmlComplete = /<\/html>\s*(```)?\s*$/i.test(content) || /```\s*$/.test(content.trim())
   if (cutAt >= 0) {
-    const status = isComplete ? '✨ Sito generato' : '✨ Sto generando il sito...'
+    const status = htmlComplete ? `✨ ${t('project.siteGenerated' as const, language as any)}` : `✨ ${t('project.generatingSite' as const, language as any)}`
     return prose ? `${prose}\n\n${status}` : status
   }
   return prose
@@ -220,6 +224,7 @@ function ToolbarBtn({
 }
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const { language } = useLanguage()
   const { id } = use(params)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -708,11 +713,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const handleDeletePage = async (slug: string) => {
-    if (slug === 'home') { await alertDialog('La pagina "home" non può essere eliminata'); return }
+    if (slug === 'home') { await alertDialog(t('project.homePageError' as const, language as any)); return }
     const ok = await confirmDialog({
-      title: 'Eliminare pagina',
-      message: `La pagina "${slug}" verrà eliminata.`,
-      confirmLabel: 'Elimina',
+      title: t('project.deletePageTitle' as const, language as any),
+      message: t('project.deletePageMessage' as const, language as any).replace('{slug}', slug),
+      confirmLabel: t('project.deletePageButton' as const, language as any),
       variant: 'danger',
     })
     if (!ok) return
@@ -735,12 +740,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         body: JSON.stringify({ projectId: id, domain: customDomain.trim() }),
       })
       const result = await res.json()
-      if (!res.ok) { await alertDialog({ title: 'Errore', message: String(result.error), variant: 'danger' }); setAddingDomain(false); return }
+      if (!res.ok) { await alertDialog({ title: t('common.error' as const, language as any), message: String(result.error), variant: 'danger' }); setAddingDomain(false); return }
       setCustomDomainStatus(result.status)
       setDnsInstructions(result.message)
       setAddingDomain(false)
       if (result.status === 'pending') startPolling()
-    } catch { await alertDialog({ title: 'Errore', message: 'Richiesta fallita', variant: 'danger' }); setAddingDomain(false) }
+    } catch { await alertDialog({ title: t('common.error' as const, language as any), message: t('project.requestFailed' as const, language as any), variant: 'danger' }); setAddingDomain(false) }
   }
 
   const startPolling = () => {
@@ -768,9 +773,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const handlePublish = async () => {
     const ok = await confirmDialog({
-      title: 'Pubblicare il sito',
-      message: `Il sito verrà reso pubblico su ${customDomain}.`,
-      confirmLabel: 'Pubblica',
+      title: t('project.publishSiteTitle' as const, language as any),
+      message: t('project.publishSiteMessage' as const, language as any).replace('{domain}', customDomain),
+      confirmLabel: t('project.publishButton' as const, language as any),
     })
     if (!ok) return
     setPublishing(true)
@@ -783,9 +788,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         body: JSON.stringify({ projectId: id }),
       })
       const result = await res.json()
-      if (!res.ok) { await alertDialog({ title: 'Errore', message: String(result.error), variant: 'danger' }); return }
+      if (!res.ok) { await alertDialog({ title: t('common.error' as const, language as any), message: String(result.error), variant: 'danger' }); return }
       setPublishedAt(result.publishedAt)
-    } catch { await alertDialog({ title: 'Errore', message: 'Pubblicazione fallita', variant: 'danger' }) }
+    } catch { await alertDialog({ title: t('common.error' as const, language as any), message: t('project.publishError' as const, language as any), variant: 'danger' }) }
     finally { setPublishing(false) }
   }
 
@@ -804,18 +809,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         {/* Chat header */}
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.bg, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Link href="/projects" style={{ textDecoration: 'none', color: C.textFaint, fontSize: '1rem', display: 'flex', alignItems: 'center' }} title="Tutti i progetti">
+            <Link href="/projects" style={{ textDecoration: 'none', color: C.textFaint, fontSize: '1rem', display: 'flex', alignItems: 'center' }} title={t('project.allProjects' as const, language as any)}>
               ←
             </Link>
             <div>
-              <p style={{ margin: 0, fontSize: '0.8375rem', fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{projectName || 'Progetto'}</p>
-              <p style={{ margin: 0, fontSize: '0.7rem', color: C.textFaint, lineHeight: 1.2 }}>Ultima versione salvata</p>
+              <p style={{ margin: 0, fontSize: '0.8375rem', fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{projectName || t('projects.create' as const, language as any)}</p>
+              <p style={{ margin: 0, fontSize: '0.7rem', color: C.textFaint, lineHeight: 1.2 }}>{t('project.lastSaved' as const, language as any)}</p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '2px' }}>
             <ToolbarBtn
               label="◷"
-              title="Cronologia versioni"
+              title={t('project.versionHistory' as const, language as any)}
               active={showVersionHistory}
               onClick={() => setShowVersionHistory(v => !v)}
             />
@@ -826,7 +831,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   <line x1="5" y1="1" x2="5" y2="13" stroke="currentColor"/>
                 </svg>
               }
-              title={chatHidden ? 'Mostra chat' : 'Nascondi chat'}
+              title={chatHidden ? t('project.showChat' as const, language as any) : t('project.hideChat' as const, language as any)}
               active={chatHidden}
               onClick={() => setChatHidden(v => !v)}
             />
@@ -837,8 +842,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', paddingTop: '3rem' }}>
-              <p style={{ fontSize: '0.9375rem', color: '#57534e', marginBottom: '0.4rem', fontWeight: 500 }}>Descrivi il sito che vuoi creare</p>
-              <p style={{ fontSize: '0.8125rem', color: C.textFaint }}>Es: &quot;Un sito per il mio ristorante a Milano, elegante e moderno&quot;</p>
+              <p style={{ fontSize: '0.9375rem', color: '#57534e', marginBottom: '0.4rem', fontWeight: 500 }}>{t('project.describeWebsite' as const, language as any)}</p>
+              <p style={{ fontSize: '0.8125rem', color: C.textFaint }}>Es: &quot;{t('project.exampleWebsite' as const, language as any)}&quot;</p>
             </div>
           )}
 
@@ -869,7 +874,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.9rem', lineHeight: '1.65', color: msg.failed ? C.textMuted : C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {stripHtmlFromChat(msg.content) || (loading ? (
+                    {stripHtmlFromChat(msg.content, language) || (loading ? (
                       <span style={{ color: C.textFaint, letterSpacing: '0.1em' }}>● ● ●</span>
                     ) : '')}
                   </div>
@@ -892,7 +897,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       }}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.bg}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                    >↻ Riprova</button>
+                    >↻ {t('project.retry' as const, language as any)}</button>
                   )}
                 </div>
               </div>
@@ -1005,7 +1010,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       fontFamily: 'inherit',
                     }}
                   >
-                    {uploading ? '⏳' : '@ Immagine'}
+                    {uploading ? '⏳' : `@ ${t('project.imageButton' as const, language as any)}`}
                   </button>
                 </div>
                 <button
@@ -1019,7 +1024,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     cursor: (input.trim() || attachedImages.length > 0) && !loading ? 'pointer' : 'not-allowed',
                     fontSize: '0.9rem', flexShrink: 0,
                   }}
-                  title="Invia"
+                  title={t('project.sendButton' as const, language as any)}
                 >
                   {loading ? '⏳' : '↑'}
                 </button>
@@ -1069,13 +1074,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             )}
             <ToolbarBtn
               label="🌐"
-              title="Preview"
+              title={t('project.preview' as const, language as any)}
               active={viewMode === 'preview'}
               onClick={() => setViewMode('preview')}
             />
             <ToolbarBtn
               label="</>"
-              title="Codice HTML"
+              title={t('project.htmlCode' as const, language as any)}
               active={viewMode === 'code'}
               onClick={() => {
                 setCodeContent(activePage?.html ?? '')
@@ -1085,13 +1090,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             />
             <ToolbarBtn
               label="✎"
-              title="Editor inline (clicca sul testo)"
+              title={t('project.inlineEditor' as const, language as any)}
               active={viewMode === 'edit'}
               onClick={() => setViewMode('edit')}
             />
             <ToolbarBtn
               label="◫"
-              title="Media library"
+              title={t('project.mediaLibrary' as const, language as any)}
               active={viewMode === 'media'}
               onClick={() => setViewMode('media')}
             />
@@ -1116,7 +1121,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <span style={{ flex: 1, fontSize: '0.75rem', color: C.textFaint }}>—</span>
             )}
             {publicUrl && (
-              <button onClick={copyUrl} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: copied ? '#10b981' : C.textFaint, fontSize: '0.75rem', flexShrink: 0 }} title="Copia URL">
+              <button onClick={copyUrl} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: copied ? '#10b981' : C.textFaint, fontSize: '0.75rem', flexShrink: 0 }} title={t('project.copyUrl' as const, language as any)}>
                 {copied ? '✓' : '⧉'}
               </button>
             )}
@@ -1126,7 +1131,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {publicUrl && (
               <a href={publicUrl} target="_blank" rel="noopener noreferrer">
-                <ToolbarBtn label="↗" title="Apri in nuova scheda" />
+                <ToolbarBtn label="↗" title={t('project.openNewTab' as const, language as any)} />
               </a>
             )}
             <button
@@ -1140,7 +1145,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 cursor: 'pointer', fontFamily: 'inherit',
               }}
             >
-              ⚙ Impostazioni
+              ⚙ {t('project.settings' as const, language as any)}
             </button>
             {customDomainStatus === 'verified' && (
               <button
@@ -1156,7 +1161,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   fontFamily: 'inherit',
                 }}
               >
-                {publishing ? '⏳' : '🚀'} Pubblica
+                {publishing ? '⏳' : '🚀'} {t('project.publishButton' as const, language as any)}
               </button>
             )}
           </div>
@@ -1185,7 +1190,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   <button
                     onClick={() => handleDeletePage(p.slug)}
                     style={{ background: 'transparent', color: '#ef4444', border: 'none', padding: '2px 5px', fontSize: '0.85rem', cursor: 'pointer' }}
-                    title="Elimina pagina"
+                    title={t('project.deletePage' as const, language as any)}
                   >×</button>
                 )}
               </div>
@@ -1260,83 +1265,99 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           </div>
         ) : viewMode === 'edit' && activePage ? (
-          /* Inline editor v2 — contentEditable inside iframe */
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
-              <span style={{ fontSize: '0.75rem', color: C.textFaint }}>
-                ✎ Clicca su qualsiasi testo per modificarlo direttamente
-              </span>
-              <span style={{ fontSize: '0.72rem', color: editSaving === 'saving' ? '#f59e0b' : editSaving === 'saved' ? '#10b981' : C.textFaint }}>
-                {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
-              </span>
-            </div>
-            {editOutdated && (
-              <div
-                onClick={() => {
-                  if (!activePage) return
-                  editBaseHtmlRef.current = activePage.html
-                  setEditSrcDoc(injectBase(activePage.html, projectSlug))
-                  setEditOutdated(false)
-                }}
-                style={{
-                  padding: '10px 16px', background: '#1d4ed8', color: 'white',
-                  fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  flexShrink: 0,
-                }}
-              >
-                <span>↻ Il sito è stato aggiornato dall&apos;AI — clicca per ricaricare l&apos;editor</span>
-                <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>Le modifiche inline non salvate andranno perse</span>
-              </div>
-            )}
-            <iframe
-              ref={editIframeRef}
-              srcDoc={editSrcDoc}
-              onLoad={injectEditingScript}
-              style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
-              title="Inline editor"
-              sandbox="allow-scripts allow-same-origin"
+          /* Inline editor v2 — contentEditable inside iframe with sidebar */
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            <EditorSidebar
+              pages={pages}
+              activeSlug={activeSlug}
+              onPageSelect={(slug) => setActiveSlug(slug)}
             />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
+                <span style={{ fontSize: '0.75rem', color: C.textFaint }}>
+                  ✎ Clicca su qualsiasi testo per modificarlo direttamente
+                </span>
+                <span style={{ fontSize: '0.72rem', color: editSaving === 'saving' ? '#f59e0b' : editSaving === 'saved' ? '#10b981' : C.textFaint }}>
+                  {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
+                </span>
+              </div>
+              {editOutdated && (
+                <div
+                  onClick={() => {
+                    if (!activePage) return
+                    editBaseHtmlRef.current = activePage.html
+                    setEditSrcDoc(injectBase(activePage.html, projectSlug))
+                    setEditOutdated(false)
+                  }}
+                  style={{
+                    padding: '10px 16px', background: '#1d4ed8', color: 'white',
+                    fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span>↻ Il sito è stato aggiornato dall&apos;AI — clicca per ricaricare l&apos;editor</span>
+                  <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>Le modifiche inline non salvate andranno perse</span>
+                </div>
+              )}
+              <iframe
+                ref={editIframeRef}
+                srcDoc={editSrcDoc}
+                onLoad={injectEditingScript}
+                style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
+                title="Inline editor"
+                sandbox="allow-scripts allow-same-origin"
+              />
+            </div>
           </div>
         ) : viewMode === 'code' && activePage ? (
-          /* Code editor */
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#1e1e1e' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #333', flexShrink: 0 }}>
-              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace' }}>{activePage.slug}.html</span>
-              <span style={{ fontSize: '0.72rem', color: codeSaving === 'saving' ? '#f59e0b' : codeSaving === 'saved' ? '#10b981' : '#6b7280' }}>
-                {codeSaving === 'saving' ? '⏳ Salvataggio...' : codeSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
-              </span>
-            </div>
-            <textarea
-              value={codeContent}
-              onChange={(e) => {
-                const val = e.target.value
-                setCodeContent(val)
+          /* Code editor with sidebar */
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#1e1e1e' }}>
+            <EditorSidebar
+              pages={pages}
+              activeSlug={activeSlug}
+              onPageSelect={(slug) => {
+                setActiveSlug(slug)
+                setCodeContent(pages.find(p => p.slug === slug)?.html ?? '')
                 setCodeSaving('idle')
-                // Immediately update pages so Preview and Text view stay in sync
-                const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
-                setPages(newPages)
-                // Debounce only the DB save
-                if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current)
-                codeAutoSaveTimer.current = setTimeout(async () => {
-                  setCodeSaving('saving')
-                  const curPages = latestPagesRef.current
-                  const newVersions = createVersion('Modifica HTML manuale', curPages, versions)
-                  await saveState(messages, curPages, newVersions)
-                  setCodeSaving('saved')
-                  setTimeout(() => setCodeSaving('idle'), 2000)
-                }, 2000)
-              }}
-              spellCheck={false}
-              style={{
-                flex: 1, border: 'none', outline: 'none', resize: 'none',
-                background: '#1e1e1e', color: '#d4d4d4',
-                fontFamily: '"Fira Code", "Cascadia Code", "Consolas", monospace',
-                fontSize: '0.8125rem', lineHeight: '1.6',
-                padding: '14px 18px', overflowY: 'auto',
-                tabSize: 2,
               }}
             />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>
+                <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace' }}>{activePage.slug}.html</span>
+              </div>
+              <HtmlCodeEditor
+                content={codeContent}
+                onChange={(val) => {
+                  setCodeContent(val)
+                  setCodeSaving('idle')
+                  // Immediately update pages so Preview and Text view stay in sync
+                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
+                  setPages(newPages)
+                  // Debounce only the DB save
+                  if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current)
+                  codeAutoSaveTimer.current = setTimeout(async () => {
+                    setCodeSaving('saving')
+                    const curPages = latestPagesRef.current
+                    const newVersions = createVersion('Modifica HTML manuale', curPages, versions)
+                    await saveState(messages, curPages, newVersions)
+                    setCodeSaving('saved')
+                    setTimeout(() => setCodeSaving('idle'), 2000)
+                  }, 2000)
+                }}
+                onSave={async (content) => {
+                  setCodeSaving('saving')
+                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: content } : p)
+                  setPages(newPages)
+                  latestPagesRef.current = newPages
+                  const newVersions = createVersion('Modifica HTML manuale', newPages, versions)
+                  await saveState(messages, newPages, newVersions)
+                  setCodeSaving('saved')
+                  setTimeout(() => setCodeSaving('idle'), 2000)
+                }}
+                saving={codeSaving}
+              />
+            </div>
           </div>
         ) : viewMode === 'media' ? (
           /* Media Library */
@@ -1566,17 +1587,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
             )}
           </div>
-        ) : activePage ? (
-          <iframe
-            srcDoc={injectBase(activePage.html, projectSlug)}
-            style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
-            title="Preview"
-            sandbox="allow-scripts allow-same-origin"
-          />
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textFaint, flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '2rem', opacity: 0.3 }}>◉</div>
-            <p style={{ fontSize: '0.875rem' }}>La preview apparirà qui dopo che l&apos;AI genera il sito</p>
+          /* Preview mode with sidebar */
+          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            <EditorSidebar
+              pages={pages}
+              activeSlug={activeSlug}
+              onPageSelect={(slug) => setActiveSlug(slug)}
+            />
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+              {activePage ? (
+                <iframe
+                  srcDoc={injectBase(activePage.html, projectSlug)}
+                  style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
+                  title="Preview"
+                  sandbox="allow-scripts allow-same-origin"
+                />
+              ) : (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textFaint, flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '2rem', opacity: 0.3 }}>◉</div>
+                  <p style={{ fontSize: '0.875rem' }}>La preview apparirà qui dopo che l&apos;AI genera il sito</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
