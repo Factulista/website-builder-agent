@@ -120,8 +120,7 @@ export async function callClaude(
         max_tokens: config.maxTokens,
         ...(config.temperature !== undefined && { temperature: config.temperature }),
         system: systemBlocks,
-        tools,
-        tool_choice: { type: 'any' },
+        ...(tools.length > 0 && { tools, tool_choice: { type: 'any' } }),
         messages,
       }),
     }, agentName)
