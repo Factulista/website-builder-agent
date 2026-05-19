@@ -588,6 +588,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [seoAnalyses, setSeoAnalyses] = useState<PageAnalysis[]>([])
   const [seoPageSlug, setSeoPageSlug] = useState<string>('all')
   const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
+  const [seoFixError, setSeoFixError] = useState<string | null>(null)
+  const seoFixingRef = useRef<boolean>(false)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const [mediaLoading, setMediaLoading] = useState(false)
   const [mediaSearch, setMediaSearch] = useState('')
@@ -887,13 +889,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   // ── SEO Fix ───────────────────────────────────────────────────────────────────
-  const fixCheck = async (checkId: CheckId, pageSlug: string) => {
-    if (seoFixing) return
+  const fixCheck = async (checkId: CheckId, pageSlug: string, currentAnalyses?: PageAnalysis[]) => {
+    if (seoFixingRef.current) return
+    seoFixingRef.current = true
     setSeoFixing(checkId)
+    setSeoFixError(null)
     try {
-      const pageAnalysis = seoAnalyses.find(a => a.pageSlug === pageSlug)
+      const analyses = currentAnalyses ?? seoAnalyses
+      const pageAnalysis = analyses.find(a => a.pageSlug === pageSlug)
       const checkResult = pageAnalysis?.results.find(r => r.checkId === checkId)
-      if (!checkResult) return
+      if (!checkResult) {
+        console.error('[SEO Fix] checkResult not found for', checkId, pageSlug, 'analyses:', analyses.map(a => a.pageSlug))
+        setSeoFixError(`Check "${checkId}" non trovato per la pagina "${pageSlug}"`)
+        return
+      }
 
       const resp = await fetch('/api/seo-fix', {
         method: 'POST',
@@ -903,11 +912,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           pageSlug,
           checkId,
           checkResult,
-          pages,
+          pages: latestPagesRef.current,
           customDomain: customDomain || null,
         }),
       })
-      if (!resp.ok || !resp.body) return
+
+      if (!resp.ok) {
+        const errText = await resp.text()
+        console.error('[SEO Fix] HTTP error', resp.status, errText)
+        setSeoFixError(`Errore ${resp.status}: ${errText.slice(0, 120)}`)
+        return
+      }
+      if (!resp.body) {
+        setSeoFixError('Risposta vuota dal server')
+        return
+      }
 
       const reader = resp.body.getReader()
       const dec = new TextDecoder()
@@ -922,27 +941,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           if (!line.trim()) continue
           try {
             const msg = JSON.parse(line)
-            if (msg.type === 'done' && msg.result?.updatedPages) {
+            if (msg.type === 'error') {
+              setSeoFixError(msg.error)
+            } else if (msg.type === 'done' && msg.result?.updatedPages) {
               const updated = msg.result.updatedPages as Page[]
               setPages(updated)
               latestPagesRef.current = updated
+              setSeoAnalyses(analyzeAllPages(updated))
               await saveState(messages, updated, versions)
             }
-          } catch { /* skip malformed lines */ }
+          } catch { /* skip malformed ndjson lines */ }
         }
       }
+    } catch (err) {
+      console.error('[SEO Fix] Unexpected error:', err)
+      setSeoFixError(String(err))
     } finally {
+      seoFixingRef.current = false
       setSeoFixing(null)
     }
   }
 
   const fixAllFailing = async (pageSlug: string) => {
-    if (seoFixing) return
-    const pageAnalysis = seoAnalyses.find(a => a.pageSlug === pageSlug)
+    if (seoFixingRef.current) return
+    const currentAnalyses = seoAnalyses
+    const pageAnalysis = currentAnalyses.find(a => a.pageSlug === pageSlug)
     if (!pageAnalysis) return
     const failing = pageAnalysis.results.filter(r => r.status !== 'pass').map(r => r.checkId)
     for (const checkId of failing) {
-      await fixCheck(checkId, pageSlug)
+      // Pass current analyses snapshot since state may lag behind ref
+      await fixCheck(checkId, pageSlug, analyzeAllPages(latestPagesRef.current))
     }
   }
 
@@ -1990,6 +2018,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       <p style={{ margin: 0, fontSize: '0.78rem', color: C.textFaint }}>
                         Analisi live • {SEO_CHECKS.length} check • aggiornata automaticamente
                       </p>
+                      {seoFixError && (
+                        <div style={{
+                          marginTop: '10px', padding: '10px 14px', borderRadius: '8px',
+                          background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c',
+                          fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '8px',
+                        }}>
+                          <span>❌</span>
+                          <span style={{ flex: 1 }}>{seoFixError}</span>
+                          <button onClick={() => setSeoFixError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: '1rem', padding: 0 }}>✕</button>
+                        </div>
+                      )}
                     </div>
 
                     {SEO_GROUPS.map(group => {
