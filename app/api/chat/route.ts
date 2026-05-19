@@ -84,6 +84,47 @@ function encodeMessage(msg: ProgressMessage | DoneMessage): string {
   return JSON.stringify(msg) + '\n'
 }
 
+/**
+ * makeStream — wraps any async agent fn in a streaming NDJSON response.
+ *
+ * The fn receives an `emit(step)` callback to push progress events.
+ * When the fn resolves, a `{ type: 'done', result }` event is emitted.
+ * Errors are emitted as `{ type: 'error', error }` and the stream is closed.
+ */
+function makeStream(
+  fn: (emit: (step: string) => void) => Promise<object>,
+  onError?: (err: unknown) => void
+): Response {
+  const encoder = new TextEncoder()
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null
+  const startTime = Date.now()
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) { controller = c },
+  })
+
+  const emit = (step: string) => {
+    if (!controller) return
+    const msg: ProgressMessage = { type: 'progress', step, time: formatTime(Date.now() - startTime), tokens: 0 }
+    controller.enqueue(encoder.encode(encodeMessage(msg)))
+  }
+
+  fn(emit)
+    .then((result) => {
+      const done: DoneMessage = { type: 'done', result }
+      controller?.enqueue(encoder.encode(encodeMessage(done)))
+      controller?.close()
+    })
+    .catch((err) => {
+      onError?.(err)
+      const error = { type: 'error', error: String(err) }
+      controller?.enqueue(encoder.encode(JSON.stringify(error) + '\n'))
+      controller?.close()
+    })
+
+  return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson' } })
+}
+
 export async function POST(req: NextRequest) {
   // Declared outside try so the catch block can call failRun on any error
   let runId = ''
@@ -259,85 +300,97 @@ export async function POST(req: NextRequest) {
     }
 
     if (agent === 'design-update') {
-      const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context)
-      if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
-      if (runId) {
-        const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
-        completeRun(runId, {
-          output_summary: `design-update: ${result.input?.pages?.length ?? 0} pagine`,
-          input_tokens: usage?.input_tokens ?? 0,
-          output_tokens: usage?.output_tokens ?? 0,
-          cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
-          duration_ms: Date.now() - runStartTime,
-        }).catch(() => null)
-      }
-      return Response.json(result)
+      return makeStream(async (emit) => {
+        emit('🎨 Aggiornando design su tutte le pagine…')
+        const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context)
+        if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
+        if (runId) {
+          const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+          completeRun(runId, {
+            output_summary: `design-update: ${result.input?.pages?.length ?? 0} pagine`,
+            input_tokens: usage?.input_tokens ?? 0,
+            output_tokens: usage?.output_tokens ?? 0,
+            cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+            duration_ms: Date.now() - runStartTime,
+          }).catch(() => null)
+        }
+        return result
+      }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
     }
 
     if (agent === 'content-update') {
-      const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
-      if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
-      if (runId) {
-        const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
-        completeRun(runId, {
-          output_summary: `content-update: ${result.input?.pages?.length ?? 0} pagine`,
-          input_tokens: usage?.input_tokens ?? 0,
-          output_tokens: usage?.output_tokens ?? 0,
-          cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
-          duration_ms: Date.now() - runStartTime,
-        }).catch(() => null)
-      }
-      return Response.json(result)
+      return makeStream(async (emit) => {
+        emit('✍️ Riscrivendo i testi su tutte le pagine…')
+        const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
+        if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
+        if (runId) {
+          const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+          completeRun(runId, {
+            output_summary: `content-update: ${result.input?.pages?.length ?? 0} pagine`,
+            input_tokens: usage?.input_tokens ?? 0,
+            output_tokens: usage?.output_tokens ?? 0,
+            cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+            duration_ms: Date.now() - runStartTime,
+          }).catch(() => null)
+        }
+        return result
+      }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
     }
 
     if (agent === 'seo') {
-      const result = await runSeoAgent(messages, pages ?? [], customDomain ?? null, apiKey, context)
+      return makeStream(async (emit) => {
+        emit('🔍 Ottimizzando SEO e meta tag…')
+        const result = await runSeoAgent(messages, pages ?? [], customDomain ?? null, apiKey, context)
+        if (runId) {
+          const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+          completeRun(runId, {
+            output_summary: `seo: ${pages?.length ?? 0} pagine`,
+            input_tokens: usage?.input_tokens ?? 0,
+            output_tokens: usage?.output_tokens ?? 0,
+            cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+            duration_ms: Date.now() - runStartTime,
+          }).catch(() => null)
+        }
+        return { ...result, agent: 'seo' }
+      }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
+    }
+
+    // HTML agent — also update context from conversation
+    return makeStream(async (emit) => {
+      emit('✏️ Elaborando la modifica…')
+      const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia)
+
+      // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
+      if (result.tool === 'create_site' && result.input?.pages) {
+        result.input.pages = normalizeInternalLinks(result.input.pages as Page[])
+      }
+      if (result.tool === 'add_page' && result.input?.html) {
+        const normalized = normalizeInternalLinks([{ slug: result.input.slug as string, name: result.input.name as string, html: result.input.html as string }, ...(pages ?? [])])
+        result.input.html = normalized[0].html
+      }
+
       if (runId) {
         const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
         completeRun(runId, {
-          output_summary: `seo: ${pages?.length ?? 0} pagine`,
+          output_summary: `html: ${pages?.length ?? 0} pagine`,
           input_tokens: usage?.input_tokens ?? 0,
           output_tokens: usage?.output_tokens ?? 0,
           cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
           duration_ms: Date.now() - runStartTime,
         }).catch(() => null)
       }
-      return Response.json({ ...result, agent: 'seo' })
-    }
 
-    // HTML agent — also update context from conversation
-    const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia)
-
-    // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
-    if (result.tool === 'create_site' && result.input?.pages) {
-      result.input.pages = normalizeInternalLinks(result.input.pages as Page[])
-    }
-    if (result.tool === 'add_page' && result.input?.html) {
-      const normalized = normalizeInternalLinks([{ slug: result.input.slug as string, name: result.input.name as string, html: result.input.html as string }, ...(pages ?? [])])
-      result.input.html = normalized[0].html
-    }
-
-    if (runId) {
-      const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
-      completeRun(runId, {
-        output_summary: `html: ${pages?.length ?? 0} pagine`,
-        input_tokens: usage?.input_tokens ?? 0,
-        output_tokens: usage?.output_tokens ?? 0,
-        cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
-        duration_ms: Date.now() - runStartTime,
+      // Run memory agent in background (non-blocking)
+      runMemoryAgent(messages, context, apiKey).then(async (updatedContext) => {
+        if (updatedContext) {
+          await supabase.from('projects').update({
+            site_config: { ...siteConfig, context: updatedContext },
+          }).eq('id', projectId)
+        }
       }).catch(() => null)
-    }
 
-    // Run memory agent in background (non-blocking)
-    runMemoryAgent(messages, context, apiKey).then(async (updatedContext) => {
-      if (updatedContext) {
-        await supabase.from('projects').update({
-          site_config: { ...siteConfig, context: updatedContext },
-        }).eq('id', projectId)
-      }
-    }).catch(() => null)
-
-    return Response.json({ ...result, agent: 'html' })
+      return { ...result, agent: 'html' }
+    }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
 
   } catch (err) {
     console.error('Chat API error:', err)
