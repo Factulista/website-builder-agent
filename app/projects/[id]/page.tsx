@@ -10,7 +10,7 @@ import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
 import type { Page } from '../../../lib/types'
 
-type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
+type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
@@ -560,6 +560,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingMsgId, setLoadingMsgId] = useState<string | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const loadingStartRef = useRef<number>(0)
   const [pages, setPages] = useState<Page[]>([])
   const [activeSlug, setActiveSlug] = useState<string>('home')
   const [projectName, setProjectName] = useState('')
@@ -612,6 +615,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
   useEffect(() => { latestPagesRef.current = pages }, [pages])
+
+  // Elapsed-seconds timer — ticks every second while an agent is running
+  useEffect(() => {
+    if (!loading) { setElapsedSeconds(0); return }
+    loadingStartRef.current = Date.now()
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - loadingStartRef.current) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [loading])
 
   // Set editSrcDoc when entering edit mode (don't depend on pages to avoid iframe reload)
   useEffect(() => {
@@ -913,6 +926,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setLoading(true)
 
     const assistantId = `a_${Date.now()}`
+    setLoadingMsgId(assistantId)
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }])
 
     // Snapshot of the original prompt so we can offer retry later
@@ -980,10 +994,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             try {
               const msg = JSON.parse(line)
               if (msg.type === 'progress') {
-                const tokenDisplay = msg.tokens > 1000 ? `${(msg.tokens / 1000).toFixed(1)}k` : msg.tokens
-                const progressText = `${msg.step} • ${msg.time} • ${tokenDisplay} tokens`
                 setMessages(prev => prev.map(m => m.id === assistantId
-                  ? { ...m, content: progressText }
+                  ? { ...m, progressSteps: [...(m.progressSteps ?? []), { step: msg.step, time: msg.time }] }
                   : m))
               } else if (msg.type === 'done') {
                 result = msg.result
@@ -1310,9 +1322,54 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.9rem', lineHeight: '1.65', color: msg.failed ? C.textMuted : C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {stripHtmlFromChat(msg.content, language) || (loading ? (
-                      <span style={{ color: C.textFaint, letterSpacing: '0.1em' }}>● ● ●</span>
-                    ) : '')}
+                    {(() => {
+                      const isRunning = msg.id === loadingMsgId && loading && !msg.content
+                      if (!isRunning) {
+                        // Normal: show final content
+                        return stripHtmlFromChat(msg.content, language) || ''
+                      }
+                      // ── Progress block (Claude Code style) ──
+                      const SPINNER = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
+                      const spin = SPINNER[elapsedSeconds % SPINNER.length]
+                      const steps = msg.progressSteps ?? []
+                      const isPipeline = steps.length > 0
+                      const nextLabel =
+                        steps.length === 0 ? 'Analizzando…' :
+                        steps.length === 1 ? 'Generando contenuti e design…' :
+                        steps.length === 2 ? 'Costruendo HTML…' :
+                        'Finalizzando…'
+                      return (
+                        <div style={{
+                          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+                          fontSize: '0.8rem',
+                          background: '#f7f6f3',
+                          border: `1px solid ${C.border}`,
+                          borderRadius: '10px',
+                          padding: isPipeline ? '12px 14px' : '10px 14px',
+                          display: 'inline-flex',
+                          flexDirection: 'column',
+                          gap: '5px',
+                          minWidth: '230px',
+                        }}>
+                          {/* Completed pipeline steps */}
+                          {steps.map((s, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ color: '#22c55e', fontSize: '0.72rem', width: '12px' }}>✓</span>
+                              <span style={{ flex: 1, color: C.textMuted }}>{s.step}</span>
+                              <span style={{ color: C.textFaint, fontSize: '0.7rem' }}>{s.time}</span>
+                            </div>
+                          ))}
+                          {/* Current spinner row */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: C.blue, fontSize: '0.8rem', width: '12px', display: 'inline-block', textAlign: 'center' }}>{spin}</span>
+                            <span style={{ flex: 1, color: C.text, fontWeight: 500 }}>
+                              {isPipeline ? nextLabel : 'Lavorando…'}
+                            </span>
+                            <span style={{ color: C.textFaint, fontSize: '0.7rem' }}>{elapsedSeconds}s</span>
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                   {msg.failed && (
                     <button
