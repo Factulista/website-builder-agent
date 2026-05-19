@@ -55,27 +55,37 @@ export async function POST(req: NextRequest) {
       'Content-Type': 'application/json',
     }
 
-    // 2. List existing CNAME records for the root domain
-    const listRes = await fetch(
-      `https://api.cloudflare.com/client/v4/zones/${cfZoneId}/dns_records?type=CNAME&name=${encodeURIComponent(domain)}`,
-      { headers: cfHeaders }
-    )
-    const listData = await listRes.json() as { success: boolean; result?: { id: string }[]; errors?: { message: string }[] }
+    // 2. List ALL existing root records (A, AAAA, CNAME) — Cloudflare blocks CNAME creation
+    //    if ANY of these types already exist for the same hostname.
+    const conflictingTypes = ['A', 'AAAA', 'CNAME']
+    const recordsToDelete: { id: string; type: string }[] = []
 
-    if (!listData.success) {
-      const msg = listData.errors?.[0]?.message ?? 'Errore Cloudflare nel leggere i record DNS'
-      return NextResponse.json({ error: msg }, { status: 400 })
+    for (const recType of conflictingTypes) {
+      const listRes = await fetch(
+        `https://api.cloudflare.com/client/v4/zones/${cfZoneId}/dns_records?type=${recType}&name=${encodeURIComponent(domain)}`,
+        { headers: cfHeaders }
+      )
+      const listData = await listRes.json() as { success: boolean; result?: { id: string; type: string }[]; errors?: { message: string }[] }
+
+      if (!listData.success) {
+        const msg = listData.errors?.[0]?.message ?? `Errore Cloudflare nel leggere i record ${recType}`
+        return NextResponse.json({ error: msg }, { status: 400 })
+      }
+
+      for (const rec of listData.result ?? []) {
+        recordsToDelete.push({ id: rec.id, type: rec.type })
+      }
     }
 
-    // 3. Delete any existing root CNAME
-    for (const record of listData.result ?? []) {
+    // 3. Delete all conflicting records
+    for (const record of recordsToDelete) {
       const delRes = await fetch(
         `https://api.cloudflare.com/client/v4/zones/${cfZoneId}/dns_records/${record.id}`,
         { method: 'DELETE', headers: cfHeaders }
       )
       const delData = await delRes.json() as { success: boolean; errors?: { message: string }[] }
       if (!delData.success) {
-        const msg = delData.errors?.[0]?.message ?? 'Errore Cloudflare nel cancellare il record DNS esistente'
+        const msg = delData.errors?.[0]?.message ?? `Errore Cloudflare nel cancellare il record ${record.type} esistente`
         return NextResponse.json({ error: msg }, { status: 400 })
       }
     }
