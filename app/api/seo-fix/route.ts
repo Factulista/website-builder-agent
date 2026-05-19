@@ -196,17 +196,17 @@ function applyHtmlFix(
   }
 }
 
-// ── Page context extractor ────────────────────────────────────────────────────
-// Pulls the most SEO-relevant signals from raw HTML for use in prompts.
+// ── Page context helpers ──────────────────────────────────────────────────────
 
+function stripTags(s: string) { return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() }
+
+/** Extracts SEO-relevant signals from raw HTML for use in prompts. */
 function extractPageContext(html: string): string {
-  const strip = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
-
-  const h1 = strip(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
+  const h1 = stripTags(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
   const h2s = [...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)]
-    .slice(0, 4).map(m => strip(m[1])).filter(Boolean)
-  const firstP = strip(html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? '').slice(0, 200)
-  const currentTitle = strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '')
+    .slice(0, 4).map(m => stripTags(m[1])).filter(Boolean)
+  const firstP = stripTags(html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? '').slice(0, 200)
+  const currentTitle = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '')
 
   const lines = [
     currentTitle && `Title attuale: "${currentTitle}"`,
@@ -216,6 +216,41 @@ function extractPageContext(html: string): string {
   ].filter(Boolean)
 
   return lines.length ? `\nCONTENUTO PAGINA:\n${lines.join('\n')}` : ''
+}
+
+/**
+ * Detects the site language from HTML, falling back to context, then 'it'.
+ * Priority: <html lang="..."> attribute > context.language > 'it'
+ */
+function detectLanguage(html: string, contextLanguage?: string): string {
+  const fromHtml = html.match(/<html\b[^>]*lang=["']([a-z]{2,5})["']/i)?.[1]
+  return fromHtml || contextLanguage || 'it'
+}
+
+/**
+ * Detects the brand name from page HTML when context.businessName is missing.
+ * Tries: nav logo text → page title (first segment before separator) → H1
+ */
+function detectBrand(html: string, contextBrand?: string): string {
+  if (contextBrand) return contextBrand
+
+  // Nav logo element (most reliable)
+  const navLogo = html.match(/<a\b[^>]*class="[^"]*(?:nav-logo|logo|brand)[^"]*"[^>]*>([\s\S]*?)<\/a>/i)?.[1]
+  if (navLogo) {
+    const text = stripTags(navLogo).trim()
+    if (text && text.length < 50) return text
+  }
+
+  // Page title — first segment before separator (| — · -)
+  const title = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '')
+  if (title) {
+    const seg = title.split(/[|\-–—·]/)[0].trim()
+    if (seg && seg.length < 40) return seg
+  }
+
+  // H1 as last resort
+  const h1 = stripTags(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '').slice(0, 40)
+  return h1 || 'il sito'
 }
 
 // ── SEO content generator ─────────────────────────────────────────────────────
@@ -392,41 +427,41 @@ export async function POST(req: NextRequest) {
       if (check.fixOwner === 'seo') {
         emit(`🔍 Generando contenuto SEO per "${check.label}"…`, elapsed())
 
-        // Build the seoAgentPrompt inline (mirrors prompt-builder logic)
-        const lang = context.language || 'it'
-        const brand = context.businessName ?? 'il brand'
-        const type = context.businessType ?? 'web'
+        const type = context.businessType ?? 'sito web'
         const data = checkResult.data as Record<string, unknown> | undefined
 
+        // Resolve brand and language with smart fallbacks from the HTML
+        const resolvedBrand = detectBrand(targetPage.html, context.businessName)
+        const resolvedLang = detectLanguage(targetPage.html, context.language)
         const pageCtx = extractPageContext(targetPage.html)
 
         switch (checkId) {
           case 'title':
-            generated = await generateTitle(targetPage.name, targetPage.html, brand, type, lang, apiKey, context)
+            generated = await generateTitle(targetPage.name, targetPage.html, resolvedBrand, type, resolvedLang, apiKey, context)
             break
 
           case 'meta-description':
-            generated = await generateMetaDescription(targetPage.name, targetPage.html, brand, type, lang, apiKey, context)
+            generated = await generateMetaDescription(targetPage.name, targetPage.html, resolvedBrand, type, resolvedLang, apiKey, context)
             break
 
           case 'h1-keyword':
             generated = await callSeoAgent(
               `Riscrivi l'H1 della pagina "${targetPage.name}" per includere la keyword primaria.
-H1 attuale: "${(data?.text as string) ?? '(non trovato)'}". Business: ${type}, brand: "${brand}".
+H1 attuale: "${(data?.text as string) ?? '(non trovato)'}". Business: ${type}, brand: "${resolvedBrand}".
 ${pageCtx}
-Requisiti: naturale, 4–10 parole, contiene la keyword primaria, lingua: ${lang}.
+Requisiti: naturale, 4–10 parole, contiene la keyword primaria, lingua: ${resolvedLang}.
 Rispondi SOLO con il testo dell'H1.`, apiKey, context)
             break
 
           case 'open-graph': {
             const missing = (data?.missing as string[]) ?? ['og:title', 'og:description', 'og:image', 'og:url']
             generated = await callSeoAgent(
-              `Genera i tag Open Graph mancanti per la pagina "${targetPage.name}" di "${brand}" (${type}).
+              `Genera i tag Open Graph mancanti per la pagina "${targetPage.name}" di "${resolvedBrand}" (${type}).
 ${pageCtx}
 Tag mancanti: ${missing.join(', ')}
 URL canonico: ${canonicalUrl}
 Requisiti: og:title ≤60 chars (usa la keyword primaria), og:description ≤200 chars (con CTA), og:url="${canonicalUrl}", og:image="https://placehold.co/1200x630" se non disponibile.
-Lingua: ${lang}.
+Lingua contenuto: ${resolvedLang} — scrivi i testi in questa lingua.
 Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO i tag, nient'altro.`,
               apiKey, context)
             break
@@ -434,20 +469,20 @@ Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO
 
           case 'alt-text':
             generated = await callSeoAgent(
-              `Analizza l'HTML e genera alt text SEO per le immagini senza alt nella pagina "${targetPage.name}" (${type}: "${brand}").
+              `Analizza l'HTML e genera alt text SEO per le immagini senza alt nella pagina "${targetPage.name}" (${type}: "${resolvedBrand}").
 ${pageCtx}
 HTML PAGINA (per identificare le immagini e il contesto):\n${targetPage.html.slice(0, 5000)}
-Regole: alt conciso (max 125 chars), descrittivo, nella lingua ${lang}, niente "immagine di", usa keyword rilevanti.
+Regole: alt conciso (max 125 chars), descrittivo, nella lingua ${resolvedLang}, niente "immagine di", usa keyword rilevanti.
 Rispondi SOLO con JSON array: [{"src_fragment": "parte univoca e breve dell'URL src", "alt": "testo alt"}]`,
               apiKey, context)
             break
 
           case 'schema-organization':
             generated = await callSeoAgent(
-              `Genera un JSON-LD Organization per il sito "${brand}" (${type}).
+              `Genera un JSON-LD Organization per il sito "${resolvedBrand}" (${type}).
 ${pageCtx}
 URL sito: ${baseUrl}
-Genera schema.org JSON-LD completo con: @context, @type, name, url, description (2-3 frasi in ${lang}).
+Genera schema.org JSON-LD completo con: @context, @type, name, url, description (2-3 frasi in ${resolvedLang}).
 Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
               apiKey, context)
             break
@@ -457,7 +492,7 @@ Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
               `Analizza l'HTML della pagina "${targetPage.name}" ed estrai le FAQ per generare un JSON-LD FAQPage.
 HTML PAGINA:\n${targetPage.html.slice(0, 6000)}
 Genera schema.org FAQPage valido con tutte le domande/risposte trovate nella pagina.
-Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
+Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
               apiKey, context)
             break
         }

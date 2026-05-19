@@ -88,6 +88,7 @@ export function buildContextPrompt(context: ProjectContext): string {
   const parts: string[] = ['## CONTESTO PROGETTO (usa sempre queste informazioni):']
   if (context.businessName) parts.push(`- Nome: ${context.businessName}`)
   if (context.businessType) parts.push(`- Settore: ${context.businessType}`)
+  if (context.language) parts.push(`- Lingua sito: ${context.language} — scrivi SEMPRE in questa lingua`)
   if (context.location) parts.push(`- Location: ${context.location}`)
   if (context.targetAudience) parts.push(`- Target: ${context.targetAudience}`)
   if (context.toneOfVoice) parts.push(`- Tone of voice: ${context.toneOfVoice}`)
