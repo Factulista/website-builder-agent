@@ -1,4 +1,5 @@
 import { SAAS_TEMPLATE } from './saas'
+import { SAAS2_TEMPLATE } from './saas2'
 
 export type Template = {
   id: string
@@ -11,21 +12,31 @@ export type Template = {
 
 const TEMPLATES: Record<string, string> = {
   saas: SAAS_TEMPLATE,
+  saas2: SAAS2_TEMPLATE,
 }
 
 export const TEMPLATE_REGISTRY: Template[] = [
   {
     id: 'saas',
-    name: 'SaaS / Software',
+    name: 'SaaS / Software — Dark',
     sector: 'SaaS',
-    description: 'Template per applicazioni web, piattaforme SaaS, software e startup tech. Perfetto per prodotti digitali, CRM, ERP e soluzioni di fatturazione.',
+    description: 'Template dark per applicazioni web, piattaforme SaaS, software e startup tech. Hero scuro, palette navy, design minimale.',
     html: SAAS_TEMPLATE,
     keywords: ['saas', 'software', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'fatturazione', 'invoicing', 'crm', 'erp', 'gestionale'],
+  },
+  {
+    id: 'saas2',
+    name: 'SaaS / Software — Light',
+    sector: 'SaaS',
+    description: 'Template light per SaaS e prodotti tech. Hero bianco con gradiente, sezione comparazione modalità, griglia 9 feature, pricing 2 piani, form contatto. Ispirato a factulista.com.',
+    html: SAAS2_TEMPLATE,
+    keywords: ['saas light', 'software light', 'gestionale', 'billing', 'invoicing light', 'b2b saas', 'fintech', 'enterprise', 'contabilità', 'accounting', 'erp light', 'crm light'],
   },
 ]
 
 export const TEMPLATE_MAP: Record<string, string[]> = {
   saas: ['saas', 'software', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'fatturazione', 'invoicing', 'crm', 'erp', 'gestionale'],
+  saas2: ['billing', 'contabilità', 'accounting', 'fintech', 'enterprise saas', 'b2b saas', 'gestionale cloud', 'erp cloud'],
 }
 
 export function detectTemplate(businessType: string): string | null {
