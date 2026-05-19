@@ -196,34 +196,127 @@ function applyHtmlFix(
   }
 }
 
-// ── SEO content generator (for seo-owner checks) ─────────────────────────────
+// ── Page context extractor ────────────────────────────────────────────────────
+// Pulls the most SEO-relevant signals from raw HTML for use in prompts.
 
-async function generateSeoContent(
-  seoPrompt: string,
-  pageHtml: string,
+function extractPageContext(html: string): string {
+  const strip = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+
+  const h1 = strip(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
+  const h2s = [...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)]
+    .slice(0, 4).map(m => strip(m[1])).filter(Boolean)
+  const firstP = strip(html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? '').slice(0, 200)
+  const currentTitle = strip(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '')
+
+  const lines = [
+    currentTitle && `Title attuale: "${currentTitle}"`,
+    h1 && `H1: "${h1}"`,
+    h2s.length && `H2: ${h2s.map(h => `"${h}"`).join(', ')}`,
+    firstP && `Primo paragrafo: "${firstP}"`,
+  ].filter(Boolean)
+
+  return lines.length ? `\nCONTENUTO PAGINA:\n${lines.join('\n')}` : ''
+}
+
+// ── SEO content generator ─────────────────────────────────────────────────────
+
+async function callSeoAgent(
+  userPrompt: string,
   apiKey: string,
   context: ProjectContext
 ): Promise<string> {
-  const system = `Sei un SEO expert. Generi contenuti ottimizzati per i motori di ricerca.
-
-${SEO_KNOWLEDGE}
+  const system = `Sei un SEO copywriter esperto. Generi testi ottimizzati per i motori di ricerca.
 
 ${buildContextPrompt(context)}
 
-Rispondi con SOLO il contenuto richiesto — nessuna spiegazione, nessun markdown, nessun tag HTML salvo quando esplicitamente richiesto.`
+REGOLA ASSOLUTA: rispondi con SOLO il testo richiesto — zero spiegazioni, zero markdown, zero tag HTML (salvo quando esplicitamente richiesto). Nessuna frase introduttiva, nessun commento finale.`
 
-  const res = await callClaude(
-    'seo',
-    system,
-    [{ role: 'user', content: `${seoPrompt}\n\nHTML DELLA PAGINA (per contesto):\n${pageHtml.slice(0, 4000)}` }],
-    [],  // no tools — raw text response
-    apiKey
-  )
+  const res = await callClaude('seo', system,
+    [{ role: 'user', content: userPrompt }],
+    [], apiKey)
 
   if (!res.ok) throw new Error(`SEO content API error: ${await res.text()}`)
   const data = await res.json()
   const textBlock = data.content?.find((b: { type: string }) => b.type === 'text')
   return textBlock?.text?.trim() ?? ''
+}
+
+// Generates title with strict 50–60 char validation + up to 2 retries
+async function generateTitle(
+  pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext
+): Promise<string> {
+  const pageCtx = extractPageContext(html)
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const prompt = attempt === 1
+      ? `Scrivi il SEO title per la pagina "${pageName}" di un sito ${type} chiamato "${brand}".
+${pageCtx}
+
+REQUISITI OBBLIGATORI:
+- Esattamente tra 50 e 60 caratteri (conta ogni lettera, spazio e simbolo)
+- Contiene la keyword primaria della pagina (desumila da H1 e H2)
+- Formato: "[Keyword principale] | ${brand}" oppure "[Servizio] — ${brand}"
+- Lingua: ${lang}
+
+CONTA I CARATTERI prima di rispondere. Rispondi SOLO con il testo del title.`
+      : `Il title che hai scritto non è nel range 50–60 caratteri richiesto.
+Riscrivilo rispettando STRETTAMENTE la lunghezza.
+Pagina: "${pageName}", brand: "${brand}", lingua: ${lang}.
+${pageCtx}
+Il nuovo title DEVE avere tra 50 e 60 caratteri. Contali uno per uno. Rispondi SOLO con il testo.`
+
+    const result = await callSeoAgent(prompt, apiKey, context)
+    const clean = result.replace(/^["']|["']$/g, '').trim()
+    if (clean.length >= 50 && clean.length <= 60) return clean
+
+    // Last attempt: truncate/pad to fit
+    if (attempt === 3) {
+      if (clean.length > 60) return clean.slice(0, 57) + '...'
+      // Too short — append brand if needed
+      const withBrand = `${clean} | ${brand}`
+      return withBrand.length <= 60 ? withBrand : clean
+    }
+  }
+  return ''
+}
+
+// Generates meta-description with strict 150–160 char validation + up to 2 retries
+async function generateMetaDescription(
+  pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext
+): Promise<string> {
+  const pageCtx = extractPageContext(html)
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const prompt = attempt === 1
+      ? `Scrivi la meta description per la pagina "${pageName}" di un sito ${type} chiamato "${brand}".
+${pageCtx}
+
+REQUISITI OBBLIGATORI:
+- Esattamente tra 150 e 160 caratteri (conta ogni lettera, spazio e simbolo)
+- Include la keyword primaria della pagina
+- Termina con un CTA: "Scopri di più", "Contattaci", "Prova gratis" o simile
+- Lingua: ${lang}
+
+CONTA I CARATTERI prima di rispondere. Rispondi SOLO con il testo della description.`
+      : `La description che hai scritto non è nel range 150–160 caratteri richiesto.
+Riscrivila rispettando STRETTAMENTE la lunghezza.
+Pagina: "${pageName}", brand: "${brand}", tipo: ${type}, lingua: ${lang}.
+${pageCtx}
+Deve avere tra 150 e 160 caratteri. Contali uno per uno. Rispondi SOLO con il testo.`
+
+    const result = await callSeoAgent(prompt, apiKey, context)
+    const clean = result.replace(/^["']|["']$/g, '').trim()
+    if (clean.length >= 150 && clean.length <= 160) return clean
+
+    if (attempt === 3) {
+      if (clean.length > 160) return clean.slice(0, 157) + '...'
+      // Too short — pad with a CTA
+      const cta = lang === 'es' ? ' Descúbrelo ahora.' : lang === 'en' ? ' Discover more today.' : ' Scopri di più ora.'
+      const padded = clean + cta
+      return padded.length <= 160 ? padded : clean
+    }
+  }
+  return ''
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────
@@ -305,60 +398,71 @@ export async function POST(req: NextRequest) {
         const type = context.businessType ?? 'web'
         const data = checkResult.data as Record<string, unknown> | undefined
 
-        let seoPrompt = ''
+        const pageCtx = extractPageContext(targetPage.html)
+
         switch (checkId) {
           case 'title':
-            seoPrompt = `Riscrivi il title tag della pagina "${targetPage.name}" di un sito ${type} chiamato "${brand}".
-${data?.current ? `Title attuale (${data.length} chars): "${data.current}"` : 'Title attuale: mancante.'}
-Requisiti: 50–60 caratteri esatti, keyword primaria, formato "[Keyword] — [Brand]" o "[Brand] | [Servizio]", lingua: ${lang}.
-Rispondi SOLO con il testo del title, senza tag HTML.`
+            generated = await generateTitle(targetPage.name, targetPage.html, brand, type, lang, apiKey, context)
             break
+
           case 'meta-description':
-            seoPrompt = `Scrivi la meta description per la pagina "${targetPage.name}" di un sito ${type} chiamato "${brand}".
-${data?.current ? `Description attuale: "${data.current}"` : 'Description attuale: mancante.'}
-Requisiti: 150–160 caratteri esatti, keyword primaria, CTA finale (es: "Scopri di più"), lingua: ${lang}.
-Rispondi SOLO con il testo della description, senza tag HTML.`
+            generated = await generateMetaDescription(targetPage.name, targetPage.html, brand, type, lang, apiKey, context)
             break
+
           case 'h1-keyword':
-            seoPrompt = `Riscrivi l'H1 della pagina "${targetPage.name}" per includere la keyword primaria.
-H1 attuale: "${data?.text ?? '(non trovato)'}". Business: ${type}, Brand: ${brand}.
-Requisiti: naturale, 4–10 parole, keyword primaria, lingua: ${lang}.
-Rispondi SOLO con il testo dell'H1, senza tag HTML.`
+            generated = await callSeoAgent(
+              `Riscrivi l'H1 della pagina "${targetPage.name}" per includere la keyword primaria.
+H1 attuale: "${(data?.text as string) ?? '(non trovato)'}". Business: ${type}, brand: "${brand}".
+${pageCtx}
+Requisiti: naturale, 4–10 parole, contiene la keyword primaria, lingua: ${lang}.
+Rispondi SOLO con il testo dell'H1.`, apiKey, context)
             break
+
           case 'open-graph': {
             const missing = (data?.missing as string[]) ?? ['og:title', 'og:description', 'og:image', 'og:url']
-            seoPrompt = `Genera i tag Open Graph mancanti per la pagina "${targetPage.name}" di "${brand}" (${type}).
-Tag mancanti: ${missing.join(', ')}. URL pagina: ${canonicalUrl}. Lingua: ${lang}.
-Requisiti: og:title ≤60 chars, og:description ≤200 chars, og:url="${canonicalUrl}", og:image placeholder 1200x630 se non disponibile.
-Rispondi con i tag HTML completi pronti per il <head>, uno per riga.`
+            generated = await callSeoAgent(
+              `Genera i tag Open Graph mancanti per la pagina "${targetPage.name}" di "${brand}" (${type}).
+${pageCtx}
+Tag mancanti: ${missing.join(', ')}
+URL canonico: ${canonicalUrl}
+Requisiti: og:title ≤60 chars (usa la keyword primaria), og:description ≤200 chars (con CTA), og:url="${canonicalUrl}", og:image="https://placehold.co/1200x630" se non disponibile.
+Lingua: ${lang}.
+Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO i tag, nient'altro.`,
+              apiKey, context)
             break
           }
-          case 'alt-text': {
-            const missingN = data?.missing ?? 'alcune'
-            const totalN = data?.total ?? '?'
-            seoPrompt = `Analizza l'HTML e genera alt text descrittivi per le immagini senza alt nella pagina "${targetPage.name}".
-Immagini senza alt: ${missingN}/${totalN}. Tipo sito: ${type}. Lingua: ${lang}.
-Per ogni immagine: alt conciso (max 125 chars), descrittivo, senza "immagine di". Considera src URL e testo vicino.
-Rispondi con un JSON array: [{"src_fragment": "parte univoca dell'src", "alt": "testo alt"}]`
+
+          case 'alt-text':
+            generated = await callSeoAgent(
+              `Analizza l'HTML e genera alt text SEO per le immagini senza alt nella pagina "${targetPage.name}" (${type}: "${brand}").
+${pageCtx}
+HTML PAGINA (per identificare le immagini e il contesto):\n${targetPage.html.slice(0, 5000)}
+Regole: alt conciso (max 125 chars), descrittivo, nella lingua ${lang}, niente "immagine di", usa keyword rilevanti.
+Rispondi SOLO con JSON array: [{"src_fragment": "parte univoca e breve dell'URL src", "alt": "testo alt"}]`,
+              apiKey, context)
             break
-          }
+
           case 'schema-organization':
-            seoPrompt = `Genera un JSON-LD Organization/LocalBusiness per "${brand}" (${type}).
-URL: ${baseUrl}. Lingua: ${lang}.
-Genera schema.org JSON-LD con: @context, @type, name, url, description.
-Rispondi SOLO con il JSON, senza markdown o backtick.`
+            generated = await callSeoAgent(
+              `Genera un JSON-LD Organization per il sito "${brand}" (${type}).
+${pageCtx}
+URL sito: ${baseUrl}
+Genera schema.org JSON-LD completo con: @context, @type, name, url, description (2-3 frasi in ${lang}).
+Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
+              apiKey, context)
             break
+
           case 'schema-faq':
-            seoPrompt = `Analizza l'HTML della pagina "${targetPage.name}" e genera un JSON-LD FAQPage.
-Estrai le domande e risposte dalla sezione FAQ. Lingua: ${lang}.
-Genera schema.org FAQPage valido. Rispondi SOLO con il JSON, senza markdown o backtick.`
+            generated = await callSeoAgent(
+              `Analizza l'HTML della pagina "${targetPage.name}" ed estrai le FAQ per generare un JSON-LD FAQPage.
+HTML PAGINA:\n${targetPage.html.slice(0, 6000)}
+Genera schema.org FAQPage valido con tutte le domande/risposte trovate nella pagina.
+Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
+              apiKey, context)
             break
         }
 
-        if (seoPrompt) {
-          generated = await generateSeoContent(seoPrompt, targetPage.html, apiKey, context)
-          if (!generated) { emitError('Il SEO agent non ha generato contenuto'); return }
-        }
+        if (!generated) { emitError('Il SEO agent non ha generato contenuto'); return }
       }
 
       // ── Apply the fix directly on the HTML ────────────────────────────────
