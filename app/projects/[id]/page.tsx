@@ -889,69 +889,84 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   // ── SEO Fix ───────────────────────────────────────────────────────────────────
-  const fixCheck = async (checkId: CheckId, pageSlug: string, currentAnalyses?: PageAnalysis[]) => {
+
+  /** Fixes a single check on a single page. Returns true on success. */
+  const fixOnePage = async (checkId: CheckId, pageSlug: string): Promise<boolean> => {
+    const analyses = analyzeAllPages(latestPagesRef.current)
+    const pageAnalysis = analyses.find(a => a.pageSlug === pageSlug)
+    const checkResult = pageAnalysis?.results.find(r => r.checkId === checkId)
+    if (!checkResult) {
+      console.error('[SEO Fix] checkResult not found for', checkId, pageSlug)
+      setSeoFixError(`Check "${checkId}" non trovato per la pagina "${pageSlug}"`)
+      return false
+    }
+
+    const resp = await fetch('/api/seo-fix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId: id,
+        pageSlug,
+        checkId,
+        checkResult,
+        pages: latestPagesRef.current,
+        customDomain: customDomain || null,
+      }),
+    })
+
+    if (!resp.ok) {
+      const errText = await resp.text()
+      setSeoFixError(`Errore ${resp.status}: ${errText.slice(0, 120)}`)
+      return false
+    }
+    if (!resp.body) { setSeoFixError('Risposta vuota dal server'); return false }
+
+    const reader = resp.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const msg = JSON.parse(line)
+          if (msg.type === 'error') { setSeoFixError(msg.error); return false }
+          if (msg.type === 'done' && msg.result?.updatedPages) {
+            const updated = msg.result.updatedPages as Page[]
+            setPages(updated)
+            latestPagesRef.current = updated
+            setSeoAnalyses(analyzeAllPages(updated))
+            await saveState(messages, updated, versions)
+            return true
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    }
+    return false
+  }
+
+  /**
+   * Fixes a check. If scopeSlugs has multiple entries, applies the fix
+   * to every page in the list that is currently failing that check.
+   */
+  const fixCheck = async (checkId: CheckId, scopeSlugs: string | string[]) => {
     if (seoFixingRef.current) return
     seoFixingRef.current = true
     setSeoFixing(checkId)
     setSeoFixError(null)
     try {
-      const analyses = currentAnalyses ?? seoAnalyses
-      const pageAnalysis = analyses.find(a => a.pageSlug === pageSlug)
-      const checkResult = pageAnalysis?.results.find(r => r.checkId === checkId)
-      if (!checkResult) {
-        console.error('[SEO Fix] checkResult not found for', checkId, pageSlug, 'analyses:', analyses.map(a => a.pageSlug))
-        setSeoFixError(`Check "${checkId}" non trovato per la pagina "${pageSlug}"`)
-        return
-      }
-
-      const resp = await fetch('/api/seo-fix', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: id,
-          pageSlug,
-          checkId,
-          checkResult,
-          pages: latestPagesRef.current,
-          customDomain: customDomain || null,
-        }),
-      })
-
-      if (!resp.ok) {
-        const errText = await resp.text()
-        console.error('[SEO Fix] HTTP error', resp.status, errText)
-        setSeoFixError(`Errore ${resp.status}: ${errText.slice(0, 120)}`)
-        return
-      }
-      if (!resp.body) {
-        setSeoFixError('Risposta vuota dal server')
-        return
-      }
-
-      const reader = resp.body.getReader()
-      const dec = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const msg = JSON.parse(line)
-            if (msg.type === 'error') {
-              setSeoFixError(msg.error)
-            } else if (msg.type === 'done' && msg.result?.updatedPages) {
-              const updated = msg.result.updatedPages as Page[]
-              setPages(updated)
-              latestPagesRef.current = updated
-              setSeoAnalyses(analyzeAllPages(updated))
-              await saveState(messages, updated, versions)
-            }
-          } catch { /* skip malformed ndjson lines */ }
-        }
+      const slugs = Array.isArray(scopeSlugs) ? scopeSlugs : [scopeSlugs]
+      for (const slug of slugs) {
+        // Skip pages where the check already passes (re-analyze from latest)
+        const currentAnalyses = analyzeAllPages(latestPagesRef.current)
+        const result = currentAnalyses.find(a => a.pageSlug === slug)?.results.find(r => r.checkId === checkId)
+        if (!result || result.status === 'pass') continue
+        const ok = await fixOnePage(checkId, slug)
+        if (!ok) break // stop on first error
       }
     } catch (err) {
       console.error('[SEO Fix] Unexpected error:', err)
@@ -962,15 +977,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
-  const fixAllFailing = async (pageSlug: string) => {
+  /** Fixes all failing checks on the given page scope (one page or all). */
+  const fixAllFailing = async (scopeSlugs: string | string[]) => {
     if (seoFixingRef.current) return
-    const currentAnalyses = seoAnalyses
-    const pageAnalysis = currentAnalyses.find(a => a.pageSlug === pageSlug)
-    if (!pageAnalysis) return
-    const failing = pageAnalysis.results.filter(r => r.status !== 'pass').map(r => r.checkId)
-    for (const checkId of failing) {
-      // Pass current analyses snapshot since state may lag behind ref
-      await fixCheck(checkId, pageSlug, analyzeAllPages(latestPagesRef.current))
+    const slugs = Array.isArray(scopeSlugs) ? scopeSlugs : [scopeSlugs]
+    // Collect all unique failing check IDs across the scope
+    const analyses = analyzeAllPages(latestPagesRef.current)
+    const failingChecks = [...new Set(
+      slugs.flatMap(slug =>
+        analyses.find(a => a.pageSlug === slug)?.results
+          .filter(r => r.status !== 'pass')
+          .map(r => r.checkId) ?? []
+      )
+    )]
+    for (const checkId of failingChecks) {
+      await fixCheck(checkId, slugs)
     }
   }
 
@@ -1910,7 +1931,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             const statusColor = (s: 'pass' | 'warn' | 'fail') =>
               s === 'pass' ? '#10b981' : s === 'warn' ? '#f59e0b' : '#ef4444'
 
-            const fixTarget = seoPageSlug === 'all' ? (pages[0]?.slug ?? 'home') : seoPageSlug
+            // fixScope: all page slugs when "all", single slug otherwise
+            const fixScope: string | string[] = seoPageSlug === 'all'
+              ? pages.map(p => p.slug)
+              : seoPageSlug
 
             return (
               <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: C.bg }}>
@@ -1994,7 +2018,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {/* Fix All button */}
                   {primaryAnalysis && (
                     <button
-                      onClick={() => fixAllFailing(fixTarget)}
+                      onClick={() => fixAllFailing(fixScope)}
                       disabled={!!seoFixing || !primaryAnalysis.results.some(r => r.status !== 'pass')}
                       style={{
                         padding: '8px 12px', borderRadius: '8px', border: 'none',
@@ -2099,7 +2123,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 {/* Fix button */}
                                 {canFix && (
                                   <button
-                                    onClick={() => fixCheck(check.id, fixTarget)}
+                                    onClick={() => fixCheck(check.id, fixScope)}
                                     disabled={!!seoFixing}
                                     title={`Correggi: ${check.label}`}
                                     style={{
