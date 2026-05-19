@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, use, useRef, useEffect } from 'react'
+import { useState, use, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
@@ -8,6 +8,8 @@ import { EditorSidebar } from '../../../components/EditorSidebar'
 import { HtmlCodeEditor } from '../../../components/HtmlCodeEditor'
 import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
+import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
+import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
@@ -582,7 +584,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo'>('preview')
+  const [seoAnalyses, setSeoAnalyses] = useState<PageAnalysis[]>([])
+  const [seoPageSlug, setSeoPageSlug] = useState<string>('all')
+  const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const [mediaLoading, setMediaLoading] = useState(false)
   const [mediaSearch, setMediaSearch] = useState('')
@@ -615,6 +620,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
   useEffect(() => { latestPagesRef.current = pages }, [pages])
+
+  // Re-analyze SEO whenever pages change or the SEO tab is opened
+  useEffect(() => {
+    if (pages.length > 0) setSeoAnalyses(analyzeAllPages(pages))
+  }, [pages, viewMode])
 
   // Elapsed-seconds timer — ticks every second while an agent is running
   useEffect(() => {
@@ -874,6 +884,66 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (b < 1024) return `${b} B`
     if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
     return `${(b / 1024 / 1024).toFixed(2)} MB`
+  }
+
+  // ── SEO Fix ───────────────────────────────────────────────────────────────────
+  const fixCheck = async (checkId: CheckId, pageSlug: string) => {
+    if (seoFixing) return
+    setSeoFixing(checkId)
+    try {
+      const pageAnalysis = seoAnalyses.find(a => a.pageSlug === pageSlug)
+      const checkResult = pageAnalysis?.results.find(r => r.checkId === checkId)
+      if (!checkResult) return
+
+      const resp = await fetch('/api/seo-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: id,
+          pageSlug,
+          checkId,
+          checkResult,
+          pages,
+          customDomain: customDomain || null,
+        }),
+      })
+      if (!resp.ok || !resp.body) return
+
+      const reader = resp.body.getReader()
+      const dec = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const msg = JSON.parse(line)
+            if (msg.type === 'done' && msg.result?.updatedPages) {
+              const updated = msg.result.updatedPages as Page[]
+              setPages(updated)
+              latestPagesRef.current = updated
+              await saveState(messages, updated, versions)
+            }
+          } catch { /* skip malformed lines */ }
+        }
+      }
+    } finally {
+      setSeoFixing(null)
+    }
+  }
+
+  const fixAllFailing = async (pageSlug: string) => {
+    if (seoFixing) return
+    const pageAnalysis = seoAnalyses.find(a => a.pageSlug === pageSlug)
+    if (!pageAnalysis) return
+    const failing = pageAnalysis.results.filter(r => r.status !== 'pass').map(r => r.checkId)
+    for (const checkId of failing) {
+      await fixCheck(checkId, pageSlug)
+    }
   }
 
   const injectEditingScript = () => {
@@ -1593,6 +1663,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               active={viewMode === 'media'}
               onClick={() => setViewMode('media')}
             />
+            <ToolbarBtn
+              label={(() => {
+                const score = getAggregateScore(seoAnalyses)
+                const color = pages.length > 0 ? scoreColor(score) : C.textFaint
+                return <span style={{ color, fontWeight: 700, fontSize: '0.72rem' }}>
+                  SEO {pages.length > 0 ? score : '—'}
+                </span>
+              })()}
+              title="SEO Optimizer"
+              active={viewMode === 'seo'}
+              onClick={() => setViewMode('seo')}
+            />
           </div>
 
           {/* URL bar — selectable text + slug dropdown for page navigation */}
@@ -1763,6 +1845,252 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               ))}
             </div>
           </div>
+        ) : viewMode === 'seo' ? (
+          /* ── SEO Optimizer Panel ─────────────────────────────────────────── */
+          (() => {
+            // Determine which analyses to show
+            const displayAnalyses = seoPageSlug === 'all' ? seoAnalyses : seoAnalyses.filter(a => a.pageSlug === seoPageSlug)
+            const aggregateScore = displayAnalyses.length > 0
+              ? Math.round(displayAnalyses.reduce((s, a) => s + a.overallScore, 0) / displayAnalyses.length)
+              : 0
+            const aggColor = scoreColor(aggregateScore)
+
+            // For per-check display, merge results across pages (use first page or selected)
+            const primaryAnalysis = seoPageSlug === 'all'
+              ? (seoAnalyses[0] ?? null)
+              : (seoAnalyses.find(a => a.pageSlug === seoPageSlug) ?? null)
+
+            // Gather all results for the selected scope
+            const mergedResults: Record<CheckId, CheckResult[]> = {} as Record<CheckId, CheckResult[]>
+            for (const a of displayAnalyses) {
+              for (const r of a.results) {
+                if (!mergedResults[r.checkId]) mergedResults[r.checkId] = []
+                mergedResults[r.checkId].push(r)
+              }
+            }
+            // Average score across pages for each check
+            const avgResult = (checkId: CheckId): CheckResult | null => {
+              const arr = mergedResults[checkId]
+              if (!arr || arr.length === 0) return null
+              const avgScore = Math.round(arr.reduce((s, r) => s + r.score, 0) / arr.length)
+              const worst = arr.find(r => r.status === 'fail') ?? arr.find(r => r.status === 'warn') ?? arr[0]
+              return { ...worst, score: avgScore, status: avgScore >= 80 ? 'pass' : avgScore >= 40 ? 'warn' : 'fail' }
+            }
+
+            const statusIcon = (s: 'pass' | 'warn' | 'fail') =>
+              s === 'pass' ? '✅' : s === 'warn' ? '⚠️' : '❌'
+            const statusColor = (s: 'pass' | 'warn' | 'fail') =>
+              s === 'pass' ? '#10b981' : s === 'warn' ? '#f59e0b' : '#ef4444'
+
+            const fixTarget = seoPageSlug === 'all' ? (pages[0]?.slug ?? 'home') : seoPageSlug
+
+            return (
+              <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: C.bg }}>
+                {/* ── Left sidebar: score gauge + page selector ── */}
+                <div style={{
+                  width: '220px', flexShrink: 0, borderRight: `1px solid ${C.border}`,
+                  display: 'flex', flexDirection: 'column', padding: '20px 16px', gap: '20px',
+                  overflowY: 'auto',
+                }}>
+                  {/* Overall score */}
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{
+                      width: '88px', height: '88px', borderRadius: '50%', margin: '0 auto 10px',
+                      background: `conic-gradient(${aggColor} ${aggregateScore * 3.6}deg, ${C.border} 0deg)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: `0 0 0 6px ${C.bg}`,
+                      position: 'relative',
+                    }}>
+                      <div style={{
+                        width: '64px', height: '64px', borderRadius: '50%', background: C.bg,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <span style={{ fontSize: '1.4rem', fontWeight: 700, color: aggColor, lineHeight: 1 }}>{aggregateScore}</span>
+                        <span style={{ fontSize: '0.6rem', color: C.textFaint, marginTop: '1px' }}>/100</span>
+                      </div>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: C.text }}>SEO Score</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: C.textFaint }}>
+                      {aggregateScore >= 80 ? 'Ottimo!' : aggregateScore >= 60 ? 'Buono' : aggregateScore >= 40 ? 'Da migliorare' : 'Critico'}
+                    </p>
+                  </div>
+
+                  {/* Page selector */}
+                  <div>
+                    <p style={{ margin: '0 0 6px', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pagina</p>
+                    <select
+                      value={seoPageSlug}
+                      onChange={e => setSeoPageSlug(e.target.value)}
+                      style={{
+                        width: '100%', padding: '6px 8px', borderRadius: '7px',
+                        border: `1px solid ${C.border}`, background: C.white,
+                        fontSize: '0.78rem', color: C.text, fontFamily: 'inherit', cursor: 'pointer',
+                      }}
+                    >
+                      <option value="all">Tutte le pagine</option>
+                      {pages.map(p => {
+                        const a = seoAnalyses.find(x => x.pageSlug === p.slug)
+                        return (
+                          <option key={p.slug} value={p.slug}>
+                            {p.name} {a ? `(${a.overallScore})` : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+
+                  {/* Score breakdown by group */}
+                  <div>
+                    <p style={{ margin: '0 0 8px', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Gruppi</p>
+                    {SEO_GROUPS.map(g => {
+                      const groupChecks = SEO_CHECKS.filter(c => c.group === g.id)
+                      const groupResults = groupChecks.map(c => avgResult(c.id)).filter(Boolean) as CheckResult[]
+                      const groupScore = groupResults.length > 0
+                        ? Math.round(groupResults.reduce((s, r) => s + r.score, 0) / groupResults.length)
+                        : 0
+                      const gColor = scoreColor(groupScore)
+                      return (
+                        <div key={g.id} style={{ marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                            <span style={{ fontSize: '0.7rem', color: C.textMuted }}>{g.label}</span>
+                            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: gColor }}>{groupScore}</span>
+                          </div>
+                          <div style={{ height: '4px', borderRadius: '2px', background: C.border, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${groupScore}%`, background: gColor, borderRadius: '2px', transition: 'width 0.4s ease' }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Fix All button */}
+                  {primaryAnalysis && (
+                    <button
+                      onClick={() => fixAllFailing(fixTarget)}
+                      disabled={!!seoFixing || !primaryAnalysis.results.some(r => r.status !== 'pass')}
+                      style={{
+                        padding: '8px 12px', borderRadius: '8px', border: 'none',
+                        background: seoFixing ? C.bgPanel : C.dark, color: 'white',
+                        fontSize: '0.78rem', fontWeight: 600, cursor: seoFixing ? 'wait' : 'pointer',
+                        fontFamily: 'inherit', transition: 'opacity 0.15s',
+                        opacity: seoFixing ? 0.6 : 1,
+                      }}
+                    >
+                      {seoFixing ? '⏳ Fix in corso…' : '⚡ Fix All Failing'}
+                    </button>
+                  )}
+                </div>
+
+                {/* ── Main area: grouped checklist ── */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                  <div style={{ maxWidth: '780px', margin: '0 auto' }}>
+                    {/* Header */}
+                    <div style={{ marginBottom: '20px' }}>
+                      <h2 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: 700, color: C.text }}>SEO Optimizer</h2>
+                      <p style={{ margin: 0, fontSize: '0.78rem', color: C.textFaint }}>
+                        Analisi live • {SEO_CHECKS.length} check • aggiornata automaticamente
+                      </p>
+                    </div>
+
+                    {SEO_GROUPS.map(group => {
+                      const groupChecks = SEO_CHECKS.filter(c => c.group === group.id)
+                      const groupResults = groupChecks.map(c => avgResult(c.id)).filter(Boolean) as CheckResult[]
+                      const passing = groupResults.filter(r => r.status === 'pass').length
+                      return (
+                        <div key={group.id} style={{ marginBottom: '24px' }}>
+                          {/* Group header */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '8px 0', borderBottom: `1px solid ${C.border}`, marginBottom: '2px',
+                          }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: C.text }}>{group.label}</span>
+                            <span style={{ fontSize: '0.72rem', color: C.textFaint }}>
+                              {passing}/{groupChecks.length} pass
+                            </span>
+                          </div>
+
+                          {/* Checks in group */}
+                          {groupChecks.map(check => {
+                            const result = avgResult(check.id)
+                            if (!result) return null
+                            const isFixing = seoFixing === check.id
+                            const canFix = result.status !== 'pass'
+                            return (
+                              <div
+                                key={check.id}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: '12px',
+                                  padding: '10px 12px', borderRadius: '8px',
+                                  background: isFixing ? '#fffbeb' : 'transparent',
+                                  transition: 'background 0.2s',
+                                  borderBottom: `1px solid ${C.borderLight}`,
+                                }}
+                              >
+                                {/* Status icon */}
+                                <span style={{ fontSize: '1rem', flexShrink: 0 }}>{statusIcon(result.status)}</span>
+
+                                {/* Label + detail */}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.text }}>{check.label}</span>
+                                    <span style={{
+                                      fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px',
+                                      borderRadius: '4px', background: statusColor(result.status) + '18',
+                                      color: statusColor(result.status),
+                                    }}>
+                                      {result.score}/100
+                                    </span>
+                                    {check.fixOwner === 'seo' && (
+                                      <span style={{ fontSize: '0.62rem', color: C.textFaint, background: C.bgPanel, padding: '1px 5px', borderRadius: '4px' }}>AI</span>
+                                    )}
+                                  </div>
+                                  <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: C.textFaint, lineHeight: 1.4 }}>
+                                    {result.detail || check.description}
+                                  </p>
+                                  {/* Score bar */}
+                                  <div style={{ marginTop: '5px', height: '3px', borderRadius: '2px', background: C.border, overflow: 'hidden', maxWidth: '240px' }}>
+                                    <div style={{
+                                      height: '100%', width: `${result.score}%`,
+                                      background: statusColor(result.status),
+                                      borderRadius: '2px', transition: 'width 0.4s ease',
+                                    }} />
+                                  </div>
+                                </div>
+
+                                {/* Fix button */}
+                                {canFix && (
+                                  <button
+                                    onClick={() => fixCheck(check.id, fixTarget)}
+                                    disabled={!!seoFixing}
+                                    title={`Correggi: ${check.label}`}
+                                    style={{
+                                      flexShrink: 0, padding: '5px 12px', borderRadius: '6px',
+                                      border: `1px solid ${C.border}`,
+                                      background: isFixing ? '#f59e0b' : C.white,
+                                      color: isFixing ? 'white' : C.text,
+                                      fontSize: '0.72rem', fontWeight: 600,
+                                      cursor: seoFixing ? 'wait' : 'pointer',
+                                      fontFamily: 'inherit', transition: 'all 0.15s',
+                                      opacity: seoFixing && !isFixing ? 0.5 : 1,
+                                    }}
+                                  >
+                                    {isFixing ? '⏳' : '⚡ Fix'}
+                                  </button>
+                                )}
+                                {!canFix && (
+                                  <span style={{ flexShrink: 0, fontSize: '0.7rem', color: '#10b981', fontWeight: 600 }}>✓ OK</span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )
+          })()
         ) : viewMode === 'edit' && activePage ? (
           /* Inline editor v2 — contentEditable inside iframe with sidebar */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>

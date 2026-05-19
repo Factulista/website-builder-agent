@@ -425,6 +425,19 @@ LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a
 
 OGNI PAGINA: HTML completo, CSS inline, mobile-friendly, design moderno e coerente tra pagine.
 
+SEO — REGOLE DI DEFAULT (applica SEMPRE su ogni pagina che crei o modifichi):
+- <title> presente, 50–60 chars, con keyword primaria. Formato: "Keyword — Brand" o "Brand | Servizio".
+- <meta name="description"> presente, 150–160 chars, termina con CTA.
+- <link rel="canonical" href="[URL_PAGINA]"> nella <head>.
+- <html lang="[LINGUA]"> — usa la lingua del sito (it/es/en/...).
+- Un solo <h1> per pagina, contenente la keyword principale.
+- Gerarchia heading corretta: H1→H2→H3 senza salti.
+- Tag semantici: <header>, <nav>, <main>, <footer>.
+- Ogni <img> ha: alt="[descrizione]", width, height, loading="lazy" (tranne la prima above-the-fold).
+- <link rel="preconnect" href="https://fonts.googleapis.com"> se usi Google Fonts.
+- og:title, og:description, og:url nella <head> (og:image se hai URL immagine).
+Queste regole si applicano ANCHE alle modifiche parziali: se aggiungi una sezione, assicurati che la pagina soddisfi questi requisiti.
+
 IMMAGINI — REGOLE DI PRIORITÀ (importante):
 1. Se l'utente fornisce un URL esplicito nel messaggio → USA QUELL'URL ESATTO.
 2. Se l'utente chiede di usare "una sua immagine" e la media library ha qualcosa di pertinente → usa quegli URL.
