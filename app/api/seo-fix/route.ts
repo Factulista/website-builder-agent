@@ -276,7 +276,7 @@ REGOLA ASSOLUTA: rispondi con SOLO il testo richiesto — zero spiegazioni, zero
   return textBlock?.text?.trim() ?? ''
 }
 
-// Generates title with strict 50–60 char validation + up to 2 retries
+// Generates title with strict 50–60 char validation + up to 3 retries
 async function generateTitle(
   pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext
 ): Promise<string> {
@@ -290,26 +290,27 @@ ${pageCtx}
 REQUISITI OBBLIGATORI:
 - Esattamente tra 50 e 60 caratteri (conta ogni lettera, spazio e simbolo)
 - Contiene la keyword primaria della pagina (desumila da H1 e H2)
-- Formato: "[Keyword principale] | ${brand}" oppure "[Servizio] — ${brand}"
+- Formato: "${brand} | [descrizione keyword della pagina]" — il brand appare UNA SOLA VOLTA
+- Esempio con brand "Fatturify": "Fatturify | Fatturazione elettronica per PMI" (45 chars)
 - Lingua: ${lang}
 
-CONTA I CARATTERI prima di rispondere. Rispondi SOLO con il testo del title.`
-      : `Il title che hai scritto non è nel range 50–60 caratteri richiesto.
-Riscrivilo rispettando STRETTAMENTE la lunghezza.
-Pagina: "${pageName}", brand: "${brand}", lingua: ${lang}.
+REGOLA CRITICA: il nome "${brand}" deve comparire ESATTAMENTE UNA VOLTA nel title.
+CONTA I CARATTERI prima di rispondere. Rispondi SOLO con il testo del title, nient'altro.`
+      : `Il title che hai scritto non rispetta i requisiti (range 50–60 caratteri e brand una sola volta).
+Riscrivilo: formato "${brand} | [keyword descrittiva]", tra 50 e 60 caratteri, lingua ${lang}.
 ${pageCtx}
-Il nuovo title DEVE avere tra 50 e 60 caratteri. Contali uno per uno. Rispondi SOLO con il testo.`
+Contali uno per uno. Rispondi SOLO con il testo del title.`
 
     const result = await callSeoAgent(prompt, apiKey, context)
     const clean = result.replace(/^["']|["']$/g, '').trim()
     if (clean.length >= 50 && clean.length <= 60) return clean
 
-    // Last attempt: truncate/pad to fit
+    // Last attempt: force-fit
     if (attempt === 3) {
       if (clean.length > 60) return clean.slice(0, 57) + '...'
-      // Too short — append brand if needed
-      const withBrand = `${clean} | ${brand}`
-      return withBrand.length <= 60 ? withBrand : clean
+      // Too short — pad with keyword hint
+      const padded = `${brand} | ${clean}`.slice(0, 60)
+      return padded.length >= 50 ? padded : clean
     }
   }
   return ''
