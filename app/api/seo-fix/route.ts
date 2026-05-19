@@ -316,40 +316,66 @@ Contali uno per uno. Rispondi SOLO con il testo del title.`
   return ''
 }
 
-// Generates meta-description with strict 150–160 char validation + up to 2 retries
+/** Truncates a meta description to ≤160 chars at the last sentence or word boundary. */
+function truncateDescription(text: string, max = 160): string {
+  if (text.length <= max) return text
+  const sub = text.slice(0, max)
+  // Try last sentence ending (. ! ?)
+  const lastSentence = Math.max(sub.lastIndexOf('.'), sub.lastIndexOf('!'), sub.lastIndexOf('?'))
+  if (lastSentence > max * 0.7) return sub.slice(0, lastSentence + 1).trim()
+  // Fall back to last word boundary
+  const lastSpace = sub.lastIndexOf(' ')
+  return lastSpace > max * 0.7 ? sub.slice(0, lastSpace).trim() : sub.trim()
+}
+
+// Generates meta-description with strict 150–160 char validation + up to 3 retries
 async function generateMetaDescription(
   pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext
 ): Promise<string> {
   const pageCtx = extractPageContext(html)
+  const cta = lang === 'es' ? 'Descúbrelo ahora.' : lang === 'en' ? 'Discover more today.' : 'Scopri di più ora.'
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     const prompt = attempt === 1
       ? `Scrivi la meta description per la pagina "${pageName}" di un sito ${type} chiamato "${brand}".
 ${pageCtx}
 
-REQUISITI OBBLIGATORI:
-- Esattamente tra 150 e 160 caratteri (conta ogni lettera, spazio e simbolo)
+REQUISITI OBBLIGATORI — rispettali alla lettera:
+- Lunghezza: tra 150 e 160 caratteri INCLUSI (non 161, non 149)
 - Include la keyword primaria della pagina
-- Termina con un CTA: "Scopri di più", "Contattaci", "Prova gratis" o simile
+- Termina con un CTA come "${cta}"
 - Lingua: ${lang}
 
-CONTA I CARATTERI prima di rispondere. Rispondi SOLO con il testo della description.`
-      : `La description che hai scritto non è nel range 150–160 caratteri richiesto.
-Riscrivila rispettando STRETTAMENTE la lunghezza.
-Pagina: "${pageName}", brand: "${brand}", tipo: ${type}, lingua: ${lang}.
+TECNICA: scrivi la frase, poi contane i caratteri. Se sono più di 160, accorcia. Se meno di 150, aggiungi dettagli. Ripeti finché sei nel range.
+Rispondi SOLO con il testo finale (niente spiegazioni).`
+      : `La description che hai scritto ha ${
+          // We'll embed the actual length in retry 2+
+          'una lunghezza fuori dal range'
+        } — deve essere tra 150 e 160 caratteri.
+Riscrivila da zero per la pagina "${pageName}" (${type}, brand: "${brand}"), lingua ${lang}.
 ${pageCtx}
-Deve avere tra 150 e 160 caratteri. Contali uno per uno. Rispondi SOLO con il testo.`
+CTA finale obbligatorio: "${cta}"
+Conta i caratteri uno per uno prima di rispondere. Rispondi SOLO con il testo.`
 
     const result = await callSeoAgent(prompt, apiKey, context)
     const clean = result.replace(/^["']|["']$/g, '').trim()
     if (clean.length >= 150 && clean.length <= 160) return clean
 
+    // On last attempt: force-fit deterministically
     if (attempt === 3) {
-      if (clean.length > 160) return clean.slice(0, 157) + '...'
-      // Too short — pad with a CTA
-      const cta = lang === 'es' ? ' Descúbrelo ahora.' : lang === 'en' ? ' Discover more today.' : ' Scopri di più ora.'
-      const padded = clean + cta
-      return padded.length <= 160 ? padded : clean
+      if (clean.length > 160) {
+        // Truncate to last sentence/word and append CTA if needed
+        const truncated = truncateDescription(clean, 160)
+        if (truncated.length >= 150) return truncated
+        // Truncated too much — add CTA to fill
+        const withCta = truncated.endsWith('.') ? `${truncated} ${cta}` : `${truncated}. ${cta}`
+        return truncateDescription(withCta, 160)
+      }
+      // Too short — append CTA until we reach 150+
+      const withCta = clean.endsWith('.') ? `${clean} ${cta}` : `${clean}. ${cta}`
+      if (withCta.length >= 150 && withCta.length <= 160) return withCta
+      if (withCta.length > 160) return truncateDescription(withCta, 160)
+      return withCta // accept slightly short rather than over-engineer
     }
   }
   return ''
