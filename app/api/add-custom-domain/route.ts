@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     if (!vercelToken || !vercelProjectId) {
       return NextResponse.json(
-        { error: 'Configurazione Vercel non disponibile (VERCEL_TOKEN o VERCEL_PROJECT_ID mancanti)' },
+        { error: `Configurazione Vercel mancante: ${!vercelToken ? 'VERCEL_TOKEN' : 'VERCEL_PROJECT_ID'} non impostato nelle env vars` },
         { status: 500 }
       )
     }
@@ -91,8 +91,11 @@ export async function POST(req: NextRequest) {
       console.error('Vercel error:', errorData)
       const vercelMsg = (errorData as { error?: { message?: string } })?.error?.message
         ?? JSON.stringify(errorData)
+      const hint = vercelMsg?.includes('not found')
+        ? ' — verifica che VERCEL_PROJECT_ID sia l\'ID del progetto (prj_...) e non il nome'
+        : ''
       return NextResponse.json(
-        { error: `Vercel: ${vercelMsg}` },
+        { error: `Vercel: ${vercelMsg}${hint}` },
         { status: 500 }
       )
     }
