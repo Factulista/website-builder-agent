@@ -10,7 +10,7 @@ import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
 import type { Page } from '../../../lib/types'
 
-type Message = { id: string; role: 'user' | 'assistant'; content: string; failed?: boolean; retryInput?: string; retryImages?: string[] }
+type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
@@ -886,16 +886,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const effectiveImages = retryOverride?.images ?? attachedImages
     if ((!effectiveInput.trim() && effectiveImages.length === 0) || loading) return
 
-    const imagesBlock = effectiveImages.length
-      ? (effectiveInput.trim() ? '\n\n' : '') + effectiveImages.map(u => `Immagine allegata: ${u}`).join('\n')
-      : ''
+    // Helper: builds the API-facing content (includes image URLs for the agent, hidden from UI)
+    const buildApiContent = (text: string, imgs: string[]) =>
+      (text.trim() || 'Usa queste immagini.') +
+      (imgs.length ? '\n\n' + imgs.map(u => `Immagine allegata: ${u}`).join('\n') : '')
 
     // Se c'era una richiesta in sospeso (il clarifier aveva fatto domande), combina con la risposta
     const savedPendingRequest = pendingRequest
     if (pendingRequest) setPendingRequest(null)
 
-    const userContent = (effectiveInput.trim() || 'Usa queste immagini.') + imagesBlock
-    const userMsg: Message = { id: `u_${Date.now()}`, role: 'user', content: userContent }
+    // Display content = text only; images stored separately in msg.images (rendered as thumbnails)
+    const userMsg: Message = {
+      id: `u_${Date.now()}`,
+      role: 'user',
+      content: effectiveInput.trim() || (effectiveImages.length ? '' : ''),
+      ...(effectiveImages.length ? { images: effectiveImages } : {}),
+    }
     const updatedMessages = [...messages, userMsg]
     setMessages(updatedMessages)
     if (!retryOverride) {
@@ -919,13 +925,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setLoading(false)
     }
 
-    // Build the messages list sent to the API — if there was a pending request, combine it with the user's answer
+    // Build the messages list sent to the API.
+    // Images are stored separately in msg.images — reconstruct the "Immagine allegata: url" lines for the agent.
+    const toApiContent = (m: Message) =>
+      m.images?.length
+        ? buildApiContent(m.content, m.images)
+        : m.content
+
     const apiMessages = savedPendingRequest
       ? [
-          ...messages.map(m => ({ role: m.role, content: m.content })),
-          { role: 'user', content: `${savedPendingRequest}\n\n[Risposta alle domande]: ${effectiveInput.trim()}${imagesBlock}` },
+          ...messages.map(m => ({ role: m.role, content: toApiContent(m) })),
+          { role: 'user', content: `${savedPendingRequest}\n\n[Risposta alle domande]: ${buildApiContent(effectiveInput, effectiveImages)}` },
         ]
-      : updatedMessages.map(m => ({ role: m.role, content: m.content }))
+      : updatedMessages.map(m => ({ role: m.role, content: toApiContent(m) }))
 
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -1027,7 +1039,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const msg = (result.steps as string[] | undefined)?.[0] ?? result.input?.summary ?? '🤔 Ho bisogno di qualche informazione in più.'
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       // Salva la richiesta originale per combinarla con la risposta
-      setPendingRequest(userContent)
+      setPendingRequest(buildApiContent(effectiveInput, effectiveImages))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
         site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
@@ -1256,7 +1268,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   borderRadius: '14px', fontSize: '0.9rem', lineHeight: '1.55',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
-                  {msg.content}
+                  {/* Text content — never show raw image URLs */}
+                  {(() => {
+                    // Legacy messages may still have "Immagine allegata: url" in content — strip them for display
+                    const displayText = msg.content
+                      .replace(/\n*Immagine allegata: https?:\/\/[^\n]*/g, '')
+                      .trim()
+                    return displayText || null
+                  })()}
+                  {/* Image thumbnails — from new msg.images or legacy content */}
+                  {(() => {
+                    const imgs = msg.images?.length
+                      ? msg.images
+                      : [...msg.content.matchAll(/Immagine allegata: (https?:\/\/[^\n]+)/g)].map(m => m[1])
+                    if (!imgs.length) return null
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: msg.content.replace(/\n*Immagine allegata: https?:\/\/[^\n]*/g, '').trim() ? '8px' : '0' }}>
+                        {imgs.map((url, i) => (
+                          <img key={i} src={url} alt="allegato" style={{
+                            maxWidth: '160px', maxHeight: '120px', borderRadius: '8px',
+                            objectFit: 'cover', border: `1px solid ${C.border}`,
+                          }} />
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             ) : (
