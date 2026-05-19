@@ -3,6 +3,17 @@ import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
+/** Safe JSON parse — returns null if the response is not JSON (e.g. CF returns HTML on auth errors) */
+async function safeJson(res: Response): Promise<Record<string, unknown> | null> {
+  try {
+    return await res.json()
+  } catch {
+    const text = await res.text().catch(() => '')
+    console.error('configure-cloudflare-dns: non-JSON response', res.status, text.slice(0, 300))
+    return null
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { projectId, domain, cfApiToken, cfZoneId } = await req.json() as {
@@ -26,10 +37,14 @@ export async function POST(req: NextRequest) {
     }
     const token = authHeader.slice(7)
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('configure-cloudflare-dns: missing Supabase env vars')
+      return NextResponse.json({ error: 'Configurazione server mancante (Supabase env)' }, { status: 500 })
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Verify user owns the project
     const { data: project, error: projectError } = await supabase
@@ -39,6 +54,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (projectError || !project) {
+      console.error('configure-cloudflare-dns: project lookup failed', projectError)
       return NextResponse.json({ error: 'Progetto non trovato' }, { status: 404 })
     }
 
@@ -65,7 +81,14 @@ export async function POST(req: NextRequest) {
         `https://api.cloudflare.com/client/v4/zones/${cfZoneId}/dns_records?type=${recType}&name=${encodeURIComponent(domain)}`,
         { headers: cfHeaders }
       )
-      const listData = await listRes.json() as { success: boolean; result?: { id: string; type: string }[]; errors?: { message: string }[] }
+      const listData = await safeJson(listRes) as { success: boolean; result?: { id: string; type: string }[]; errors?: { message: string }[] } | null
+
+      if (!listData) {
+        return NextResponse.json(
+          { error: `Cloudflare ha risposto con ${listRes.status} (non-JSON). Verifica che API Token e Zone ID siano corretti.` },
+          { status: 400 }
+        )
+      }
 
       if (!listData.success) {
         const msg = listData.errors?.[0]?.message ?? `Errore Cloudflare nel leggere i record ${recType}`
@@ -83,7 +106,13 @@ export async function POST(req: NextRequest) {
         `https://api.cloudflare.com/client/v4/zones/${cfZoneId}/dns_records/${record.id}`,
         { method: 'DELETE', headers: cfHeaders }
       )
-      const delData = await delRes.json() as { success: boolean; errors?: { message: string }[] }
+      const delData = await safeJson(delRes) as { success: boolean; errors?: { message: string }[] } | null
+      if (!delData) {
+        return NextResponse.json(
+          { error: `Cloudflare ha risposto con ${delRes.status} durante la cancellazione del record ${record.type}.` },
+          { status: 400 }
+        )
+      }
       if (!delData.success) {
         const msg = delData.errors?.[0]?.message ?? `Errore Cloudflare nel cancellare il record ${record.type} esistente`
         return NextResponse.json({ error: msg }, { status: 400 })
@@ -105,8 +134,13 @@ export async function POST(req: NextRequest) {
         }),
       }
     )
-    const createData = await createRes.json() as { success: boolean; errors?: { message: string }[] }
-
+    const createData = await safeJson(createRes) as { success: boolean; errors?: { message: string }[] } | null
+    if (!createData) {
+      return NextResponse.json(
+        { error: `Cloudflare ha risposto con ${createRes.status} durante la creazione del CNAME. Verifica i permessi del token.` },
+        { status: 400 }
+      )
+    }
     if (!createData.success) {
       const msg = createData.errors?.[0]?.message ?? 'Errore Cloudflare nel creare il record CNAME'
       return NextResponse.json({ error: msg }, { status: 400 })
@@ -117,7 +151,8 @@ export async function POST(req: NextRequest) {
       message: 'Record CNAME aggiunto su Cloudflare. Proxy disabilitato (necessario per Vercel).',
     })
   } catch (error) {
-    console.error('configure-cloudflare-dns error:', error)
-    return NextResponse.json({ error: 'Errore interno del server' }, { status: 500 })
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error('configure-cloudflare-dns error:', msg, error)
+    return NextResponse.json({ error: `Errore interno: ${msg}` }, { status: 500 })
   }
 }
