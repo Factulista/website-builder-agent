@@ -68,26 +68,31 @@ export async function POST(req: NextRequest) {
 
     if (!vercelToken || !vercelProjectId) {
       return NextResponse.json(
-        { error: 'Configurazione Vercel non disponibile' },
+        { error: 'Configurazione Vercel non disponibile (VERCEL_TOKEN o VERCEL_PROJECT_ID mancanti)' },
         { status: 500 }
       )
     }
 
-    const vercelResponse = await fetch(`https://api.vercel.com/v10/projects/${vercelProjectId}/domains`, {
+    // teamId must be a query parameter, not a header
+    const vercelUrl = new URL(`https://api.vercel.com/v10/projects/${vercelProjectId}/domains`)
+    if (vercelTeamId) vercelUrl.searchParams.set('teamId', vercelTeamId)
+
+    const vercelResponse = await fetch(vercelUrl.toString(), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${vercelToken}`,
         'Content-Type': 'application/json',
-        ...(vercelTeamId && { 'teamId': vercelTeamId }),
       },
       body: JSON.stringify({ name: domain }),
     })
 
     if (!vercelResponse.ok) {
-      const errorData = await vercelResponse.json()
+      const errorData = await vercelResponse.json().catch(() => ({}))
       console.error('Vercel error:', errorData)
+      const vercelMsg = (errorData as { error?: { message?: string } })?.error?.message
+        ?? JSON.stringify(errorData)
       return NextResponse.json(
-        { error: 'Errore nell\'aggiungere il dominio a Vercel' },
+        { error: `Vercel: ${vercelMsg}` },
         { status: 500 }
       )
     }

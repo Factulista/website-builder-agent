@@ -44,15 +44,19 @@ export async function POST(req: NextRequest) {
     // Check domain status on Vercel
     const vercelToken = process.env.VERCEL_TOKEN
     const vercelProjectId = process.env.VERCEL_PROJECT_ID
+    const vercelTeamId = process.env.VERCEL_TEAM_ID
 
     if (!vercelToken || !vercelProjectId) {
       return NextResponse.json({ error: 'Configurazione Vercel mancante' }, { status: 500 })
     }
 
-    const vercelRes = await fetch(
-      `https://api.vercel.com/v9/projects/${vercelProjectId}/domains/${project.custom_domain}`,
-      { headers: { Authorization: `Bearer ${vercelToken}` } }
-    )
+    // teamId must be a query parameter
+    const vercelUrl = new URL(`https://api.vercel.com/v9/projects/${vercelProjectId}/domains/${project.custom_domain}`)
+    if (vercelTeamId) vercelUrl.searchParams.set('teamId', vercelTeamId)
+
+    const vercelRes = await fetch(vercelUrl.toString(), {
+      headers: { Authorization: `Bearer ${vercelToken}` },
+    })
 
     if (!vercelRes.ok) {
       return NextResponse.json({ status: 'pending', domain: project.custom_domain })
