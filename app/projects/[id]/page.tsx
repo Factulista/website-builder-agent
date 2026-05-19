@@ -590,6 +590,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
   const [seoFixError, setSeoFixError] = useState<string | null>(null)
   const seoFixingRef = useRef<boolean>(false)
+  const [cfApiToken, setCfApiToken] = useState('')
+  const [cfZoneId, setCfZoneId] = useState('')
+  const [cfConfiguring, setCfConfiguring] = useState(false)
+  const [registrarInfo, setRegistrarInfo] = useState<{
+    isCloudflare: boolean; registrarKey: string | null; registrarName: string | null; dnsPanel: string | null; note: string | null
+  } | null>(null)
+  const [detectingRegistrar, setDetectingRegistrar] = useState(false)
+  const [showManualDns, setShowManualDns] = useState(false)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const [mediaLoading, setMediaLoading] = useState(false)
   const [mediaSearch, setMediaSearch] = useState('')
@@ -1335,6 +1343,38 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setPublishedAt(result.publishedAt)
     } catch { await alertDialog({ title: t('common.error' as const, language as any), message: t('project.publishError' as const, language as any), variant: 'danger' }) }
     finally { setPublishing(false) }
+  }
+
+  const handleDetectRegistrar = async (domain: string) => {
+    const d = domain.trim()
+    if (!d || !/\.[a-z]{2,}$/i.test(d)) return
+    setDetectingRegistrar(true)
+    setRegistrarInfo(null)
+    try {
+      const res = await fetch(`/api/detect-registrar?domain=${encodeURIComponent(d)}`)
+      if (res.ok) setRegistrarInfo(await res.json())
+    } catch { /* ignore */ }
+    finally { setDetectingRegistrar(false) }
+  }
+
+  const handleConfigureCloudflare = async () => {
+    if (!cfApiToken.trim() || !cfZoneId.trim()) return
+    setCfConfiguring(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const res = await fetch('/api/configure-cloudflare-dns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ projectId: id, domain: customDomain.trim(), cfApiToken: cfApiToken.trim(), cfZoneId: cfZoneId.trim() }),
+      })
+      const result = await res.json()
+      if (!res.ok) { await alertDialog({ title: 'Errore Cloudflare', message: String(result.error), variant: 'danger' }); return }
+      // DNS configured — add domain to Vercel and start verification
+      const fakeEvent = { preventDefault: () => {} } as React.FormEvent
+      await handleAddCustomDomain(fakeEvent)
+    } catch (err) { await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' }) }
+    finally { setCfConfiguring(false) }
   }
 
   useEffect(() => {
@@ -2512,7 +2552,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <div style={{ background: C.white, borderRadius: '14px', padding: '1.75rem', maxWidth: '480px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: C.text }}>Impostazioni Progetto</h2>
-              <button onClick={() => { setShowSettingsModal(false); setDnsInstructions('') }}
+              <button onClick={() => { setShowSettingsModal(false); setDnsInstructions(''); setRegistrarInfo(null); setShowManualDns(false) }}
                 style={{ background: 'transparent', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: C.textFaint, padding: '2px 6px' }}>×</button>
             </div>
 
@@ -2545,7 +2585,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <div style={{ marginBottom: '1rem', padding: '12px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fde68a' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                   <span style={{ fontSize: '0.75rem', color: C.textMuted }}>In attesa di verifica DNS</span>
-                  {verifying && <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>● verifica in corso...</span>}
+                  {verifying && <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>● Verifica automatica in corso...</span>}
                 </div>
                 <p style={{ margin: '0 0 2px', fontSize: '0.85rem', fontFamily: 'monospace', color: C.text, fontWeight: 500 }}>{customDomain}</p>
                 <p style={{ margin: 0, fontSize: '0.75rem', color: '#92400e' }}>La verifica è automatica, può richiedere fino a 15 minuti</p>
@@ -2560,9 +2600,94 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   placeholder="es: miodominio.com"
                   value={customDomain}
                   onChange={(e) => setCustomDomain(e.target.value)}
-                  disabled={addingDomain}
+                  onBlur={(e) => handleDetectRegistrar(e.target.value)}
+                  disabled={addingDomain || cfConfiguring}
                   style={{ width: '100%', padding: '9px 12px', border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '10px', fontSize: '0.875rem', boxSizing: 'border-box' as const, fontFamily: 'inherit', outline: 'none' }}
                 />
+
+                {/* Registrar detection result */}
+                {detectingRegistrar && (
+                  <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: C.textMuted }}>🔍 Rilevamento registrar in corso...</p>
+                )}
+
+                {!detectingRegistrar && registrarInfo?.isCloudflare && !showManualDns && (
+                  <div style={{ marginBottom: '12px', padding: '12px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fbbf24' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 600, color: '#92400e' }}>⚡ Cloudflare DNS rilevato — configurazione automatica disponibile</p>
+                    <input
+                      type="password"
+                      placeholder="Token API Cloudflare (DNS:Edit)"
+                      value={cfApiToken}
+                      onChange={(e) => setCfApiToken(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '7px', marginBottom: '8px', fontSize: '0.8125rem', boxSizing: 'border-box' as const, fontFamily: 'inherit', outline: 'none' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Zone ID del dominio"
+                      value={cfZoneId}
+                      onChange={(e) => setCfZoneId(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '7px', marginBottom: '6px', fontSize: '0.8125rem', boxSizing: 'border-box' as const, fontFamily: 'inherit', outline: 'none' }}
+                    />
+                    <p style={{ margin: '0 0 10px', fontSize: '0.72rem', color: C.textMuted }}>
+                      Crea il token su{' '}
+                      <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" style={{ color: C.blue }}>
+                        dash.cloudflare.com/profile/api-tokens
+                      </a>{' '}
+                      con permesso <strong>DNS:Edit</strong> per la zona.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleConfigureCloudflare}
+                      disabled={cfConfiguring || !cfApiToken.trim() || !cfZoneId.trim() || !customDomain.trim()}
+                      style={{ width: '100%', padding: '9px', background: cfConfiguring || !cfApiToken.trim() || !cfZoneId.trim() ? '#d6d3d1' : '#d97706', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: cfConfiguring || !cfApiToken.trim() || !cfZoneId.trim() ? 'not-allowed' : 'pointer', fontSize: '0.875rem', fontFamily: 'inherit', marginBottom: '8px' }}>
+                      {cfConfiguring ? '⏳ Configurazione...' : '⚡ Configura DNS automaticamente'}
+                    </button>
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: C.textMuted, textAlign: 'center' }}>
+                      <button type="button" onClick={() => setShowManualDns(true)} style={{ background: 'none', border: 'none', color: C.blue, cursor: 'pointer', fontSize: '0.72rem', padding: 0, fontFamily: 'inherit' }}>
+                        Preferisci configurare manualmente?
+                      </button>
+                    </p>
+                  </div>
+                )}
+
+                {!detectingRegistrar && registrarInfo && !registrarInfo.isCloudflare && (
+                  <div style={{ marginBottom: '12px', padding: '12px 14px', background: '#eff6ff', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                    <p style={{ margin: '0 0 6px', fontSize: '0.8125rem', fontWeight: 600, color: '#1e40af' }}>
+                      {registrarInfo.registrarName ? `Registrar rilevato: ${registrarInfo.registrarName}` : 'Registrar non riconosciuto'}
+                    </p>
+                    {registrarInfo.dnsPanel && (
+                      <a
+                        href={registrarInfo.dnsPanel}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'inline-block', marginBottom: '10px', fontSize: '0.8rem', color: C.blue, textDecoration: 'none', fontWeight: 500 }}>
+                        Apri pannello DNS{registrarInfo.registrarKey ? ` di ${registrarInfo.registrarKey}` : ''} →
+                      </a>
+                    )}
+                    <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.78rem', color: '#f8f8f8', marginBottom: registrarInfo.note ? '8px' : '0' }}>
+                      <div>Tipo:   CNAME</div>
+                      <div>Nome:   @</div>
+                      <div>Valore: cname.vercel-dns.com</div>
+                      <div>TTL:    auto (o 3600)</div>
+                    </div>
+                    {registrarInfo.note && (
+                      <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: C.textMuted }}>{registrarInfo.note}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Manual DNS fallback: show when no registrar info or user explicitly wants it */}
+                {!detectingRegistrar && (showManualDns || !registrarInfo) && (
+                  <div style={{ marginBottom: '12px', padding: '12px 14px', background: C.bg, borderRadius: '10px', border: `1px solid ${C.border}` }}>
+                    <p style={{ margin: '0 0 8px', fontSize: '0.8125rem', fontWeight: 600, color: C.text }}>Configura questo record CNAME nel tuo DNS:</p>
+                    <div style={{ background: '#1a1a1a', borderRadius: '8px', padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.78rem', color: '#f8f8f8' }}>
+                      <div>Tipo:   CNAME</div>
+                      <div>Nome:   @</div>
+                      <div>Valore: cname.vercel-dns.com</div>
+                      <div>TTL:    auto (o 3600)</div>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="submit"
                   disabled={addingDomain || !customDomain.trim()}
@@ -2572,16 +2697,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </form>
             )}
 
-            {dnsInstructions && (
-              <div style={{ padding: '12px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fde68a', marginBottom: '1rem' }}>
-                <p style={{ margin: '0 0 6px', fontSize: '0.8125rem', fontWeight: 600, color: C.text }}>Configura il tuo DNS:</p>
-                <pre style={{ margin: 0, fontSize: '0.75rem', color: C.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>{dnsInstructions}</pre>
-                <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: C.textMuted }}>La verifica può richiedere fino a 15 minuti.</p>
-              </div>
-            )}
-
             <button
-              onClick={() => { setShowSettingsModal(false); setDnsInstructions('') }}
+              onClick={() => { setShowSettingsModal(false); setDnsInstructions(''); setRegistrarInfo(null); setShowManualDns(false) }}
               style={{ width: '100%', padding: '9px', background: C.bgPanel, color: C.text, border: `1px solid ${C.border}`, borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem' }}>
               Chiudi
             </button>
