@@ -37,8 +37,32 @@ const DESIGN_TOOLS = [
             },
             borderRadius: { type: 'string', description: 'Border radius base (es: 8px, 4px, 0px).' },
             spacing: { type: 'string', description: 'Spacing base (es: 16px).' },
+            logo: {
+              type: 'object',
+              description: 'Definizione del logo da usare in tutte le navbar del sito.',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['text', 'svg', 'img'],
+                  description: '"text" = testo stilizzato (default), "svg" = SVG inline semplice, "img" = URL immagine.',
+                },
+                content: {
+                  type: 'string',
+                  description: 'Per type=text: il nome del brand. Per type=svg: il markup SVG completo (<svg>…</svg>). Per type=img: l\'URL dell\'immagine.',
+                },
+                color: {
+                  type: 'string',
+                  description: 'Colore principale del logo HEX — usato come fill per SVG o per colorare il testo. Deve essere coerente con la palette (primary o text o white).',
+                },
+                accentChar: {
+                  type: 'string',
+                  description: 'Solo per type=text: carattere o parola da colorare con il colore accent (es: "." o "AI" o la prima lettera). Opzionale.',
+                },
+              },
+              required: ['type', 'content', 'color'],
+            },
           },
-          required: ['colors', 'fonts'],
+          required: ['colors', 'fonts', 'logo'],
         },
         css: { type: 'string', description: 'SOLO (1) blocco :root con le CSS custom properties dei token e (2) reset base (box-sizing, margin/padding 0). NON stili di componenti — li scrive l\'HTML agent.' },
         googleFontsUrl: { type: 'string', description: 'URL Google Fonts per i font scelti.' },
@@ -49,11 +73,19 @@ const DESIGN_TOOLS = [
   },
 ]
 
+export type LogoDefinition = {
+  type: 'text' | 'svg' | 'img'
+  content: string   // brand name | SVG markup | image URL
+  color: string     // HEX — fill for SVG, text color for text logos
+  accentChar?: string  // optional char to highlight with accent color (text logos only)
+}
+
 export type DesignTokens = {
   colors: { primary: string; secondary: string; accent?: string; background: string; surface?: string; text: string; textMuted?: string }
   fonts: { heading: string; body: string }
   borderRadius?: string
   spacing?: string
+  logo?: LogoDefinition
 }
 
 export type DesignOutput = {
@@ -83,11 +115,20 @@ Business: ${plan.businessType}
 ${plan.targetAudience ? `Target: ${plan.targetAudience}` : ''}
 Sezioni usate: ${[...new Set(plan.pages.flatMap(p => p.sections))].join(', ')}
 
-REGOLE:
+REGOLE PALETTE:
 - Se il contesto ha colori brand, usali come base della palette.
 - Se il contesto ha font brand, usali.
 - Altrimenti scegli colori e font appropriati al tipo di business.
 - Contrasto colori: almeno 4.5:1 (WCAG AA).
+
+REGOLE LOGO — IMPORTANTI:
+- Genera SEMPRE un campo tokens.logo. È obbligatorio.
+- type="text" è il default: usa il nome del brand come content.
+  - color: scegli tra il colore primario, bianco o nero in base al contrasto con la navbar.
+  - accentChar: puoi colorare con l'accent un carattere significativo (es: "." finale, prima lettera, sigla).
+- type="svg": solo se puoi generare un'icona SVG semplice e pertinente al business (es: casetta per immobiliare, ingranaggio per tech). Mantienila sotto 200 caratteri. Il fill deve usare il campo color.
+- type="img": solo se l'utente ha fornito un URL immagine esplicito nella richiesta.
+- Il logo deve essere COERENTE con la palette: il campo color deve essere un valore già presente in colors.
 
 OUTPUT CSS — REGOLA CRITICA:
 Il campo "css" deve contenere ESCLUSIVAMENTE:

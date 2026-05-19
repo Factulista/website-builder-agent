@@ -358,7 +358,8 @@ export async function POST(req: NextRequest) {
     // HTML agent — also update context from conversation
     return makeStream(async (emit) => {
       emit('✏️ Elaborando la modifica…')
-      const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia)
+      const contextLogo = context.design?.tokens?.logo
+      const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo)
 
       // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
       if (result.tool === 'create_site' && result.input?.pages) {

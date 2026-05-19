@@ -102,5 +102,17 @@ export function buildContextPrompt(context: ProjectContext): string {
     if (ci.address) parts.push(`- Indirizzo: ${ci.address}`)
   }
 
+  // Logo — esplicitato così l'HTML agent e il Design agent possono riutilizzarlo
+  const logo = context.design?.tokens?.logo
+  if (logo) {
+    if (logo.type === 'text') {
+      parts.push(`- Logo: testo "${logo.content}", colore ${logo.color}${logo.accentChar ? `, accent su "${logo.accentChar}"` : ''}`)
+    } else if (logo.type === 'svg') {
+      parts.push(`- Logo: SVG inline, colore fill ${logo.color}`)
+    } else if (logo.type === 'img') {
+      parts.push(`- Logo: immagine URL "${logo.content}"`)
+    }
+  }
+
   return parts.join('\n')
 }

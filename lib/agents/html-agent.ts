@@ -1,7 +1,52 @@
 import { callClaude } from './config'
 import { fetchWithRetry } from './fetch-retry'
+import type { LogoDefinition } from './design-agent'
 
 type Page = { slug: string; name: string; html: string }
+
+/**
+ * Extracts the logo HTML element from the navbar of an existing page.
+ * Looks for common logo class patterns: .nav-logo, .logo, .brand, .site-logo
+ * Returns the full element HTML (e.g. <a class="nav-logo">…</a>) or null.
+ */
+function extractNavLogo(html: string): string | null {
+  // Match anchor or div/span with logo-related class inside a <nav>
+  const patterns = [
+    /<a\b[^>]*class="[^"]*(?:nav-logo|site-logo|brand-logo)[^"]*"[^>]*>[\s\S]*?<\/a>/i,
+    /<div\b[^>]*class="[^"]*(?:nav-logo|site-logo|brand-logo)[^"]*"[^>]*>[\s\S]*?<\/div>/i,
+    /<a\b[^>]*class="[^"]*\blog[^"o][^"]*"[^>]*>[\s\S]*?<\/a>/i,  // class contains "log" (logo, logotype)
+    /<span\b[^>]*class="[^"]*(?:logo|brand)[^"]*"[^>]*>[\s\S]*?<\/span>/i,
+  ]
+  for (const pattern of patterns) {
+    const m = html.match(pattern)
+    if (m) return m[0].replace(/\s+/g, ' ').trim()
+  }
+  return null
+}
+
+/**
+ * Renders a LogoDefinition into an HTML string suitable for use in a navbar.
+ * Used when the html agent builds new pages that need to match the stored logo.
+ */
+function renderLogoHtml(logo: LogoDefinition, href = './'): string {
+  if (logo.type === 'img') {
+    return `<a href="${href}" class="nav-logo" style="display:flex;align-items:center;text-decoration:none;">` +
+      `<img src="${logo.content}" alt="logo" style="height:36px;width:auto;object-fit:contain;">` +
+      `</a>`
+  }
+  if (logo.type === 'svg') {
+    // Wrap the SVG in a link; replace any fill="currentColor" with the logo color
+    const svgColored = logo.content.replace(/fill="currentColor"/gi, `fill="${logo.color}"`)
+    return `<a href="${href}" class="nav-logo" style="display:flex;align-items:center;text-decoration:none;">${svgColored}</a>`
+  }
+  // type === 'text'
+  const name = logo.content
+  const accent = logo.accentChar
+  const displayName = accent && name.includes(accent)
+    ? name.replace(accent, `<span style="color:var(--color-accent,${logo.color})">${accent}</span>`)
+    : name
+  return `<a href="${href}" class="nav-logo" style="font-size:1.4rem;font-weight:800;color:${logo.color};text-decoration:none;letter-spacing:-0.5px;">${displayName}</a>`
+}
 
 /**
  * Builds a compact HTML skeleton for the LLM context:
@@ -285,7 +330,8 @@ export async function runHtmlAgent(
   pages: Page[],
   activePageSlug: string | null,
   apiKey: string,
-  projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = []
+  projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = [],
+  contextLogo?: LogoDefinition
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -293,6 +339,20 @@ export async function runHtmlAgent(
   const mediaList = projectMedia.length > 0
     ? projectMedia.map(m => `- ${m.url}${m.alt ? ` (alt: "${m.alt}")` : ''}${m.title ? ` (titolo: "${m.title}")` : ''} — file: ${m.name}`).join('\n')
     : 'Nessuna immagine caricata dall\'utente.'
+
+  // ── Logo context ────────────────────────────────────────────────────────────
+  // Priority: 1) logo extracted from existing pages HTML, 2) logo from saved design context
+  const extractedLogo = pages.length > 0 ? extractNavLogo(pages[0].html) : null
+  const logoSection = (() => {
+    if (extractedLogo) {
+      return `\nLOGO ESISTENTE — copialo IDENTICO in ogni <nav> delle pagine che crei o modifichi. NON reinventarlo:\n\`\`\`html\n${extractedLogo}\n\`\`\``
+    }
+    if (contextLogo) {
+      const rendered = renderLogoHtml(contextLogo)
+      return `\nLOGO DA USARE (dal design system) — usalo IDENTICO in ogni <nav>:\n\`\`\`html\n${rendered}\n\`\`\`\nColore logo: ${contextLogo.color}`
+    }
+    return ''
+  })()
 
   // Build context: active page gets full CSS, other pages get skeleton.
   // When user asks to copy styles FROM another page, we include that page's <style> block too.
@@ -352,6 +412,13 @@ TARGETING DELLA PAGINA — IMPORTANTISSIMO:
 - Se l'utente dice "fai X come nella home" = la home è il RIFERIMENTO (sorgente), non il target da editare.
 - La pagina attiva è solo il default quando l'utente non specifica.
 
+LOGO — REGOLE FONDAMENTALI:
+- Se è indicato un "LOGO ESISTENTE" qui sotto, copialo VERBATIM in ogni <nav>. Non modificarne struttura, colori o contenuto salvo richiesta esplicita.
+- Se l'utente chiede di cambiare colore al logo SVG, usa edit_page con find/replace sul valore fill (es: find fill="#000000" replace fill="#2563eb"). Non riscrivere tutto l'HTML.
+- Se l'utente carica un'immagine logo (URL in media library), sostituisci l'elemento logo con <img src="URL" alt="logo" style="height:36px;width:auto;">.
+- Quando crei un sito nuovo senza logo definito, crea un logo testuale semplice: <a href="./" class="nav-logo" style="font-size:1.4rem;font-weight:800;color:[colore_coerente];text-decoration:none;">[nome brand]</a>. Puoi colorare un carattere con l'accent color.
+- Il logo DEVE essere identico su tutte le pagine del sito.
+
 FIND/REPLACE: le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
 
 LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a href="./chi-siamo">Chi Siamo</a>
@@ -365,7 +432,7 @@ IMMAGINI — REGOLE DI PRIORITÀ (importante):
 
 MEDIA LIBRARY DEL PROGETTO:
 ${mediaList}
-
+${logoSection}
 PAGINE DEL SITO:
 ${pageContextBlocks}`
 
