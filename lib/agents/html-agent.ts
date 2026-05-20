@@ -422,9 +422,9 @@ LOGO — REGOLE FONDAMENTALI:
 FIND/REPLACE — REGOLE CRITICHE:
 - Le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
 - Per sostituire un'immagine usa SEMPRE find/replace SOLO sull'attributo src, non sull'intero tag <img>:
-  CORRETTO:  find: `src="https://vecchio-url.com/foto.jpg"` → replace: `src="https://nuovo-url.com/foto.jpg"`
-  SBAGLIATO: find: `<img src="..." class="..." style="...">` (troppo fragile, fallirà)
-- Stessa regola per background-image: find: `url('vecchio-url')` → replace: `url('nuovo-url')`
+  CORRETTO:  find: 'src="https://vecchio-url.com/foto.jpg"'  replace: 'src="https://nuovo-url.com/foto.jpg"'
+  SBAGLIATO: find: '<img src="..." class="..." style="...">' (troppo fragile, fallirà)
+- Stessa regola per background-image: find: "url('vecchio-url')"  replace: "url('nuovo-url')"
 
 LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a href="./chi-siamo">Chi Siamo</a>
 
