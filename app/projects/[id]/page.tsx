@@ -1264,6 +1264,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setLoading(false)
   }
 
+  const handleDuplicatePage = async (slug: string) => {
+    const source = pages.find(p => p.slug === slug)
+    if (!source) return
+
+    // Generate unique slug: "about" → "about-2" → "about-3" …
+    const existingSlugs = new Set(pages.map(p => p.slug))
+    let newSlug = `${slug}-2`
+    let counter = 2
+    while (existingSlugs.has(newSlug)) { counter++; newSlug = `${slug}-${counter}` }
+
+    const newPage = {
+      slug: newSlug,
+      name: `${source.name} (copia)`,
+      html: source.html,
+    }
+    const newPages = [...pages, newPage]
+    setPages(newPages)
+    setActiveSlug(newSlug)
+    await saveState(messages, newPages)
+  }
+
   const handleDeletePage = async (slug: string) => {
     if (slug === 'home') { await alertDialog(t('project.homePageError' as const, language as any)); return }
     const ok = await confirmDialog({
@@ -2223,6 +2244,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               pages={pages}
               activeSlug={activeSlug}
               onPageSelect={(slug) => setActiveSlug(slug)}
+              onDuplicatePage={handleDuplicatePage}
+              onDeletePage={handleDeletePage}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
@@ -2273,6 +2296,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 setCodeContent(pages.find(p => p.slug === slug)?.html ?? '')
                 setCodeSaving('idle')
               }}
+              onDuplicatePage={handleDuplicatePage}
+              onDeletePage={handleDeletePage}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>
