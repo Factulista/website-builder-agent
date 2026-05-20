@@ -263,8 +263,11 @@ export async function runFullPipeline(
   if (!design?.tokens) throw new Error('Design agent non ha prodotto un design valido')
 
   // Step 3: HTML — usa template se: (a) richiesto esplicitamente per ID, (b) prima run con business type matching
+  // Combina il messaggio originale + businessType del planner per massimizzare il rilevamento keyword
   const explicitTemplate = detectExplicitTemplate(userRequest)
-  const templateName = explicitTemplate ?? (existingPages.length === 0 ? detectTemplate(plan.businessType) : null)
+  const templateName = explicitTemplate ?? (existingPages.length === 0
+    ? (detectTemplate(`${userRequest} ${plan.businessType}`) ?? null)
+    : null)
   const templateHtml = templateName ? loadTemplate(templateName) : null
 
   emit?.('🏗️ HTML')

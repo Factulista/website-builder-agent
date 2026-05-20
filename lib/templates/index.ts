@@ -47,12 +47,21 @@ export const TEMPLATE_MAP: Record<string, string[]> = {
   ],
 }
 
-export function detectTemplate(businessType: string): string | null {
-  const lower = businessType.toLowerCase()
+/** Picks the template whose keywords have the most matches in the given text.
+ *  Scoring avoids the "first match wins" bias that caused generic keywords like
+ *  "saas" to beat more specific ones like "autonomos", "pyme", "fatturazione". */
+export function detectTemplate(text: string): string | null {
+  const lower = text.toLowerCase()
+  let bestTemplate: string | null = null
+  let bestScore = 0
   for (const [template, keywords] of Object.entries(TEMPLATE_MAP)) {
-    if (keywords.some(k => lower.includes(k))) return template
+    const score = keywords.filter(k => lower.includes(k)).length
+    if (score > bestScore) {
+      bestScore = score
+      bestTemplate = template
+    }
   }
-  return null
+  return bestTemplate
 }
 
 export function loadTemplate(name: string): string | null {
