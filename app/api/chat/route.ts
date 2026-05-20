@@ -304,6 +304,12 @@ export async function POST(req: NextRequest) {
         emit('🎨 Aggiornando design su tutte le pagine…')
         const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context)
         if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
+        // Salva il design system aggiornato nel contesto del progetto
+        if (result.updatedContext) {
+          await supabase.from('projects').update({
+            site_config: { ...siteConfig, context: result.updatedContext },
+          }).eq('id', projectId)
+        }
         if (runId) {
           const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
           completeRun(runId, {

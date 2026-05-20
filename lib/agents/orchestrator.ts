@@ -111,6 +111,44 @@ export type PipelineResult = {
   requestClarification?: boolean
 }
 
+/** Estrae il design system aggiornato dalle pagine dopo un design-update.
+ *  Legge il blocco :root { } dalla home page e aggiorna i token nel contesto. */
+function extractUpdatedDesign(pages: Page[], existingDesign?: import('./design-agent').DesignOutput): import('./design-agent').DesignOutput | undefined {
+  if (!existingDesign) return undefined
+  const home = pages.find(p => p.slug === 'home') ?? pages[0]
+  if (!home) return existingDesign
+  // Estrai il CSS completo dalla home
+  const styleMatch = home.html.match(/<style[\s\S]*?<\/style>/i)
+  if (!styleMatch) return existingDesign
+  const css = styleMatch[0]
+  // Estrai variabili :root
+  const rootMatch = css.match(/:root\s*\{([^}]+)\}/i)
+  if (!rootMatch) return { ...existingDesign, css }
+  const rootVars = rootMatch[1]
+  const getVar = (name: string) => {
+    const m = rootVars.match(new RegExp(`${name}\\s*:\\s*([^;\\n]+)`))
+    return m ? m[1].trim() : undefined
+  }
+  const updatedTokens = {
+    ...existingDesign.tokens,
+    colors: {
+      ...existingDesign.tokens.colors,
+      ...(getVar('--color-accent') ? { primary: getVar('--color-accent')! } : {}),
+      ...(getVar('--color-primary') ? { primary: getVar('--color-primary')! } : {}),
+      ...(getVar('--color-secondary') ? { secondary: getVar('--color-secondary')! } : {}),
+      ...(getVar('--color-bg') ? { background: getVar('--color-bg')! } : {}),
+      ...(getVar('--color-background') ? { background: getVar('--color-background')! } : {}),
+      ...(getVar('--color-text') ? { text: getVar('--color-text')! } : {}),
+    },
+    fonts: {
+      ...existingDesign.tokens.fonts,
+      ...(getVar('--font-heading') ? { heading: getVar('--font-heading')! } : {}),
+      ...(getVar('--font-body') ? { body: getVar('--font-body')! } : {}),
+    },
+  }
+  return { ...existingDesign, css, tokens: updatedTokens }
+}
+
 export async function runDesignUpdate(
   userRequest: string,
   pages: Page[],
@@ -118,11 +156,17 @@ export async function runDesignUpdate(
   context: ProjectContext = {}
 ): Promise<PipelineResult> {
   const result = await runDesignAgentUpdate(userRequest, pages, apiKey, context)
+  // Aggiorna il design system nel contesto con i nuovi valori CSS estratti dalle pagine
+  const updatedDesign = extractUpdatedDesign(result.pages, context.design)
+  const updatedContext: ProjectContext | undefined = updatedDesign
+    ? { ...context, design: updatedDesign }
+    : undefined
   return {
     tool: 'create_site',
     input: { pages: result.pages, summary: `🎨 ${result.summary}` },
     agent: 'design-update',
     steps: [`🎨 Design aggiornato su ${result.pages.length} pagine`],
+    updatedContext,
   }
 }
 
