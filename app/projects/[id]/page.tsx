@@ -2569,113 +2569,174 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             )}
           </div>
         ) : viewMode === 'pages' ? (
-          /* ── Page Manager ─────────────────────────────────────────────────── */
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
-            {/* Header */}
-            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, background: C.white }}>
-              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: C.text }}>Pagine</h2>
-              <span style={{ fontSize: '0.78rem', color: C.textFaint }}>{pages.length} {pages.length === 1 ? 'pagina' : 'pagine'}</span>
-              <div style={{ flex: 1 }} />
-              <button
-                onClick={() => {
-                  setInput('Aggiungi una nuova pagina al sito')
-                  setViewMode('preview')
-                  setChatHidden(false)
-                  setTimeout(() => textareaRef.current?.focus(), 100)
-                }}
-                style={{ background: C.dark, color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit' }}
-              >
-                + Nuova pagina
-              </button>
-            </div>
+          /* ── Page Manager (tree list) ──────────────────────────────────────── */
+          (() => {
+            const movePage = async (idx: number, dir: -1 | 1) => {
+              const next = [...pages]
+              const target = idx + dir
+              if (target < 0 || target >= next.length) return
+              ;[next[idx], next[target]] = [next[target], next[idx]]
+              setPages(next)
+              await saveState(messages, next)
+            }
+            const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu', value: string | boolean) => {
+              const next = pages.map(p => p.slug === slug ? { ...p, [field]: value } : p)
+              setPages(next)
+              await saveState(messages, next)
+            }
+            return (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+                {/* Header */}
+                <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, background: C.white }}>
+                  <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Pagine & Menu</h2>
+                  <span style={{ fontSize: '0.78rem', color: C.textFaint }}>{pages.length} {pages.length === 1 ? 'pagina' : 'pagine'}</span>
+                  <div style={{ flex: 1 }} />
+                  <button
+                    onClick={() => {
+                      setInput('Aggiungi una nuova pagina al sito')
+                      setViewMode('preview')
+                      setChatHidden(false)
+                      setTimeout(() => textareaRef.current?.focus(), 100)
+                    }}
+                    style={{ background: C.dark, color: 'white', border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                  >+ Nuova pagina</button>
+                </div>
 
-            {/* Page cards grid */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-                {pages.map((page) => (
-                  <div
-                    key={page.slug}
-                    style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
-                  >
-                    {/* Mini preview thumbnail */}
-                    <div
-                      style={{ height: '130px', background: '#f0ede8', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
-                      onClick={() => { setActiveSlug(page.slug); setViewMode('preview') }}
-                    >
-                      <iframe
-                        srcDoc={page.html}
-                        style={{ width: '200%', height: '200%', border: 'none', transform: 'scale(0.5)', transformOrigin: 'top left', pointerEvents: 'none' }}
-                        sandbox="allow-scripts"
-                        title={page.name}
-                      />
-                      {page.slug === 'home' && (
-                        <span style={{ position: 'absolute', top: '8px', right: '8px', background: C.blue, color: 'white', fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: '20px' }}>HOME</span>
-                      )}
-                    </div>
+                {/* Column labels */}
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 110px 80px 90px', gap: '0 8px', padding: '8px 20px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+                  {['', 'Pagina', 'Slug / URL', 'Menu', 'Azioni'].map((h, i) => (
+                    <span key={i} style={{ fontSize: '0.67rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
+                  ))}
+                </div>
 
-                    {/* Card footer */}
-                    <div style={{ padding: '10px 12px' }}>
-                      {renamingSlug === page.slug ? (
-                        <form
-                          onSubmit={async (e) => {
-                            e.preventDefault()
-                            const trimmed = renameValue.trim()
-                            if (!trimmed) return
-                            const newPages = pages.map(p => p.slug === page.slug ? { ...p, name: trimmed } : p)
-                            setPages(newPages)
-                            await saveState(messages, newPages)
-                            setRenamingSlug(null)
-                          }}
-                          style={{ display: 'flex', gap: '6px' }}
-                        >
-                          <input
-                            autoFocus
-                            value={renameValue}
-                            onChange={e => setRenameValue(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
-                            style={{ flex: 1, border: `1px solid ${C.blue}`, borderRadius: '6px', padding: '4px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none' }}
-                          />
-                          <button type="submit" style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>✓</button>
-                        </form>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ flex: 1, fontWeight: 600, fontSize: '0.85rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.name}</span>
-                          <button
-                            onClick={() => { setRenamingSlug(page.slug); setRenameValue(page.name) }}
-                            title="Rinomina"
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.8rem', padding: '2px', lineHeight: 1 }}
-                          >✎</button>
+                {/* Tree rows */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {pages.map((page, idx) => {
+                    const isExpanded = renamingSlug === page.slug
+                    const inMenu = page.inMenu !== false
+                    return (
+                      <div key={page.slug} style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+                        {/* Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 110px 80px 90px', gap: '0 8px', alignItems: 'center', padding: '10px 12px' }}>
+                          {/* Order arrows */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                            <button onClick={() => movePage(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? C.border : C.textMuted, fontSize: '0.65rem', padding: '1px', lineHeight: 1 }}>▲</button>
+                            <button onClick={() => movePage(idx, 1)} disabled={idx === pages.length - 1} style={{ background: 'none', border: 'none', cursor: idx === pages.length - 1 ? 'default' : 'pointer', color: idx === pages.length - 1 ? C.border : C.textMuted, fontSize: '0.65rem', padding: '1px', lineHeight: 1 }}>▼</button>
+                          </div>
+
+                          {/* Name */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                            <span style={{ fontSize: '0.8rem' }}>📄</span>
+                            <span style={{ fontWeight: 600, fontSize: '0.85rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.name}</span>
+                            {page.slug === 'home' && <span style={{ fontSize: '0.62rem', background: C.blue, color: 'white', padding: '1px 6px', borderRadius: '10px', fontWeight: 700, flexShrink: 0 }}>HOME</span>}
+                          </div>
+
+                          {/* Slug */}
+                          <span style={{ fontSize: '0.72rem', color: C.textFaint, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            /{page.slug === 'home' ? '' : page.slug}
+                          </span>
+
+                          {/* In menu toggle */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              onClick={() => updatePageField(page.slug, 'inMenu', !inMenu)}
+                              style={{
+                                width: '34px', height: '18px', borderRadius: '9px', border: 'none', cursor: 'pointer',
+                                background: inMenu ? C.blue : C.border,
+                                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                              }}
+                            >
+                              <span style={{
+                                position: 'absolute', top: '2px', left: inMenu ? '18px' : '2px',
+                                width: '14px', height: '14px', background: 'white', borderRadius: '50%',
+                                transition: 'left 0.2s', display: 'block',
+                              }} />
+                            </button>
+                          </div>
+
+                          {/* Actions */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button
+                              onClick={() => { setRenamingSlug(isExpanded ? null : page.slug); setRenameValue(page.name) }}
+                              title="Impostazioni"
+                              style={{ background: isExpanded ? C.blue : C.bg, border: `1px solid ${isExpanded ? C.blue : C.border}`, borderRadius: '6px', padding: '3px 7px', fontSize: '0.72rem', cursor: 'pointer', color: isExpanded ? 'white' : C.text, fontFamily: 'inherit' }}
+                            >⚙</button>
+                            <button
+                              onClick={() => handleDuplicatePage(page.slug)}
+                              title="Duplica"
+                              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '3px 7px', fontSize: '0.72rem', cursor: 'pointer', color: C.text }}
+                            >⧉</button>
+                            {page.slug !== 'home' && (
+                              <button
+                                onClick={() => handleDeletePage(page.slug)}
+                                title="Elimina"
+                                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '3px 7px', fontSize: '0.72rem', cursor: 'pointer', color: '#ef4444' }}
+                              >✕</button>
+                            )}
+                          </div>
                         </div>
-                      )}
-                      <div style={{ fontSize: '0.72rem', color: C.textFaint, fontFamily: 'monospace', marginTop: '2px', marginBottom: '10px' }}>
-                        /{page.slug === 'home' ? '' : page.slug}
-                      </div>
 
-                      {/* Actions */}
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button
-                          onClick={() => { setActiveSlug(page.slug); setViewMode('edit') }}
-                          style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 0', fontSize: '0.76rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
-                        >✎ Edita</button>
-                        <button
-                          onClick={() => handleDuplicatePage(page.slug)}
-                          title="Duplica"
-                          style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 10px', fontSize: '0.76rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit' }}
-                        >⧉</button>
-                        {page.slug !== 'home' && (
-                          <button
-                            onClick={() => handleDeletePage(page.slug)}
-                            title="Elimina"
-                            style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '7px', padding: '5px 10px', fontSize: '0.76rem', cursor: 'pointer', color: '#ef4444', fontFamily: 'inherit' }}
-                          >✕</button>
+                        {/* Expanded settings panel */}
+                        {isExpanded && (
+                          <div style={{ borderTop: `1px solid ${C.border}`, padding: '12px 16px', background: '#fafaf9', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            {/* Rename */}
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Nome pagina</label>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <input
+                                  autoFocus
+                                  value={renameValue}
+                                  onChange={e => setRenameValue(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
+                                  style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none' }}
+                                />
+                                <button
+                                  onClick={async () => {
+                                    const trimmed = renameValue.trim()
+                                    if (!trimmed) return
+                                    await updatePageField(page.slug, 'name', trimmed)
+                                    setRenamingSlug(null)
+                                  }}
+                                  style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                                >✓</button>
+                              </div>
+                            </div>
+
+                            {/* Menu label */}
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Etichetta nel menu</label>
+                              <input
+                                placeholder={page.name}
+                                defaultValue={page.menuLabel ?? ''}
+                                onBlur={async (e) => {
+                                  const v = e.target.value.trim()
+                                  await updatePageField(page.slug, 'menuLabel', v || page.name)
+                                }}
+                                style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                              />
+                              <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato nella navigazione del sito</p>
+                            </div>
+
+                            {/* Open in editor */}
+                            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={() => { setActiveSlug(page.slug); setViewMode('edit') }}
+                                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 14px', fontSize: '0.8rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
+                              >✎ Apri nell&apos;editor inline</button>
+                              <button
+                                onClick={() => { setActiveSlug(page.slug); setViewMode('preview') }}
+                                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 14px', fontSize: '0.8rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
+                              >🌐 Anteprima</button>
+                            </div>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          </div>
+            )
+          })()
         ) : (
           /* Preview mode — no sidebar, full width */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
