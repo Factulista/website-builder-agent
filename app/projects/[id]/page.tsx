@@ -2006,7 +2006,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               onClick={() => setViewMode('edit')}
             />
             <ToolbarBtn
-              label="◫"
+              label={<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"><rect x="0.5" y="1.5" width="13" height="11" rx="1.5"/><circle cx="4.5" cy="5.5" r="1.2"/><polyline points="0.5,12.5 4.5,8 7.5,10.5 9.5,8 13.5,12.5"/></svg>}
               title={t('project.mediaLibrary' as const, language as any)}
               active={viewMode === 'media'}
               onClick={() => setViewMode('media')}
@@ -2024,13 +2024,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               onClick={() => setViewMode('seo')}
             />
             <ToolbarBtn
-              label="⊞"
+              label={<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"><rect x="2" y="2" width="10" height="12" rx="1.5"/><line x1="4.5" y1="5.5" x2="9.5" y2="5.5"/><line x1="4.5" y1="8" x2="9.5" y2="8"/><line x1="4.5" y1="10.5" x2="7.5" y2="10.5"/></svg>}
               title="Gestione pagine"
               active={viewMode === 'pages'}
               onClick={() => setViewMode('pages')}
             />
             <ToolbarBtn
-              label="✍"
+              label={<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"><path d="M8 2H3.5A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14H10a1.5 1.5 0 0 0 1.5-1.5V5.5"/><line x1="4.5" y1="7" x2="8" y2="7"/><line x1="4.5" y1="9.5" x2="7" y2="9.5"/><path d="M9 1l2.5 2.5-3.5 3.5H5.5V4.5L9 1Z"/></svg>}
               title="Blog"
               active={viewMode === 'blog'}
               onClick={() => setViewMode('blog')}
