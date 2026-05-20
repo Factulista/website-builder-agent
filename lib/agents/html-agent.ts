@@ -419,7 +419,12 @@ LOGO — REGOLE FONDAMENTALI:
 - Quando crei un sito nuovo senza logo definito, crea un logo testuale semplice: <a href="./" class="nav-logo" style="font-size:1.4rem;font-weight:800;color:[colore_coerente];text-decoration:none;">[nome brand]</a>. Puoi colorare un carattere con l'accent color.
 - Il logo DEVE essere identico su tutte le pagine del sito.
 
-FIND/REPLACE: le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
+FIND/REPLACE — REGOLE CRITICHE:
+- Le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
+- Per sostituire un'immagine usa SEMPRE find/replace SOLO sull'attributo src, non sull'intero tag <img>:
+  CORRETTO:  find: `src="https://vecchio-url.com/foto.jpg"` → replace: `src="https://nuovo-url.com/foto.jpg"`
+  SBAGLIATO: find: `<img src="..." class="..." style="...">` (troppo fragile, fallirà)
+- Stessa regola per background-image: find: `url('vecchio-url')` → replace: `url('nuovo-url')`
 
 LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a href="./chi-siamo">Chi Siamo</a>
 

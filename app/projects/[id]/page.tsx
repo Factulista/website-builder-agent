@@ -1326,18 +1326,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     } else if (result.tool === 'edit_page') {
       const targetSlug = result.input.pageSlug as string
       const edits = result.input.edits as { find: string; replace: string }[]
-      let skipped = 0
+      const failedFinds: string[] = []
       newPages = pages.map(p => {
         if (p.slug !== targetSlug) return p
         let html = p.html
         for (const edit of edits) {
           const [next, applied] = applyEdit(html, edit.find, edit.replace)
           if (applied) html = next
-          else skipped++
+          else { failedFinds.push(edit.find.slice(0, 80)); console.warn('[applyEdit] FAILED find:', edit.find) }
         }
         return { ...p, html }
       })
-      summary = `✏️ ${result.input.summary}${skipped ? ` (${skipped} edit non applicate)` : ''}`
+      summary = `✏️ ${result.input.summary}${failedFinds.length ? ` ⚠️ ${failedFinds.length} edit non applicate` : ''}`
       newActiveSlug = targetSlug
     } else if (result.tool === 'add_page') {
       const newPage: Page = { slug: result.input.slug, name: result.input.name, html: result.input.html }
