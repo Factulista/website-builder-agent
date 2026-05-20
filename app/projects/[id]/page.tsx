@@ -650,6 +650,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [renameValue, setRenameValue] = useState('')
   const dragIndexRef = useRef<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [projectContext, setProjectContext] = useState<{ businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }>({})
   const [seoAnalyses, setSeoAnalyses] = useState<PageAnalysis[]>([])
   const [seoPageSlug, setSeoPageSlug] = useState<string>('all')
   const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
@@ -823,6 +824,28 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     setUploading(false)
     if (target === 'media' || viewMode === 'media') loadMedia()
+
+    // Generate SEO metadata for the image in background (non-blocking)
+    fetch('/api/generate-image-meta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl, context: projectContext }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(meta => {
+        if (!meta) return
+        const newMeta = {
+          ...mediaMeta,
+          [path]: {
+            alt: meta.alt ?? '',
+            title: meta.title ?? '',
+            description: meta.description ?? '',
+          },
+        }
+        setMediaMeta(newMeta)
+        saveState(messages, latestPagesRef.current, versions, newMeta)
+      })
+      .catch(() => { /* silently ignore */ })
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -848,7 +871,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setCustomDomain(project.custom_domain)
         setCustomDomainStatus(project.custom_domain_status)
       }
-      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta> } | null
+      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta>; context?: { businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string } } | null
+      if (config?.context) setProjectContext(config.context)
       let loadedPages: Page[] = []
       if (config?.pages?.length) loadedPages = config.pages
       else if (config?.html) loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
