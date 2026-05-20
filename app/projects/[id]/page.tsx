@@ -584,7 +584,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages'>('preview')
+  const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const [seoAnalyses, setSeoAnalyses] = useState<PageAnalysis[]>([])
   const [seoPageSlug, setSeoPageSlug] = useState<string>('all')
   const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
@@ -1807,6 +1809,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               active={viewMode === 'seo'}
               onClick={() => setViewMode('seo')}
             />
+            <ToolbarBtn
+              label="⊞"
+              title="Gestione pagine"
+              active={viewMode === 'pages'}
+              onClick={() => setViewMode('pages')}
+            />
           </div>
 
           {/* URL bar — selectable text + slug dropdown for page navigation */}
@@ -2244,8 +2252,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               pages={pages}
               activeSlug={activeSlug}
               onPageSelect={(slug) => setActiveSlug(slug)}
-              onDuplicatePage={handleDuplicatePage}
-              onDeletePage={handleDeletePage}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
@@ -2296,8 +2302,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 setCodeContent(pages.find(p => p.slug === slug)?.html ?? '')
                 setCodeSaving('idle')
               }}
-              onDuplicatePage={handleDuplicatePage}
-              onDeletePage={handleDeletePage}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>
@@ -2563,6 +2567,114 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
               </div>
             )}
+          </div>
+        ) : viewMode === 'pages' ? (
+          /* ── Page Manager ─────────────────────────────────────────────────── */
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+            {/* Header */}
+            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0, background: C.white }}>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: C.text }}>Pagine</h2>
+              <span style={{ fontSize: '0.78rem', color: C.textFaint }}>{pages.length} {pages.length === 1 ? 'pagina' : 'pagine'}</span>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={() => {
+                  setInput('Aggiungi una nuova pagina al sito')
+                  setViewMode('preview')
+                  setChatHidden(false)
+                  setTimeout(() => textareaRef.current?.focus(), 100)
+                }}
+                style={{ background: C.dark, color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', fontWeight: 600, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                + Nuova pagina
+              </button>
+            </div>
+
+            {/* Page cards grid */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                {pages.map((page) => (
+                  <div
+                    key={page.slug}
+                    style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+                  >
+                    {/* Mini preview thumbnail */}
+                    <div
+                      style={{ height: '130px', background: '#f0ede8', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
+                      onClick={() => { setActiveSlug(page.slug); setViewMode('preview') }}
+                    >
+                      <iframe
+                        srcDoc={page.html}
+                        style={{ width: '200%', height: '200%', border: 'none', transform: 'scale(0.5)', transformOrigin: 'top left', pointerEvents: 'none' }}
+                        sandbox="allow-scripts"
+                        title={page.name}
+                      />
+                      {page.slug === 'home' && (
+                        <span style={{ position: 'absolute', top: '8px', right: '8px', background: C.blue, color: 'white', fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: '20px' }}>HOME</span>
+                      )}
+                    </div>
+
+                    {/* Card footer */}
+                    <div style={{ padding: '10px 12px' }}>
+                      {renamingSlug === page.slug ? (
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault()
+                            const trimmed = renameValue.trim()
+                            if (!trimmed) return
+                            const newPages = pages.map(p => p.slug === page.slug ? { ...p, name: trimmed } : p)
+                            setPages(newPages)
+                            await saveState(messages, newPages)
+                            setRenamingSlug(null)
+                          }}
+                          style={{ display: 'flex', gap: '6px' }}
+                        >
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
+                            style={{ flex: 1, border: `1px solid ${C.blue}`, borderRadius: '6px', padding: '4px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none' }}
+                          />
+                          <button type="submit" style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>✓</button>
+                        </form>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ flex: 1, fontWeight: 600, fontSize: '0.85rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.name}</span>
+                          <button
+                            onClick={() => { setRenamingSlug(page.slug); setRenameValue(page.name) }}
+                            title="Rinomina"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.8rem', padding: '2px', lineHeight: 1 }}
+                          >✎</button>
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.72rem', color: C.textFaint, fontFamily: 'monospace', marginTop: '2px', marginBottom: '10px' }}>
+                        /{page.slug === 'home' ? '' : page.slug}
+                      </div>
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={() => { setActiveSlug(page.slug); setViewMode('edit') }}
+                          style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 0', fontSize: '0.76rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
+                        >✎ Edita</button>
+                        <button
+                          onClick={() => handleDuplicatePage(page.slug)}
+                          title="Duplica"
+                          style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 10px', fontSize: '0.76rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit' }}
+                        >⧉</button>
+                        {page.slug !== 'home' && (
+                          <button
+                            onClick={() => handleDeletePage(page.slug)}
+                            title="Elimina"
+                            style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '7px', padding: '5px 10px', fontSize: '0.76rem', cursor: 'pointer', color: '#ef4444', fontFamily: 'inherit' }}
+                          >✕</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           /* Preview mode — no sidebar, full width */
