@@ -454,6 +454,67 @@ function syncNavigation(
   return pages
 }
 
+/**
+ * reorderNavLinks — after a drag-reorder, updates every page's <nav> so the
+ * link order matches the new pages array order.
+ * Also applies menuLabel overrides and respects inMenu=false (removes those links).
+ */
+function reorderNavLinks(pages: Page[]): Page[] {
+  if (typeof window === 'undefined' || pages.length <= 1) return pages
+  const navRe = /<nav[\s\S]*?<\/nav>/i
+  const srcPage = pages.find(p => navRe.test(p.html))
+  if (!srcPage) return pages
+  const navMatch = srcPage.html.match(navRe)
+  if (!navMatch) return pages
+
+  const doc = new DOMParser().parseFromString(navMatch[0], 'text/html')
+  const nav = doc.querySelector('nav')
+  if (!nav) return pages
+
+  const liItems = [...nav.querySelectorAll('li')].filter(li => li.querySelector('a'))
+  const aItems  = liItems.length === 0 ? [...nav.querySelectorAll('a')] : []
+  const items   = liItems.length > 0 ? liItems : aItems
+  if (items.length === 0) return pages
+
+  // Map slug → nav item
+  const slugToItem = new Map<string, Element>()
+  for (const item of items) {
+    const a = (item.tagName === 'A' ? item : item.querySelector('a')) as HTMLAnchorElement | null
+    if (!a) continue
+    const href = a.getAttribute('href') ?? ''
+    for (const page of pages) {
+      const variants = [
+        page.slug === 'home' ? './' : `./${page.slug}`,
+        page.slug === 'home' ? '/' : `/${page.slug}`,
+        page.slug,
+      ]
+      if (variants.some(v => href === v || href.endsWith(`/${page.slug}`))) {
+        slugToItem.set(page.slug, item)
+        // Apply menuLabel if set
+        if (page.menuLabel && page.menuLabel !== page.name) a.textContent = page.menuLabel
+        break
+      }
+    }
+  }
+
+  // Reorder inside parent
+  const parent = items[0].parentElement
+  if (parent) {
+    items.forEach(el => el.remove())
+    for (const page of pages) {
+      if (page.inMenu === false) continue
+      const item = slugToItem.get(page.slug)
+      if (item) parent.appendChild(item)
+    }
+  }
+
+  const newNavHtml = nav.outerHTML
+  return pages.map(p => ({
+    ...p,
+    html: navRe.test(p.html) ? p.html.replace(navRe, newNavHtml) : p.html,
+  }))
+}
+
 function stripEditorArtifacts(html: string): string {
   if (typeof window === 'undefined' || !html) return html
   // Quick exit if no markers present
@@ -587,6 +648,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages'>('preview')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const dragIndexRef = useRef<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [seoAnalyses, setSeoAnalyses] = useState<PageAnalysis[]>([])
   const [seoPageSlug, setSeoPageSlug] = useState<string>('all')
   const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
@@ -2632,18 +2695,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ) : viewMode === 'pages' ? (
           /* ── Page Manager (tree list) ──────────────────────────────────────── */
           (() => {
-            const movePage = async (idx: number, dir: -1 | 1) => {
+            const handleDrop = async (dropIdx: number) => {
+              const fromIdx = dragIndexRef.current
+              dragIndexRef.current = null
+              setDragOverIndex(null)
+              if (fromIdx === null || fromIdx === dropIdx) return
               const next = [...pages]
-              const target = idx + dir
-              if (target < 0 || target >= next.length) return
-              ;[next[idx], next[target]] = [next[target], next[idx]]
-              setPages(next)
-              await saveState(messages, next)
+              const [moved] = next.splice(fromIdx, 1)
+              next.splice(dropIdx, 0, moved)
+              const synced = reorderNavLinks(next)
+              setPages(synced)
+              await saveState(messages, synced)
             }
             const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu', value: string | boolean) => {
               const next = pages.map(p => p.slug === slug ? { ...p, [field]: value } : p)
-              setPages(next)
-              await saveState(messages, next)
+              const synced = (field === 'inMenu' || field === 'menuLabel') ? reorderNavLinks(next) : next
+              setPages(synced)
+              await saveState(messages, synced)
             }
             return (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
@@ -2664,7 +2732,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
 
                 {/* Column labels */}
-                <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 110px 80px 90px', gap: '0 8px', padding: '8px 20px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 80px 90px', gap: '0 8px', padding: '8px 20px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
                   {['', 'Pagina', 'Slug / URL', 'Menu', 'Azioni'].map((h, i) => (
                     <span key={i} style={{ fontSize: '0.67rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                   ))}
@@ -2675,14 +2743,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {pages.map((page, idx) => {
                     const isExpanded = renamingSlug === page.slug
                     const inMenu = page.inMenu !== false
+                    const isDragOver = dragOverIndex === idx
                     return (
-                      <div key={page.slug} style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+                      <div
+                        key={page.slug}
+                        draggable
+                        onDragStart={() => { dragIndexRef.current = idx }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx) }}
+                        onDrop={() => handleDrop(idx)}
+                        onDragEnd={() => { dragIndexRef.current = null; setDragOverIndex(null) }}
+                        style={{
+                          background: C.white,
+                          border: `1px solid ${isDragOver ? C.blue : C.border}`,
+                          borderRadius: '10px', overflow: 'hidden',
+                          boxShadow: isDragOver ? `0 0 0 2px ${C.blue}22` : 'none',
+                          transition: 'border-color 0.15s, box-shadow 0.15s',
+                          opacity: dragIndexRef.current === idx ? 0.5 : 1,
+                        }}
+                      >
                         {/* Row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 110px 80px 90px', gap: '0 8px', alignItems: 'center', padding: '10px 12px' }}>
-                          {/* Order arrows */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                            <button onClick={() => movePage(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? C.border : C.textMuted, fontSize: '0.65rem', padding: '1px', lineHeight: 1 }}>▲</button>
-                            <button onClick={() => movePage(idx, 1)} disabled={idx === pages.length - 1} style={{ background: 'none', border: 'none', cursor: idx === pages.length - 1 ? 'default' : 'pointer', color: idx === pages.length - 1 ? C.border : C.textMuted, fontSize: '0.65rem', padding: '1px', lineHeight: 1 }}>▼</button>
+                        <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 80px 90px', gap: '0 8px', alignItems: 'center', padding: '10px 12px' }}>
+                          {/* Drag handle */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab', color: C.textFaint, fontSize: '1rem', userSelect: 'none' }}>
+                            ⠿
                           </div>
 
                           {/* Name */}
