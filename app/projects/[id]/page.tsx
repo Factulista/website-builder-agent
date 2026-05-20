@@ -645,11 +645,28 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog'>('preview')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const dragIndexRef = useRef<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  // ── Blog state ──────────────────────────────────────────────────────────────
+  type BlogPost = { id: string; title: string; slug: string; excerpt: string; featured_image: string | null; status: 'draft' | 'published'; published_at: string | null; categories: string[]; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string }
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
+  const [blogLoading, setBlogLoading] = useState(false)
+  const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
+  const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
+  const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [blogPublishing, setBlogPublishing] = useState(false)
+  const [blogGenerating, setBlogGenerating] = useState(false)
+  const [blogGenTopic, setBlogGenTopic] = useState('')
+  const [showBlogGenPrompt, setShowBlogGenPrompt] = useState(false)
+  const [blogMetaEdits, setBlogMetaEdits] = useState<Partial<BlogPost>>({})
+  const blogAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const blogBaseHtmlRef = useRef<string>('')
+  const blogIframeRef = useRef<HTMLIFrameElement>(null)
+
   const [projectContext, setProjectContext] = useState<{ businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }>({})
   const [seoAnalyses, setSeoAnalyses] = useState<PageAnalysis[]>([])
   const [seoPageSlug, setSeoPageSlug] = useState<string>('all')
@@ -759,6 +776,37 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return () => window.removeEventListener('message', handleMessage)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, activePage?.slug, messages, versions])
+
+  // Listen for inline edits on blog post content
+  useEffect(() => {
+    if (viewMode !== 'blog' || !selectedPost) return
+    const handleBlogMessage = (e: MessageEvent) => {
+      if (e.data?.type !== 'html-change') return
+      const newHtml = e.data.html as string
+      blogBaseHtmlRef.current = newHtml
+      // Extract just the body content from the full HTML
+      const bodyMatch = newHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+      const contentHtml = bodyMatch ? bodyMatch[1].trim() : newHtml
+      setSelectedPost(prev => prev ? { ...prev, content_html: contentHtml } : prev)
+      if (blogAutoSaveTimer.current) clearTimeout(blogAutoSaveTimer.current)
+      blogAutoSaveTimer.current = setTimeout(async () => {
+        setBlogSaving('saving')
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+        await fetch(`/api/blog-posts/${selectedPost.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ content_html: contentHtml }),
+        })
+        setBlogSaving('saved')
+        setTimeout(() => setBlogSaving('idle'), 2000)
+      }, 2000)
+    }
+    window.addEventListener('message', handleBlogMessage)
+    return () => window.removeEventListener('message', handleBlogMessage)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, selectedPost?.id])
 
   useEffect(() => {
     if (viewMode === 'code' && activePage) {
@@ -936,6 +984,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (viewMode === 'media') loadMedia()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, id])
+
+  const loadBlogPosts = useCallback(async () => {
+    setBlogLoading(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) { setBlogLoading(false); return }
+    const res = await fetch(`/api/blog-posts?projectId=${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const json = await res.json()
+    setBlogPosts(json.posts ?? [])
+    setBlogLoading(false)
+  }, [id])
+
+  useEffect(() => {
+    if (viewMode === 'blog') loadBlogPosts()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode])
 
   const updateMediaMeta = (path: string, field: keyof MediaMeta, value: string) => {
     const updated = { ...mediaMeta, [path]: { ...mediaMeta[path], [field]: value } }
@@ -1963,6 +2029,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               active={viewMode === 'pages'}
               onClick={() => setViewMode('pages')}
             />
+            <ToolbarBtn
+              label="✍"
+              title="Blog"
+              active={viewMode === 'blog'}
+              onClick={() => setViewMode('blog')}
+            />
           </div>
 
           {/* URL bar — selectable text + slug dropdown for page navigation */}
@@ -2716,6 +2788,360 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
             )}
           </div>
+        ) : viewMode === 'blog' ? (
+          /* ── Blog Manager ───────────────────────────────────────────────────── */
+          (() => {
+            const openPost = async (post: BlogPost) => {
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) return
+              const res = await fetch(`/api/blog-posts/${post.id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+              const json = await res.json()
+              const full: BlogPost = json.post ?? post
+              setSelectedPost(full)
+              setBlogMetaEdits({})
+              // Build editor srcdoc
+              const contentHtml = full.content_html ?? ''
+              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,sans-serif;padding:2rem;max-width:760px;margin:0 auto;line-height:1.7;color:#1a1a1a}h1{font-size:2rem;font-weight:800;margin:0 0 1rem}h2{font-size:1.5rem;font-weight:700;margin:2rem 0 0.75rem}h3{font-size:1.2rem;font-weight:600;margin:1.5rem 0 0.5rem}p{margin:0 0 1.2rem}ul,ol{margin:0 0 1.2rem;padding-left:1.5rem}li{margin-bottom:0.3rem}blockquote{border-left:4px solid #2563eb;margin:1.5rem 0;padding:0.75rem 1.25rem;background:#f8f9ff;color:#444;font-style:italic}img{max-width:100%;border-radius:8px}strong{font-weight:700}em{font-style:italic}</style></head><body>${contentHtml}</body></html>`
+              setBlogEditorSrcDoc(editorHtml)
+              blogBaseHtmlRef.current = editorHtml
+            }
+
+            const createPost = async () => {
+              const title = 'Nuovo articolo'
+              const slug = `articolo-${Date.now()}`
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) return
+              const res = await fetch('/api/blog-posts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ projectId: id, title, slug, content_html: '<p>Inizia a scrivere il tuo articolo qui...</p>' }),
+              })
+              const json = await res.json()
+              if (json.post) {
+                await loadBlogPosts()
+                openPost(json.post)
+              }
+            }
+
+            const deletePost = async (postId: string) => {
+              const ok = await confirmDialog('Eliminare questo articolo? L\'azione è irreversibile.')
+              if (!ok) return
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) return
+              await fetch(`/api/blog-posts/${postId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+              if (selectedPost?.id === postId) setSelectedPost(null)
+              await loadBlogPosts()
+            }
+
+            const togglePublish = async (post: BlogPost) => {
+              setBlogPublishing(true)
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) { setBlogPublishing(false); return }
+              const action = post.status === 'published' ? 'unpublish' : 'publish'
+              const res = await fetch(`/api/blog-posts/${post.id}?action=${action}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+              })
+              const json = await res.json()
+              if (json.post) {
+                setSelectedPost(prev => prev?.id === post.id ? { ...prev, ...json.post } : prev)
+                setBlogPosts(prev => prev.map(p => p.id === post.id ? { ...p, ...json.post } : p))
+              }
+              setBlogPublishing(false)
+            }
+
+            const saveMeta = async (postId: string, updates: Partial<BlogPost>) => {
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) return
+              await fetch(`/api/blog-posts/${postId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(updates),
+              })
+              setSelectedPost(prev => prev ? { ...prev, ...updates } : prev)
+              setBlogPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updates } : p))
+            }
+
+            const generateWithAI = async () => {
+              if (!blogGenTopic.trim()) return
+              setBlogGenerating(true)
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) { setBlogGenerating(false); return }
+              const res = await fetch('/api/generate-blog-post', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ topic: blogGenTopic, context: projectContext }),
+              })
+              const json = await res.json()
+              if (json.post) {
+                const { post: generated } = json
+                // Create new post with generated content
+                const createRes = await fetch('/api/blog-posts', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({
+                    projectId: id,
+                    title: generated.title,
+                    slug: generated.slug,
+                    content_html: generated.content_html,
+                    excerpt: generated.excerpt,
+                    categories: generated.categories ?? [],
+                    tags: generated.tags ?? [],
+                    seo_title: generated.seo_title,
+                    seo_description: generated.seo_description,
+                  }),
+                })
+                const createJson = await createRes.json()
+                if (createJson.post) {
+                  await loadBlogPosts()
+                  openPost(createJson.post)
+                }
+              }
+              setBlogGenerating(false)
+              setShowBlogGenPrompt(false)
+              setBlogGenTopic('')
+            }
+
+            // ── Blog list view ─────────────────────────────────────────────────
+            if (!selectedPost) {
+              return (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+                  {/* Header */}
+                  <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, background: C.white }}>
+                    <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Blog</h2>
+                    <span style={{ fontSize: '0.78rem', color: C.textFaint }}>{blogPosts.length} {blogPosts.length === 1 ? 'articolo' : 'articoli'}</span>
+                    <div style={{ flex: 1 }} />
+                    <button
+                      onClick={() => setShowBlogGenPrompt(v => !v)}
+                      style={{ background: 'transparent', color: C.blue, border: `1px solid ${C.blue}`, padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >✦ Genera con AI</button>
+                    <button
+                      onClick={createPost}
+                      style={{ background: C.dark, color: 'white', border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >+ Nuovo articolo</button>
+                  </div>
+
+                  {/* AI generation prompt */}
+                  {showBlogGenPrompt && (
+                    <div style={{ padding: '12px 24px', borderBottom: `1px solid ${C.border}`, background: '#eff6ff', display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0 }}>✦ Argomento:</span>
+                      <input
+                        value={blogGenTopic}
+                        onChange={e => setBlogGenTopic(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') generateWithAI() }}
+                        placeholder="Es: 5 consigli per migliorare il tuo sito web..."
+                        autoFocus
+                        style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none' }}
+                      />
+                      <button
+                        onClick={generateWithAI}
+                        disabled={blogGenerating || !blogGenTopic.trim()}
+                        style={{ background: blogGenTopic.trim() && !blogGenerating ? C.blue : '#93c5fd', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: blogGenTopic.trim() && !blogGenerating ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0 }}
+                      >{blogGenerating ? '⏳ Generazione...' : 'Genera'}</button>
+                      <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0 }}>✕</button>
+                    </div>
+                  )}
+
+                  {/* Column headers */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 100px 120px', gap: '0 8px', padding: '8px 24px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+                    {['Articolo', 'Stato', 'Data', 'Azioni'].map((h, i) => (
+                      <span key={i} style={{ fontSize: '0.67rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
+                    ))}
+                  </div>
+
+                  {/* Post list */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {blogLoading && (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: C.textFaint, fontSize: '0.85rem' }}>Caricamento...</div>
+                    )}
+                    {!blogLoading && blogPosts.length === 0 && (
+                      <div style={{ padding: '3rem', textAlign: 'center', color: C.textFaint }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✍️</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.25rem' }}>Nessun articolo ancora</div>
+                        <div style={{ fontSize: '0.8rem' }}>Crea il tuo primo post o genera uno con AI</div>
+                      </div>
+                    )}
+                    {blogPosts.map(post => (
+                      <div
+                        key={post.id}
+                        onClick={() => openPost(post)}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '1fr 90px 100px 120px', gap: '0 8px',
+                          alignItems: 'center', padding: '12px 16px',
+                          background: C.white, border: `1px solid ${C.border}`,
+                          borderRadius: '10px', cursor: 'pointer',
+                          transition: 'border-color 0.15s, box-shadow 0.15s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.blue; (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 2px ${C.blue}22` }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
+                      >
+                        {/* Title + excerpt */}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.87rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</div>
+                          {post.excerpt && <div style={{ fontSize: '0.75rem', color: C.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px' }}>{post.excerpt}</div>}
+                        </div>
+                        {/* Status badge */}
+                        <span style={{
+                          fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', textAlign: 'center',
+                          background: post.status === 'published' ? '#dcfce7' : '#f3f4f6',
+                          color: post.status === 'published' ? '#166534' : '#6b7280',
+                        }}>{post.status === 'published' ? '● Pubblicato' : '○ Bozza'}</span>
+                        {/* Date */}
+                        <span style={{ fontSize: '0.75rem', color: C.textFaint }}>
+                          {post.published_at ? new Date(post.published_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' }) : new Date(post.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })}
+                        </span>
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => togglePublish(post)}
+                            disabled={blogPublishing}
+                            title={post.status === 'published' ? 'Riporta in bozza' : 'Pubblica'}
+                            style={{ background: post.status === 'published' ? '#f3f4f6' : '#dcfce7', color: post.status === 'published' ? '#6b7280' : '#166534', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '0.72rem', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}
+                          >{post.status === 'published' ? '↩ Bozza' : '↑ Pubblica'}</button>
+                          <button
+                            onClick={() => deletePost(post.id)}
+                            title="Elimina"
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.9rem', padding: '4px 6px', borderRadius: '6px' }}
+                          >✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
+
+            // ── Blog post editor view ──────────────────────────────────────────
+            const post = selectedPost
+            return (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+                {/* Editor header */}
+                <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, background: C.white }}>
+                  <button
+                    onClick={() => setSelectedPost(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.85rem', padding: '4px 8px', borderRadius: '6px', fontFamily: 'inherit', fontWeight: 500 }}
+                  >← Lista</button>
+                  <div style={{ width: '1px', height: '16px', background: C.border }} />
+                  <span style={{ fontSize: '0.87rem', fontWeight: 600, color: C.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</span>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                    background: post.status === 'published' ? '#dcfce7' : '#f3f4f6',
+                    color: post.status === 'published' ? '#166534' : '#6b7280',
+                  }}>{post.status === 'published' ? '● Pubblicato' : '○ Bozza'}</span>
+                  {blogSaving === 'saving' && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>💾 Salvataggio...</span>}
+                  {blogSaving === 'saved' && <span style={{ fontSize: '0.72rem', color: '#16a34a' }}>✓ Salvato</span>}
+                  <button
+                    onClick={() => togglePublish(post)}
+                    disabled={blogPublishing}
+                    style={{
+                      background: post.status === 'published' ? '#f3f4f6' : C.blue,
+                      color: post.status === 'published' ? C.text : 'white',
+                      border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >{blogPublishing ? '⏳...' : post.status === 'published' ? '↩ Bozza' : '↑ Pubblica'}</button>
+                </div>
+
+                {/* Editor body: meta panel + iframe */}
+                <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                  {/* Meta panel */}
+                  <div style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', background: C.white }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Titolo</label>
+                      <input
+                        defaultValue={post.title}
+                        onBlur={e => saveMeta(post.id, { title: e.target.value.trim() || post.title })}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug URL</label>
+                      <input
+                        defaultValue={post.slug}
+                        onBlur={e => saveMeta(post.id, { slug: e.target.value.trim() || post.slug })}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.75rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Estratto</label>
+                      <textarea
+                        defaultValue={post.excerpt}
+                        onBlur={e => saveMeta(post.id, { excerpt: e.target.value.trim() })}
+                        rows={3}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Categorie</label>
+                      <input
+                        defaultValue={(post.categories ?? []).join(', ')}
+                        placeholder="es: Marketing, SEO"
+                        onBlur={e => saveMeta(post.id, { categories: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Tag</label>
+                      <input
+                        defaultValue={(post.tags ?? []).join(', ')}
+                        placeholder="es: web, design"
+                        onBlur={e => saveMeta(post.id, { tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+                    <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>SEO</div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', color: C.textFaint, marginBottom: '4px' }}>Meta title</label>
+                      <input
+                        defaultValue={post.seo_title ?? ''}
+                        placeholder={post.title}
+                        onBlur={e => saveMeta(post.id, { seo_title: e.target.value.trim() || null })}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', marginBottom: '8px', boxSizing: 'border-box' as const }}
+                      />
+                      <label style={{ display: 'block', fontSize: '0.7rem', color: C.textFaint, marginBottom: '4px' }}>Meta description</label>
+                      <textarea
+                        defaultValue={post.seo_description ?? ''}
+                        placeholder="Descrizione per i motori di ricerca..."
+                        onBlur={e => saveMeta(post.id, { seo_description: e.target.value.trim() || null })}
+                        rows={3}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+                    <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
+                      <button
+                        onClick={() => deletePost(post.id)}
+                        style={{ width: '100%', background: 'none', border: `1px solid #fca5a5`, color: '#ef4444', borderRadius: '7px', padding: '7px', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
+                      >✕ Elimina articolo</button>
+                    </div>
+                  </div>
+
+                  {/* Content editor iframe */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ padding: '6px 14px', borderBottom: `1px solid ${C.border}`, background: C.bg, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.72rem', color: C.textFaint, fontWeight: 600 }}>CONTENUTO ARTICOLO</span>
+                      <span style={{ fontSize: '0.68rem', color: C.textFaint }}>— clicca sul testo per modificarlo</span>
+                    </div>
+                    {blogEditorSrcDoc && (
+                      <iframe
+                        ref={blogIframeRef}
+                        srcDoc={blogEditorSrcDoc + `<script id="fact-edit-script">${INLINE_EDIT_SCRIPT}</script>`}
+                        style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
+                        title="Blog Editor"
+                        sandbox="allow-scripts allow-same-origin"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()
         ) : viewMode === 'pages' ? (
           /* ── Page Manager (tree list) ──────────────────────────────────────── */
           (() => {
