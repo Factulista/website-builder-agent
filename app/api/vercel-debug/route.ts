@@ -40,15 +40,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, info })
     }
 
-    // If 404 and no teamId set, try to list teams to help diagnose
-    if (res.status === 404 && !vercelTeamId) {
+    if (res.status === 404) {
+      // List teams the token can access
       const teamsRes = await fetch('https://api.vercel.com/v2/teams', {
         headers: { Authorization: `Bearer ${vercelToken}` },
       })
       const teamsBody = await teamsRes.json().catch(() => null)
       info.teams = (teamsBody as { teams?: { id: string; name: string; slug: string }[] })?.teams?.map(
         t => ({ id: t.id, name: t.name, slug: t.slug })
-      ) ?? 'error fetching teams'
+      ) ?? `error (${teamsRes.status})`
+
+      // List projects visible to this token (with teamId if set)
+      const listUrl = new URL('https://api.vercel.com/v9/projects')
+      if (vercelTeamId) listUrl.searchParams.set('teamId', vercelTeamId)
+      listUrl.searchParams.set('limit', '10')
+      const listRes = await fetch(listUrl.toString(), {
+        headers: { Authorization: `Bearer ${vercelToken}` },
+      })
+      const listBody = await listRes.json().catch(() => null)
+      info.visible_projects = (listBody as { projects?: { id: string; name: string }[] })?.projects?.map(
+        p => ({ id: p.id, name: p.name })
+      ) ?? `error (${listRes.status}): ${JSON.stringify(listBody)}`
     }
 
     return NextResponse.json({ ok: false, info })
