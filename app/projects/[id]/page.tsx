@@ -454,6 +454,48 @@ function syncNavigation(
   return pages
 }
 
+/** Checks whether any page's nav already contains a /blog link */
+function hasBlogNavLink(pages: Page[]): boolean {
+  return pages.some(p => /href=["']\.?\/blog["']/i.test(p.html))
+}
+
+/** Adds <a href="./blog">Blog</a> (wrapped in <li> if nav uses <li>) to all pages' navs */
+function addBlogLinkToNav(pages: Page[], label = 'Blog'): Page[] {
+  return pages.map(page => {
+    if (/href=["']\.?\/blog["']/i.test(page.html)) return page
+    // Try inserting before </ul> inside <nav>
+    if (/<nav[\s\S]*?<ul[\s\S]*?<\/ul>[\s\S]*?<\/nav>/i.test(page.html)) {
+      return {
+        ...page,
+        html: page.html.replace(
+          /(<nav[\s\S]*?<ul[\s\S]*?)(<\/ul>)/i,
+          (_, before, closing) => `${before}<li><a href="./blog">${label}</a></li>${closing}`
+        ),
+      }
+    }
+    // Fallback: insert before </nav>
+    return {
+      ...page,
+      html: page.html.replace(
+        /(<nav[\s\S]*?)(<\/nav>)/i,
+        (_, before, closing) => `${before}<a href="./blog">${label}</a>${closing}`
+      ),
+    }
+  })
+}
+
+/** Removes any nav link pointing to /blog from all pages */
+function removeBlogLinkFromNav(pages: Page[]): Page[] {
+  return pages.map(page => ({
+    ...page,
+    html: page.html
+      // Remove <li>...<a href="./blog">...</a>...</li>
+      .replace(/<li[^>]*>(?:\s*<[^>]+>)*\s*<a[^>]+href=["']\.?\/blog["'][^>]*>[^<]*<\/a>(?:\s*<\/[^>]+>)*\s*<\/li>/gi, '')
+      // Remove bare <a href="./blog">...</a>
+      .replace(/<a[^>]+href=["']\.?\/blog["'][^>]*>[^<]*<\/a>/gi, ''),
+  }))
+}
+
 /**
  * reorderNavLinks — after a drag-reorder, updates every page's <nav> so the
  * link order matches the new pages array order.
@@ -999,7 +1041,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }, [id])
 
   useEffect(() => {
-    if (viewMode === 'blog') loadBlogPosts()
+    if (viewMode !== 'blog') return
+    loadBlogPosts()
+    // Auto-aggiungi link Blog al menu se non presente
+    if (pages.length > 0 && !hasBlogNavLink(pages)) {
+      const lang = projectContext.language ?? 'it'
+      const label = lang === 'es' ? 'Blog' : lang === 'en' ? 'Blog' : 'Blog'
+      const updated = addBlogLinkToNav(pages, label)
+      setPages(updated)
+      saveState(messages, updated)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode])
 
@@ -2918,6 +2969,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, background: C.white }}>
                     <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Blog</h2>
                     <span style={{ fontSize: '0.78rem', color: C.textFaint }}>{blogPosts.length} {blogPosts.length === 1 ? 'articolo' : 'articoli'}</span>
+                    {/* Nav toggle */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+                      <button
+                        onClick={async () => {
+                          const inNav = hasBlogNavLink(pages)
+                          const updated = inNav ? removeBlogLinkFromNav(pages) : addBlogLinkToNav(pages, 'Blog')
+                          setPages(updated)
+                          await saveState(messages, updated)
+                        }}
+                        title={hasBlogNavLink(pages) ? 'Rimuovi dal menu di navigazione' : 'Aggiungi al menu di navigazione'}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '5px',
+                          background: hasBlogNavLink(pages) ? '#dcfce7' : C.bg,
+                          color: hasBlogNavLink(pages) ? '#166534' : C.textFaint,
+                          border: `1px solid ${hasBlogNavLink(pages) ? '#86efac' : C.border}`,
+                          borderRadius: '20px', padding: '3px 10px', fontSize: '0.72rem',
+                          fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.65rem' }}>{hasBlogNavLink(pages) ? '✓' : '+'}</span>
+                        Nel menu
+                      </button>
+                    </div>
                     <div style={{ flex: 1 }} />
                     <button
                       onClick={() => setShowBlogGenPrompt(v => !v)}
