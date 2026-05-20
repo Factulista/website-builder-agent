@@ -598,6 +598,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   } | null>(null)
   const [detectingRegistrar, setDetectingRegistrar] = useState(false)
   const [showManualDns, setShowManualDns] = useState(false)
+  const [removingDomain, setRemovingDomain] = useState(false)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const [mediaLoading, setMediaLoading] = useState(false)
   const [mediaSearch, setMediaSearch] = useState('')
@@ -1375,6 +1376,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       await handleAddCustomDomain(fakeEvent)
     } catch (err) { await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' }) }
     finally { setCfConfiguring(false) }
+  }
+
+  const handleRemoveDomain = async () => {
+    const confirmed = await confirmDialog({ title: 'Rimuovi dominio', message: `Vuoi rimuovere ${customDomain} da questo progetto? Il sito tornerà sul dominio di staging.`, confirmLabel: 'Rimuovi', variant: 'danger' })
+    if (!confirmed) return
+    setRemovingDomain(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      await fetch('/api/remove-custom-domain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ projectId: id }),
+      })
+      setCustomDomain('')
+      setCustomDomainStatus(null)
+      setDnsInstructions('')
+      setRegistrarInfo(null)
+      if (verifyIntervalRef.current) clearInterval(verifyIntervalRef.current)
+    } catch (err) { await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' }) }
+    finally { setRemovingDomain(false) }
   }
 
   useEffect(() => {
@@ -2565,9 +2587,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             {customDomainStatus === 'verified' ? (
               <>
                 <div style={{ marginBottom: '1rem', padding: '12px 14px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                  <p style={{ margin: '0 0 4px', fontSize: '0.75rem', color: C.textFaint }}>Dominio personalizzato</p>
-                  <p style={{ margin: '0 0 2px', fontSize: '0.85rem', fontFamily: 'monospace', color: C.text, fontWeight: 500 }}>{customDomain}</p>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#059669' }}>✓ Verificato e attivo</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <p style={{ margin: '0 0 4px', fontSize: '0.75rem', color: C.textFaint }}>Dominio personalizzato</p>
+                      <p style={{ margin: '0 0 2px', fontSize: '0.85rem', fontFamily: 'monospace', color: C.text, fontWeight: 500 }}>{customDomain}</p>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#059669' }}>✓ Verificato e attivo</p>
+                    </div>
+                    <button
+                      onClick={handleRemoveDomain}
+                      disabled={removingDomain}
+                      style={{ background: 'none', border: 'none', color: C.textFaint, cursor: 'pointer', fontSize: '0.75rem', padding: '2px 4px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {removingDomain ? '...' : '✏️ Cambia'}
+                    </button>
+                  </div>
                 </div>
                 <button
                   onClick={handlePublish}
@@ -2583,9 +2615,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </>
             ) : customDomainStatus === 'pending' ? (
               <div style={{ marginBottom: '1rem', padding: '12px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fde68a' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.75rem', color: C.textMuted }}>In attesa di verifica DNS</span>
-                  {verifying && <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>● Verifica automatica in corso...</span>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.75rem', color: C.textMuted }}>In attesa di verifica DNS</span>
+                    {verifying && <span style={{ fontSize: '0.7rem', color: '#f59e0b' }}>● Verifica in corso...</span>}
+                  </div>
+                  <button
+                    onClick={handleRemoveDomain}
+                    disabled={removingDomain}
+                    style={{ background: 'none', border: 'none', color: C.textFaint, cursor: 'pointer', fontSize: '0.75rem', padding: '2px 4px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {removingDomain ? '...' : '✏️ Cambia'}
+                  </button>
                 </div>
                 <p style={{ margin: '0 0 2px', fontSize: '0.85rem', fontFamily: 'monospace', color: C.text, fontWeight: 500 }}>{customDomain}</p>
                 <p style={{ margin: 0, fontSize: '0.75rem', color: '#92400e' }}>La verifica è automatica, può richiedere fino a 15 minuti</p>
