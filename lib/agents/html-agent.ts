@@ -289,42 +289,49 @@ CONTENUTO DISPONIBILE:
 - Meta description: ${pageContent?.metaDescription ?? ''}
 - Sezioni: ${JSON.stringify(pageContent?.sections ?? [])}
 
-PLACEHOLDER DA RIEMPIRE (restituisci JSON con esattamente queste chiavi):
+PLACEHOLDER DA RIEMPIRE (ti verrà detto in ogni chiamata quali riempire):
 ${JSON.stringify(keys)}`
 
-  const tools = [{
-    name: 'fill_placeholders',
-    description: 'Restituisce i valori per tutti i placeholder del template.',
-    input_schema: {
-      type: 'object' as const,
-      properties: Object.fromEntries(keys.map(k => [k, { type: 'string' }])),
-      required: keys,
-    },
-  }]
+  // Split keys into batches of 30 so each Claude call stays well within token limits
+  // (avoids the cut-off issue that leaves later {{placeholders}} unfilled)
+  const BATCH_SIZE = 30
+  const batches: string[][] = []
+  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+    batches.push(keys.slice(i, i + BATCH_SIZE))
+  }
 
-  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
-      system,
-      tools,
-      tool_choice: { type: 'any' },
-      messages: [{ role: 'user', content: userMessage }],
-    }),
-  }, 'html')
+  const callBatch = async (batchKeys: string[]): Promise<Record<string, string>> => {
+    const batchTools = [{
+      name: 'fill_placeholders',
+      description: 'Restituisce i valori per i placeholder del batch.',
+      input_schema: {
+        type: 'object' as const,
+        properties: Object.fromEntries(batchKeys.map(k => [k, { type: 'string' }])),
+        required: batchKeys,
+      },
+    }]
+    const batchMsg = `${userMessage}\n\nRiempi SOLO questi ${batchKeys.length} placeholder: ${JSON.stringify(batchKeys)}`
+    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2048,
+        system,
+        tools: batchTools,
+        tool_choice: { type: 'any' },
+        messages: [{ role: 'user', content: batchMsg }],
+      }),
+    }, 'html')
+    if (!res.ok) throw new Error(`HTML Template Agent error: ${await res.text()}`)
+    const data = await res.json()
+    const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+    return toolUse ? (toolUse.input as Record<string, string>) : {}
+  }
 
-  if (!res.ok) throw new Error(`HTML Template Agent error: ${await res.text()}`)
-  const data = await res.json()
-  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
-  if (!toolUse) throw new Error('No tool use in HTML template response')
-
-  const values = toolUse.input as Record<string, string>
+  // Run all batches in parallel
+  const batchResults = await Promise.all(batches.map(callBatch))
+  const values = Object.assign({}, ...batchResults) as Record<string, string>
 
   // Fill the template server-side — no token cost
   const { applyPlaceholders } = await import('../templates/index')
