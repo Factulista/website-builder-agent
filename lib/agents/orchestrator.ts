@@ -90,6 +90,8 @@ export function classify(userMessage: string, hasPages: boolean): AgentType {
   const lower = userMessage.toLowerCase()
   // Nessun sito esistente → pipeline sempre
   if (!hasPages) return 'pipeline'
+  // Template esplicito menzionato → pipeline sempre (il template richiede create_site, non edit_page)
+  if (detectExplicitTemplate(userMessage)) return 'pipeline'
   // Sito esistente → pipeline SOLO se la richiesta è esplicitamente di creazione/aggiunta pagina
   if (CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
   // Modifica sito — classifica ulteriormente quale tipo
