@@ -36,7 +36,9 @@ export const TEMPLATE_REGISTRY: Template[] = [
 
 export const TEMPLATE_MAP: Record<string, string[]> = {
   // saas (dark) → startup tech generiche, piattaforme, no fatturazione specifica
-  saas: ['saas', 'software', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'crm', 'erp', 'gestionale'],
+  // NON includere "software" e "gestionale" — troppo generici, compaiono anche in prompt di fatturazione
+  // e causano falsi pareggi con saas2 quando il planner restituisce "Gestionale SaaS" come businessType
+  saas: ['saas', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'crm', 'erp'],
   // saas2 (light) → prodotti di fatturazione/contabilità per business, autonomos, pyme
   saas2: [
     'billing', 'contabilità', 'accounting', 'fintech', 'enterprise saas', 'b2b saas', 'gestionale cloud', 'erp cloud',
