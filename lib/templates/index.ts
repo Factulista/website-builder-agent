@@ -18,28 +18,26 @@ const TEMPLATES: Record<string, string> = {
 export const TEMPLATE_REGISTRY: Template[] = [
   {
     id: 'saas',
-    name: 'SaaS / Software — Dark',
-    sector: 'SaaS',
-    description: 'Template dark per applicazioni web, piattaforme SaaS, software e startup tech. Hero scuro, palette navy, design minimale.',
+    name: 'Tech / Software Generico — Dark',
+    sector: 'Tech',
+    description: 'Template dark per startup tech, app, piattaforme SaaS generiche, CRM, ERP. Hero scuro, palette navy, design minimale e moderno.',
     html: SAAS_TEMPLATE,
-    keywords: ['saas', 'software', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'fatturazione', 'invoicing', 'crm', 'erp', 'gestionale'],
+    keywords: ['saas', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'crm', 'erp'],
   },
   {
     id: 'saas2',
-    name: 'SaaS / Software — Light',
-    sector: 'SaaS',
-    description: 'Template light per SaaS e prodotti tech. Hero bianco con gradiente, sezione comparazione modalità, griglia 9 feature, pricing 2 piani, form contatto. Ispirato a factulista.com.',
+    name: 'Fatturazione / Contabilità — Light',
+    sector: 'Fintech',
+    description: 'Template light per software di fatturazione, contabilità e gestione finanziaria. Hero bianco, comparazione modalità, 9 feature, pricing, form contatto.',
     html: SAAS2_TEMPLATE,
-    keywords: ['saas light', 'software light', 'gestionale', 'billing', 'invoicing light', 'b2b saas', 'fintech', 'enterprise', 'contabilità', 'accounting', 'erp light', 'crm light'],
+    keywords: ['fatturazione', 'invoicing', 'billing', 'contabilità', 'accounting', 'fintech', 'autonomos', 'pyme', 'partita iva', 'piccole imprese'],
   },
 ]
 
 export const TEMPLATE_MAP: Record<string, string[]> = {
-  // saas (dark) → startup tech generiche, piattaforme, no fatturazione specifica
-  // NON includere "software" e "gestionale" — troppo generici, compaiono anche in prompt di fatturazione
-  // e causano falsi pareggi con saas2 quando il planner restituisce "Gestionale SaaS" come businessType
+  // saas → startup tech generiche, piattaforme, app, CRM/ERP senza focus fatturazione
   saas: ['saas', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'crm', 'erp'],
-  // saas2 (light) → prodotti di fatturazione/contabilità per business, autonomos, pyme
+  // saas2 → software di fatturazione/contabilità per business, autonomos, pyme (IT/ES/PT)
   saas2: [
     'billing', 'contabilità', 'accounting', 'fintech', 'enterprise saas', 'b2b saas', 'gestionale cloud', 'erp cloud',
     'fatturazione', 'fatture', 'invoicing', 'invoice',
