@@ -1023,6 +1023,65 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const FRIENDLY_ERROR = 'Qualcosa è andato storto durante l\'elaborazione. Le tue modifiche al sito sono al sicuro — puoi riprovare con lo stesso messaggio.'
 
+  /**
+   * Apply a single find/replace edit with smart fallbacks:
+   * 1. Exact string match
+   * 2. Whitespace-normalized match (handles line-break / indent differences)
+   * 3. Image src swap: if find contains <img and a src="...", replace only that src
+   * Returns [newHtml, applied: boolean]
+   */
+  const applyEdit = (html: string, find: string, replace: string): [string, boolean] => {
+    // 1. Exact match
+    if (html.includes(find)) return [html.replace(find, replace), true]
+
+    // 2. Whitespace-normalized match
+    const normalize = (s: string) => s.replace(/\s+/g, ' ').trim()
+    const normHtml = normalize(html)
+    const normFind = normalize(find)
+    if (normHtml.includes(normFind)) {
+      // Rebuild: find the actual substring in original html by locating surrounding anchors
+      const idx = normHtml.indexOf(normFind)
+      // Map normalized index back to original (approximate — good enough for most cases)
+      let origIdx = 0, normIdx = 0
+      while (normIdx < idx && origIdx < html.length) {
+        if (html[origIdx].match(/\s/) && (origIdx === 0 || html[origIdx - 1].match(/\s/))) { origIdx++; continue }
+        origIdx++; normIdx++
+      }
+      // Find the end of the match in original
+      let origEnd = origIdx, normEnd = normIdx
+      while (normEnd < normIdx + normFind.length && origEnd < html.length) {
+        if (html[origEnd].match(/\s/) && (origEnd === 0 || html[origEnd - 1].match(/\s/))) { origEnd++; continue }
+        origEnd++; normEnd++
+      }
+      return [html.slice(0, origIdx) + replace + html.slice(origEnd), true]
+    }
+
+    // 3. Image src swap: extract old src from find, new src from replace, swap in html
+    const imgSrcRe = /src=["']([^"']+)["']/
+    if (find.includes('<img') && replace.includes('<img')) {
+      const oldSrc = find.match(imgSrcRe)?.[1]
+      const newSrc = replace.match(imgSrcRe)?.[1]
+      if (oldSrc && newSrc && html.includes(oldSrc)) {
+        return [html.split(oldSrc).join(newSrc), true]
+      }
+      // Also handle background-image / CSS url() in style attributes
+      const oldUrl = find.match(/url\(["']?([^"')]+)["']?\)/)?.[1]
+      const newUrl = replace.match(/url\(["']?([^"')]+)["']?\)/)?.[1]
+      if (oldUrl && newUrl && html.includes(oldUrl)) {
+        return [html.split(oldUrl).join(newUrl), true]
+      }
+    }
+
+    // 4. src-only swap even without <img context (background-image, video poster, etc.)
+    const oldSrc = find.match(imgSrcRe)?.[1]
+    const newSrc = replace.match(imgSrcRe)?.[1]
+    if (oldSrc && newSrc && html.includes(oldSrc)) {
+      return [html.split(oldSrc).join(newSrc), true]
+    }
+
+    return [html, false]
+  }
+
   const handleSend = async (e: React.FormEvent, retryOverride?: { input: string; images: string[] }) => {
     e.preventDefault()
     const effectiveInput = retryOverride?.input ?? input
@@ -1209,7 +1268,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (p.slug !== targetSlug) return p
         let html = p.html
         for (const edit of edits) {
-          if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
+          const [next, applied] = applyEdit(html, edit.find, edit.replace)
+          if (applied) html = next
           else skipped++
         }
         return { ...p, html }
@@ -1240,7 +1300,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (!seoPage) return p
         let html = p.html
         for (const edit of seoPage.edits) {
-          if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
+          const [next, applied] = applyEdit(html, edit.find, edit.replace)
+          if (applied) html = next
           else skipped++
         }
         return { ...p, html }
