@@ -7,7 +7,18 @@ import { runImagesAgent } from './images-agent'
 import { runAccessibilityAgent } from './accessibility-agent'
 import { runMemoryAgent, type ProjectContext } from './memory-agent'
 import { analyzeSite, extractUrls, type DesignBrief } from './site-analyzer'
-import { detectTemplate, loadTemplate } from '../templates/index'
+import { detectTemplate, loadTemplate, TEMPLATE_REGISTRY } from '../templates/index'
+
+/** Rileva se l'utente menziona esplicitamente un template per ID (es: "saas2", "usa il template saas") */
+function detectExplicitTemplate(userMessage: string): string | null {
+  const lower = userMessage.toLowerCase()
+  // Ordina per lunghezza decrescente così "saas2" viene trovato prima di "saas"
+  const ids = [...TEMPLATE_REGISTRY].sort((a, b) => b.id.length - a.id.length).map(t => t.id)
+  for (const id of ids) {
+    if (lower.includes(id)) return id
+  }
+  return null
+}
 
 type Page = { slug: string; name: string; html: string }
 
@@ -200,8 +211,9 @@ export async function runFullPipeline(
   if (!content?.pages) throw new Error('Content agent non ha prodotto contenuti validi')
   if (!design?.tokens) throw new Error('Design agent non ha prodotto un design valido')
 
-  // Step 3: HTML — usa template SOLO alla prima run, altrimenti genera dal design system
-  const templateName = existingPages.length === 0 ? detectTemplate(plan.businessType) : null
+  // Step 3: HTML — usa template se: (a) richiesto esplicitamente per ID, (b) prima run con business type matching
+  const explicitTemplate = detectExplicitTemplate(userRequest)
+  const templateName = explicitTemplate ?? (existingPages.length === 0 ? detectTemplate(plan.businessType) : null)
   const templateHtml = templateName ? loadTemplate(templateName) : null
 
   emit?.('🏗️ HTML')
