@@ -236,6 +236,32 @@ Schema: ${p.schemaOrg ?? 'nessuno'}
   return toolUse.input as { pages: Page[]; summary: string }
 }
 
+/**
+ * Compresses a template for Claude: strips <style> blocks (big) and collapses whitespace.
+ * Returns { skeleton, styleBlocks } so the original CSS can be re-injected after Claude fills
+ * in the {{placeholders}} — keeping the full design without sending it as tokens.
+ */
+function compressTemplate(html: string): { skeleton: string; styleBlocks: string } {
+  const styleBlocks: string[] = []
+  const skeleton = html
+    .replace(/<style[\s\S]*?<\/style>/gi, () => {
+      styleBlocks.push(...(html.match(/<style[\s\S]*?<\/style>/gi) ?? []))
+      return '<style>/* preserved */</style>'
+    })
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  // De-dupe in case the global match runs multiple times; just collect all style blocks once
+  const allStyles = (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
+  return { skeleton, styleBlocks: allStyles }
+}
+
+/** Re-injects the original CSS blocks into Claude's filled HTML output. */
+function restoreStyles(filledHtml: string, styleBlocks: string): string {
+  if (!styleBlocks) return filledHtml
+  return filledHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/i, styleBlocks)
+}
+
 export async function runHtmlAgentFromTemplate(
   userRequest: string,
   plan: import('./planner').SitePlan,
@@ -246,33 +272,31 @@ export async function runHtmlAgentFromTemplate(
 ) {
   const pageContent = content.pages[0]
 
-  const system = `Sei un esperto sviluppatore HTML. Ricevi un template HTML con placeholder {{chiave}} e devi sostituirli con i contenuti forniti.
+  // Strip CSS from template before sending to Claude — reduces input from ~50KB to ~5KB.
+  // The original styles are re-injected after Claude fills in the {{placeholders}}.
+  const { skeleton, styleBlocks } = compressTemplate(templateHtml)
+
+  const system = `Sei un esperto sviluppatore HTML. Ricevi uno scheletro HTML con placeholder {{chiave}} (il CSS è stato rimosso per brevità e verrà reinserito automaticamente) e devi sostituire i placeholder con i contenuti forniti.
 
 REGOLE:
 - Sostituisci TUTTI i placeholder {{...}} con i valori appropriati dal contenuto fornito.
-- Adatta il colore primario (var(--accent)) a: ${design.tokens?.colors?.primary ?? '#6366f1'}
-- Adatta i font al design fornito.
+- NON aggiungere o modificare CSS — il blocco <style> verrà ripristinato automaticamente.
 - Usa ESCLUSIVAMENTE i testi forniti — non inventarne altri.
-- Restituisci l'HTML completo con tutti i placeholder sostituiti.
-- Per i placeholder senza valore diretto (es: loghi, testimonial), usa valori plausibili coerenti col brand.`
+- Restituisci l'HTML con tutti i placeholder sostituiti e la struttura intatta.
+- Per i placeholder senza valore diretto (es: testimonial, numeri statistiche), usa valori plausibili coerenti col brand.`
 
-  const userMessage = `Richiesta originale: ${userRequest}
+  const userMessage = `Richiesta: ${userRequest}
 
-CONTENUTO DA USARE:
+CONTENUTO:
 App name: ${plan.businessType}
 Title: ${pageContent?.title ?? ''}
 H1: ${pageContent?.h1 ?? ''}
 Meta: ${pageContent?.metaDescription ?? ''}
+Lingua del sito: ${plan.pages[0]?.slug ?? 'home'}
 Sezioni: ${JSON.stringify(pageContent?.sections ?? [])}
-Lingua: ${plan.pages[0]?.slug ?? 'home'}
 
-DESIGN:
-Colore primario: ${design.tokens?.colors?.primary ?? '#6366f1'}
-Font heading: ${design.tokens?.fonts?.heading ?? 'Inter'}
-CSS aggiuntivo: ${design.css?.slice(0, 500) ?? ''}
-
-TEMPLATE DA RIEMPIRE:
-${templateHtml}`
+SCHELETRO TEMPLATE (CSS rimosso, verrà reinserito):
+${skeleton}`
 
   const tools = [{
     name: 'create_site',
@@ -303,15 +327,12 @@ ${templateHtml}`
     headers: {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'prompt-caching-2024-07-31',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 16384,
-      system: [
-        { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
-      ],
+      max_tokens: 8192,
+      system,
       tools,
       tool_choice: { type: 'any' },
       messages: [{ role: 'user', content: userMessage }],
@@ -322,7 +343,16 @@ ${templateHtml}`
   const data = await res.json()
   const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
   if (!toolUse) throw new Error('No tool use in HTML template response')
-  return toolUse.input as { pages: Page[]; summary: string }
+
+  const result = toolUse.input as { pages: Page[]; summary: string }
+
+  // Re-inject original CSS into each generated page
+  result.pages = result.pages.map(p => ({
+    ...p,
+    html: restoreStyles(p.html, styleBlocks),
+  }))
+
+  return result
 }
 
 export async function runHtmlAgent(
