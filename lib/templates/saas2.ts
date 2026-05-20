@@ -1379,14 +1379,14 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 <section class="comparison" id="modes">
   <div class="container">
     <div class="section-header center">
-      <span class="section-label">Due modalità</span>
-      <h2 class="section-title">Scegli come lavorare</h2>
-      <p class="section-sub">Adatta {{company_name}} al tuo flusso di lavoro. Due modalità pensate per esigenze diverse.</p>
+      <span class="section-label">{{section_modes_label}}</span>
+      <h2 class="section-title">{{section_modes_title}}</h2>
+      <p class="section-sub">{{section_modes_sub}}</p>
     </div>
     <div class="comparison-grid">
       <!-- Card 1: Featured -->
       <div class="comparison-card featured">
-        <div class="card-recommended">Consigliato</div>
+        <div class="card-recommended">{{recommended_badge}}</div>
         <div class="comparison-icon accent-bg">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
@@ -1467,9 +1467,9 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 <section class="features" id="features">
   <div class="container">
     <div class="section-header center">
-      <span class="section-label">Funzionalità</span>
-      <h2 class="section-title">Tutto ciò di cui hai bisogno</h2>
-      <p class="section-sub">Strumenti potenti e intuitivi progettati per semplificare ogni aspetto della tua gestione.</p>
+      <span class="section-label">{{section_features_label}}</span>
+      <h2 class="section-title">{{section_features_title}}</h2>
+      <p class="section-sub">{{section_features_sub}}</p>
     </div>
 
     <div class="features-grid">
@@ -1561,9 +1561,9 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 <section class="pricing" id="pricing">
   <div class="container">
     <div class="section-header center">
-      <span class="section-label">Prezzi</span>
-      <h2 class="section-title">Semplice e trasparente</h2>
-      <p class="section-sub">Inizia gratis, scala quando sei pronto. Nessun costo nascosto.</p>
+      <span class="section-label">{{section_pricing_label}}</span>
+      <h2 class="section-title">{{section_pricing_title}}</h2>
+      <p class="section-sub">{{section_pricing_sub}}</p>
     </div>
 
     <div class="pricing-grid">
@@ -1582,7 +1582,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
           <li class="excluded"><span class="pf-icon">–</span> {{plan_free_4}}</li>
           <li class="excluded"><span class="pf-icon">–</span> {{plan_free_5}}</li>
         </ul>
-        <a href="#" class="btn-outline">Inizia gratis</a>
+        <a href="#" class="btn-outline">{{cta_free}}</a>
       </div>
 
       <!-- PRO Plan -->
@@ -1626,9 +1626,9 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     <div class="contact-wrap">
       <!-- Left: info -->
       <div class="contact-info">
-        <span class="section-label">Contatti</span>
-        <h2 class="section-title" style="margin-bottom:14px;">Parliamo del tuo progetto</h2>
-        <p>Hai domande su {{company_name}}? Il nostro team è a tua disposizione per aiutarti a trovare la soluzione giusta.</p>
+        <span class="section-label">{{section_contact_label}}</span>
+        <h2 class="section-title" style="margin-bottom:14px;">{{section_contact_title}}</h2>
+        <p>{{section_contact_desc}}</p>
 
         <div class="contact-detail">
           <div class="contact-detail-icon">
@@ -1641,14 +1641,14 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
           <div class="contact-detail-icon">
             <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
           </div>
-          <span class="contact-detail-text">+39 02 1234 5678</span>
+          <span class="contact-detail-text">{{contact_phone}}</span>
         </div>
 
         <div class="contact-detail">
           <div class="contact-detail-icon">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-          <span class="contact-detail-text">Risposta entro 24 ore lavorative</span>
+          <span class="contact-detail-text">{{contact_response_time}}</span>
         </div>
       </div>
 
@@ -1657,23 +1657,23 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
         <form action="#" method="post" novalidate>
           <div class="form-row">
             <div class="form-group">
-              <label for="contact-name">Nome e Cognome</label>
-              <input type="text" id="contact-name" name="name" placeholder="Mario Rossi" autocomplete="name">
+              <label for="contact-name">{{form_name_label}}</label>
+              <input type="text" id="contact-name" name="name" placeholder="{{form_name_placeholder}}" autocomplete="name">
             </div>
             <div class="form-group">
               <label for="contact-email">Email</label>
-              <input type="email" id="contact-email" name="email" placeholder="mario@azienda.it" autocomplete="email">
+              <input type="email" id="contact-email" name="email" placeholder="{{form_email_placeholder}}" autocomplete="email">
             </div>
           </div>
           <div class="form-group">
-            <label for="contact-company">Azienda</label>
-            <input type="text" id="contact-company" name="company" placeholder="Nome azienda" autocomplete="organization">
+            <label for="contact-company">{{form_company_label}}</label>
+            <input type="text" id="contact-company" name="company" placeholder="{{form_company_placeholder}}" autocomplete="organization">
           </div>
           <div class="form-group">
-            <label for="contact-message">Messaggio</label>
-            <textarea id="contact-message" name="message" placeholder="Descrivi la tua esigenza..."></textarea>
+            <label for="contact-message">{{form_message_label}}</label>
+            <textarea id="contact-message" name="message" placeholder="{{form_message_placeholder}}"></textarea>
           </div>
-          <button type="submit" class="btn-submit">Invia messaggio</button>
+          <button type="submit" class="btn-submit">{{form_submit_label}}</button>
         </form>
       </div>
     </div>
@@ -1712,9 +1712,9 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       <ul class="footer-links">
         <li><a href="#features">{{nav_link_1}}</a></li>
         <li><a href="#pricing">{{nav_link_2}}</a></li>
-        <li><a href="#modes">Modalità</a></li>
-        <li><a href="#">Documentazione</a></li>
-        <li><a href="#">Changelog</a></li>
+        <li><a href="#modes">{{footer_modes_link}}</a></li>
+        <li><a href="#">{{footer_docs_link}}</a></li>
+        <li><a href="#">{{footer_changelog_link}}</a></li>
       </ul>
     </div>
 
@@ -1722,11 +1722,11 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     <div class="footer-col">
       <h5>{{footer_col2_title}}</h5>
       <ul class="footer-links">
-        <li><a href="#">Chi siamo</a></li>
+        <li><a href="#">{{footer_about_link}}</a></li>
         <li><a href="#">Blog</a></li>
-        <li><a href="#">Lavora con noi</a></li>
+        <li><a href="#">{{footer_careers_link}}</a></li>
         <li><a href="#contact">{{nav_link_3}}</a></li>
-        <li><a href="#">Partner</a></li>
+        <li><a href="#">{{footer_partner_link}}</a></li>
       </ul>
     </div>
 
@@ -1735,19 +1735,19 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       <h5>{{footer_col3_title}}</h5>
       <ul class="footer-links">
         <li><a href="#">Privacy Policy</a></li>
-        <li><a href="#">Termini di servizio</a></li>
+        <li><a href="#">{{footer_terms_link}}</a></li>
         <li><a href="#">Cookie Policy</a></li>
         <li><a href="#">GDPR</a></li>
-        <li><a href="#">Sicurezza</a></li>
+        <li><a href="#">{{footer_security_link}}</a></li>
       </ul>
     </div>
   </div>
 
   <div class="footer-bottom">
-    <p>&copy; 2025 {{company_name}}. Tutti i diritti riservati.</p>
+    <p>&copy; 2025 {{company_name}}. {{footer_rights}}</p>
     <div class="footer-bottom-links">
       <a href="#">Privacy</a>
-      <a href="#">Termini</a>
+      <a href="#">{{footer_terms_short}}</a>
       <a href="#">Cookie</a>
     </div>
   </div>
