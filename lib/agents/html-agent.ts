@@ -237,88 +237,68 @@ Schema: ${p.schemaOrg ?? 'nessuno'}
 }
 
 /**
- * Compresses a template for Claude: strips <style> blocks (big) and collapses whitespace.
- * Returns { skeleton, styleBlocks } so the original CSS can be re-injected after Claude fills
- * in the {{placeholders}} — keeping the full design without sending it as tokens.
+ * Extracts all {{placeholder}} keys from a template string.
  */
-function compressTemplate(html: string): { skeleton: string; styleBlocks: string } {
-  const styleBlocks: string[] = []
-  const skeleton = html
-    .replace(/<style[\s\S]*?<\/style>/gi, () => {
-      styleBlocks.push(...(html.match(/<style[\s\S]*?<\/style>/gi) ?? []))
-      return '<style>/* preserved */</style>'
-    })
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  // De-dupe in case the global match runs multiple times; just collect all style blocks once
-  const allStyles = (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
-  return { skeleton, styleBlocks: allStyles }
+function extractPlaceholderKeys(html: string): string[] {
+  const matches = html.match(/\{\{([^}]+)\}\}/g) ?? []
+  return [...new Set(matches.map(m => m.slice(2, -2)))]
 }
 
-/** Re-injects the original CSS blocks into Claude's filled HTML output. */
-function restoreStyles(filledHtml: string, styleBlocks: string): string {
-  if (!styleBlocks) return filledHtml
-  return filledHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/i, styleBlocks)
-}
-
+/**
+ * runHtmlAgentFromTemplate — fills a template with content via placeholder mapping.
+ *
+ * Strategy (token-efficient):
+ * 1. Extract the list of {{placeholder}} keys from the template (no Claude needed).
+ * 2. Ask Claude to return ONLY a JSON mapping key→value (output < 2 KB regardless of template size).
+ * 3. Fill the template server-side with applyPlaceholders() — no token cost for the HTML itself.
+ *
+ * This avoids the 50 KB template ever being sent to or returned from Claude.
+ */
 export async function runHtmlAgentFromTemplate(
   userRequest: string,
   plan: import('./planner').SitePlan,
   content: import('./content-agent').ContentOutput,
   design: import('./design-agent').DesignOutput,
   templateHtml: string,
-  apiKey: string
+  apiKey: string,
+  language = 'it'
 ) {
   const pageContent = content.pages[0]
+  const keys = extractPlaceholderKeys(templateHtml)
 
-  // Strip CSS from template before sending to Claude — reduces input from ~50KB to ~5KB.
-  // The original styles are re-injected after Claude fills in the {{placeholders}}.
-  const { skeleton, styleBlocks } = compressTemplate(templateHtml)
-
-  const system = `Sei un esperto sviluppatore HTML. Ricevi uno scheletro HTML con placeholder {{chiave}} (il CSS è stato rimosso per brevità e verrà reinserito automaticamente) e devi sostituire i placeholder con i contenuti forniti.
+  const system = `Sei un esperto copywriter e SEO specialist. Ricevi una lista di placeholder da riempire per un sito web e devi restituire SOLO un oggetto JSON con i valori appropriati.
 
 REGOLE:
-- Sostituisci TUTTI i placeholder {{...}} con i valori appropriati dal contenuto fornito.
-- NON aggiungere o modificare CSS — il blocco <style> verrà ripristinato automaticamente.
-- Usa ESCLUSIVAMENTE i testi forniti — non inventarne altri.
-- Restituisci l'HTML con tutti i placeholder sostituiti e la struttura intatta.
-- Per i placeholder senza valore diretto (es: testimonial, numeri statistiche), usa valori plausibili coerenti col brand.`
+- Restituisci ESCLUSIVAMENTE JSON valido — nessun testo aggiuntivo, nessun markdown.
+- Usa SOLO i testi forniti nel contenuto; dove mancano (es: feature extra, piani pricing), inventa valori plausibili coerenti col brand e nella lingua indicata.
+- I valori devono essere brevi e adatti all'UI (titoli ≤ 60 car, descrizioni ≤ 120 car).
+- primary_color: usa il colore CSS fornito (es: "#4f46e5").
+- lang: codice ISO 639-1 della lingua (es: "es", "it", "en").
+- canonical_url: lascia "#".
+- company_name_initial: prima lettera maiuscola del nome azienda.
+- company_name_lower: nome azienda in minuscolo.`
 
-  const userMessage = `Richiesta: ${userRequest}
+  const userMessage = `Richiesta originale: ${userRequest}
 
-CONTENUTO:
-App name: ${plan.businessType}
-Title: ${pageContent?.title ?? ''}
-H1: ${pageContent?.h1 ?? ''}
-Meta: ${pageContent?.metaDescription ?? ''}
-Lingua del sito: ${plan.pages[0]?.slug ?? 'home'}
-Sezioni: ${JSON.stringify(pageContent?.sections ?? [])}
+CONTENUTO DISPONIBILE:
+- Business type: ${plan.businessType}
+- Lingua: ${language}
+- Primary color: ${design.tokens?.colors?.primary ?? '#4f46e5'}
+- Page title: ${pageContent?.title ?? ''}
+- H1: ${pageContent?.h1 ?? ''}
+- Meta description: ${pageContent?.metaDescription ?? ''}
+- Sezioni: ${JSON.stringify(pageContent?.sections ?? [])}
 
-SCHELETRO TEMPLATE (CSS rimosso, verrà reinserito):
-${skeleton}`
+PLACEHOLDER DA RIEMPIRE (restituisci JSON con esattamente queste chiavi):
+${JSON.stringify(keys)}`
 
   const tools = [{
-    name: 'create_site',
-    description: 'Ritorna le pagine HTML con i placeholder sostituiti.',
+    name: 'fill_placeholders',
+    description: 'Restituisce i valori per tutti i placeholder del template.',
     input_schema: {
       type: 'object' as const,
-      properties: {
-        pages: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              slug: { type: 'string' },
-              name: { type: 'string' },
-              html: { type: 'string' },
-            },
-            required: ['slug', 'name', 'html'],
-          },
-        },
-        summary: { type: 'string' },
-      },
-      required: ['pages', 'summary'],
+      properties: Object.fromEntries(keys.map(k => [k, { type: 'string' }])),
+      required: keys,
     },
   }]
 
@@ -331,7 +311,7 @@ ${skeleton}`
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
+      max_tokens: 2048,
       system,
       tools,
       tool_choice: { type: 'any' },
@@ -344,15 +324,16 @@ ${skeleton}`
   const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
   if (!toolUse) throw new Error('No tool use in HTML template response')
 
-  const result = toolUse.input as { pages: Page[]; summary: string }
+  const values = toolUse.input as Record<string, string>
 
-  // Re-inject original CSS into each generated page
-  result.pages = result.pages.map(p => ({
-    ...p,
-    html: restoreStyles(p.html, styleBlocks),
-  }))
+  // Fill the template server-side — no token cost
+  const { applyPlaceholders } = await import('../templates/index')
+  const filledHtml = applyPlaceholders(templateHtml, values)
 
-  return result
+  return {
+    pages: [{ slug: 'home', name: pageContent?.title ?? 'Home', html: filledHtml }],
+    summary: `Sito creato dal template con design personalizzato per ${values.company_name ?? plan.businessType}`,
+  }
 }
 
 export async function runHtmlAgent(

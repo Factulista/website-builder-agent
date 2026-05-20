@@ -273,7 +273,7 @@ export async function runFullPipeline(
   emit?.('🏗️ HTML')
   const existingPagesMeta = existingPages.map(p => ({ slug: p.slug, name: p.name }))
   const htmlOutput = templateHtml
-    ? await runHtmlAgentFromTemplate(userRequest, plan, content, design, templateHtml, apiKey)
+    ? await runHtmlAgentFromTemplate(userRequest, plan, content, design, templateHtml, apiKey, activeContext.language ?? 'it')
     : await runHtmlAgentWithPlan(userRequest, plan, content, design, apiKey, existingPagesMeta)
   if (!htmlOutput?.pages?.length) throw new Error('HTML agent non ha generato pagine valide')
 
