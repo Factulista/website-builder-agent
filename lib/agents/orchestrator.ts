@@ -12,6 +12,11 @@ import { detectTemplate, loadTemplate, TEMPLATE_REGISTRY } from '../templates/in
 /** Rileva se l'utente menziona esplicitamente un template per ID (es: "saas2", "usa il template saas") */
 function detectExplicitTemplate(userMessage: string): string | null {
   const lower = userMessage.toLowerCase()
+  // Richiede un segnale d'intento esplicito (es: "usa template saas2", "con il template saas")
+  // Non deve matchare quando l'ID appare in una descrizione generica (es: "software saas")
+  const INTENT_PREFIXES = ['template', 'usa il', 'usa template', 'con template', 'con il template', 'applica template', 'applica il template', 'rifai con', 'rifare con', 'using template']
+  const hasIntent = INTENT_PREFIXES.some(p => lower.includes(p))
+  if (!hasIntent) return null
   // Ordina per lunghezza decrescente così "saas2" viene trovato prima di "saas"
   const ids = [...TEMPLATE_REGISTRY].sort((a, b) => b.id.length - a.id.length).map(t => t.id)
   for (const id of ids) {

@@ -35,8 +35,16 @@ export const TEMPLATE_REGISTRY: Template[] = [
 ]
 
 export const TEMPLATE_MAP: Record<string, string[]> = {
-  saas: ['saas', 'software', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'fatturazione', 'invoicing', 'crm', 'erp', 'gestionale'],
-  saas2: ['billing', 'contabilità', 'accounting', 'fintech', 'enterprise saas', 'b2b saas', 'gestionale cloud', 'erp cloud'],
+  // saas (dark) → startup tech generiche, piattaforme, no fatturazione specifica
+  saas: ['saas', 'software', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'crm', 'erp', 'gestionale'],
+  // saas2 (light) → prodotti di fatturazione/contabilità per business, autonomos, pyme
+  saas2: [
+    'billing', 'contabilità', 'accounting', 'fintech', 'enterprise saas', 'b2b saas', 'gestionale cloud', 'erp cloud',
+    'fatturazione', 'fatture', 'invoicing', 'invoice',
+    'autonomos', 'autonomi', 'pyme', 'piccole imprese', 'partita iva',
+    'fatturación', 'factura', 'facturas', 'facturación electrónica',
+    'contabilidad', 'gestoría', 'asesoría fiscal',
+  ],
 }
 
 export function detectTemplate(businessType: string): string | null {
