@@ -1077,15 +1077,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const loadBlogPosts = useCallback(async () => {
     setBlogLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token
-    if (!token) { setBlogLoading(false); return }
-    const res = await fetch(`/api/blog-posts?projectId=${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const json = await res.json()
-    setBlogPosts(json.posts ?? [])
-    setBlogLoading(false)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) { setBlogLoading(false); return }
+      const res = await fetch(`/api/blog-posts?projectId=${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      setBlogPosts(json.posts ?? [])
+    } catch (e) {
+      console.error('loadBlogPosts error:', e)
+    } finally {
+      setBlogLoading(false)
+    }
   }, [id])
 
   useEffect(() => {
