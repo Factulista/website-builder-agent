@@ -16,6 +16,20 @@ type Message = { id: string; role: 'user' | 'assistant'; content: string; images
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
+
+/** Converts a title to a URL-safe slug: lowercase, no accents, words joined by "-" */
+function slugify(text: string): string {
+  return text
+    .normalize('NFD')                        // decompose accented chars (è → e + ̀)
+    .replace(/[̀-ͯ]/g, '')         // strip combining diacritical marks
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')           // keep only letters, digits, spaces, hyphens
+    .trim()
+    .replace(/[\s]+/g, '-')                  // spaces → hyphens
+    .replace(/-+/g, '-')                     // collapse multiple hyphens
+    .replace(/^-|-$/g, '')                   // trim leading/trailing hyphens
+}
+
 function buildInlineEditScript(pages: { slug: string; name: string }[]) {
   // Build the pages data to embed in the script
   const pagesJson = JSON.stringify(
@@ -2933,7 +2947,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
             const createPost = async () => {
               const title = 'Nuovo articolo'
-              const slug = `articolo-${Date.now()}`
+              const slug = `${slugify(title)}-${Date.now().toString().slice(-6)}`
               const { data: { session } } = await supabase.auth.getSession()
               const token = session?.access_token
               if (!token) return
@@ -3208,22 +3222,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                   {/* Meta panel */}
                   <div style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', background: C.white }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Titolo</label>
-                      <input
-                        defaultValue={post.title}
-                        onBlur={e => saveMeta(post.id, { title: e.target.value.trim() || post.title })}
-                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug URL</label>
-                      <input
-                        defaultValue={post.slug}
-                        onBlur={e => saveMeta(post.id, { slug: e.target.value.trim() || post.slug })}
-                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.75rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const }}
-                      />
-                    </div>
+                    {(() => {
+                      const slugInputRef = { current: null as HTMLInputElement | null }
+                      const slugEditedRef = { current: false }
+                      return (<>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Titolo</label>
+                          <input
+                            defaultValue={post.title}
+                            onBlur={e => {
+                              const newTitle = e.target.value.trim() || post.title
+                              saveMeta(post.id, { title: newTitle })
+                              // Auto-update slug from title if user hasn't manually edited it
+                              if (!slugEditedRef.current && slugInputRef.current) {
+                                const newSlug = slugify(newTitle) || post.slug
+                                slugInputRef.current.value = newSlug
+                                saveMeta(post.id, { slug: newSlug })
+                              }
+                            }}
+                            style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug URL</label>
+                          <input
+                            ref={el => { slugInputRef.current = el }}
+                            defaultValue={post.slug}
+                            onChange={() => { slugEditedRef.current = true }}
+                            onBlur={e => {
+                              const val = slugify(e.target.value.trim()) || post.slug
+                              e.target.value = val
+                              saveMeta(post.id, { slug: val })
+                            }}
+                            style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.75rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const }}
+                          />
+                        </div>
+                      </>)
+                    })()}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Estratto</label>
                       <textarea
