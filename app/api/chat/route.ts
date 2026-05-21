@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
-import { runSeoAgent } from '../../../lib/agents/seo-agent'
+import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
 import { runClarifier } from '../../../lib/agents/clarifier'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
@@ -346,18 +346,51 @@ export async function POST(req: NextRequest) {
     if (agent === 'seo') {
       return makeStream(async (emit) => {
         emit('🔍 Ottimizzando SEO e meta tag…')
-        const result = await runSeoAgent(messages, pages ?? [], customDomain ?? null, apiKey, context)
+
+        // Fetch blog posts for this project (if any)
+        const { data: rawBlogPosts } = await supabase
+          .from('blog_posts')
+          .select('id, title, slug, excerpt, seo_title, seo_description, tags')
+          .eq('project_id', projectId)
+          .eq('status', 'published')
+          .limit(20)
+        const blogPosts = (rawBlogPosts ?? []) as BlogPostSeoInput[]
+
+        // Run page SEO + blog SEO in parallel
+        const baseUrl = customDomain ? `https://${customDomain}` : `https://myweb.factulista.com`
+        const [result, blogResult] = await Promise.all([
+          runSeoAgent(messages, pages ?? [], customDomain ?? null, apiKey, context),
+          blogPosts.length > 0
+            ? runBlogSeoAgent(blogPosts, baseUrl, apiKey, context)
+            : Promise.resolve(null),
+        ])
+
+        // Apply blog SEO updates
+        if (blogResult?.input?.posts?.length) {
+          await Promise.all(blogResult.input.posts.map(p =>
+            supabase.from('blog_posts').update({
+              seo_title: p.seo_title,
+              seo_description: p.seo_description,
+              tags: p.tags,
+            }).eq('id', p.id)
+          ))
+        }
+
         if (runId) {
           const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
           completeRun(runId, {
-            output_summary: `seo: ${pages?.length ?? 0} pagine`,
+            output_summary: `seo: ${pages?.length ?? 0} pagine, ${blogPosts.length} post blog`,
             input_tokens: usage?.input_tokens ?? 0,
             output_tokens: usage?.output_tokens ?? 0,
             cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
             duration_ms: Date.now() - runStartTime,
           }).catch(() => null)
         }
-        return { ...result, agent: 'seo' }
+
+        const summary = blogResult?.input?.summary
+          ? `${result.input?.summary ?? ''} · Blog: ${blogResult.input.summary}`
+          : result.input?.summary
+        return { ...result, input: { ...result.input, summary }, agent: 'seo' }
       }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
     }
 

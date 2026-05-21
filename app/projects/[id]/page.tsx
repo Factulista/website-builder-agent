@@ -349,6 +349,21 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     overlay.addEventListener('mousedown',function(e){if(e.target===overlay)overlay.remove();});
   }
 
+  // ── Toolbar postMessage bridge ─────────────────────────────────────────────
+  window.addEventListener('message',function(e){
+    if(!e.data||typeof e.data!=='object') return;
+    if(e.data.type==='fact-format'){
+      var cmd=e.data.cmd,val=e.data.val||null;
+      document.execCommand(cmd,false,val);
+      triggerSave();
+    }
+    if(e.data.type==='fact-link'){
+      var anch=getAnchorLink();
+      saveSelection();
+      showLinkDialog(anch?anch.getAttribute('href'):null);
+    }
+  });
+
 })();`
 } // end buildInlineEditScriptTemplate
 
@@ -3112,6 +3127,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   }}>{post.status === 'published' ? '● Pubblicato' : '○ Bozza'}</span>
                   {blogSaving === 'saving' && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>💾 Salvataggio...</span>}
                   {blogSaving === 'saved' && <span style={{ fontSize: '0.72rem', color: '#16a34a' }}>✓ Salvato</span>}
+                  <a
+                    href={`/preview/${projectSlug}/blog`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Apri preview blog in nuova scheda"
+                    style={{ fontSize: '0.72rem', color: C.textFaint, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    Preview blog
+                  </a>
                   <button
                     onClick={() => togglePublish(post)}
                     disabled={blogPublishing}
@@ -3201,6 +3226,48 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <div style={{ padding: '6px 14px', borderBottom: `1px solid ${C.border}`, background: C.bg, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '0.72rem', color: C.textFaint, fontWeight: 600 }}>CONTENUTO ARTICOLO</span>
                       <span style={{ fontSize: '0.68rem', color: C.textFaint }}>— clicca sul testo per modificarlo</span>
+                    </div>
+                    {/* ── Formatting toolbar ── */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}>
+                      {([
+                        { label: 'H1', cmd: 'formatBlock', val: 'h1', title: 'Titolo 1', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
+                        { label: 'H2', cmd: 'formatBlock', val: 'h2', title: 'Titolo 2', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
+                        { label: 'H3', cmd: 'formatBlock', val: 'h3', title: 'Titolo 3', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
+                        null,
+                        { label: 'B', cmd: 'bold', val: undefined, title: 'Grassetto', style: { fontWeight: 800, fontSize: '0.82rem' } },
+                        { label: 'I', cmd: 'italic', val: undefined, title: 'Corsivo', style: { fontStyle: 'italic', fontSize: '0.82rem' } },
+                        { label: 'U', cmd: 'underline', val: undefined, title: 'Sottolineato', style: { textDecoration: 'underline', fontSize: '0.82rem' } },
+                        null,
+                        { label: '🔗', cmd: 'link', val: undefined, title: 'Inserisci link', style: { fontSize: '0.78rem' } },
+                      ] as (null | { label: string; cmd: string; val?: string; title: string; style: React.CSSProperties })[]).map((btn, i) => {
+                        if (!btn) return <div key={`sep-${i}`} style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+                        return (
+                          <button
+                            key={btn.cmd + (btn.val ?? '')}
+                            title={btn.title}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              const win = blogIframeRef.current?.contentWindow
+                              if (!win) return
+                              if (btn.cmd === 'link') {
+                                win.postMessage({ type: 'fact-link' }, '*')
+                              } else {
+                                win.postMessage({ type: 'fact-format', cmd: btn.cmd, val: btn.val }, '*')
+                              }
+                            }}
+                            style={{
+                              padding: '2px 7px',
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 4,
+                              background: C.white,
+                              cursor: 'pointer',
+                              color: C.text,
+                              lineHeight: 1.4,
+                              ...btn.style,
+                            }}
+                          >{btn.label}</button>
+                        )
+                      })}
                     </div>
                     {blogEditorSrcDoc && (
                       <iframe
