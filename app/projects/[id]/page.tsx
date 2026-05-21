@@ -714,6 +714,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogLoading, setBlogLoading] = useState(false)
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
+  const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [blogPublishing, setBlogPublishing] = useState(false)
@@ -874,6 +875,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSlug, viewMode])
 
+  // Reset iframe path tracking when user explicitly changes page/mode
+  useEffect(() => { setPreviewIframePath(null) }, [activeSlug, viewMode])
+
   useEffect(() => {
     if (!isDragging) return
     const handleMove = (e: MouseEvent) => {
@@ -910,6 +914,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return selectedPost
         ? `${publicBaseUrl}/blog/${selectedPost.slug}`
         : `${publicBaseUrl}/blog`
+    }
+    // If the preview iframe has navigated internally (e.g. user clicked Blog in nav),
+    // reflect that path in the URL bar
+    if (viewMode === 'preview' && previewIframePath && previewIframePath !== '/') {
+      return `${publicBaseUrl}${previewIframePath}`
     }
     return activeSlug === 'home' ? publicBaseUrl : `${publicBaseUrl}/${activeSlug}`
   })()
@@ -3578,6 +3587,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   title="Preview"
                   sandbox="allow-scripts allow-same-origin"
                   onLoad={() => {
+                    // Sync URL bar with iframe internal navigation (e.g. clicking Blog in site nav)
+                    try {
+                      const pathname = previewIframeRef.current?.contentWindow?.location?.pathname ?? ''
+                      const previewPrefix = `/preview/${projectSlug}/`
+                      const previewBase = `/preview/${projectSlug}`
+                      if (pathname.startsWith(previewPrefix)) {
+                        setPreviewIframePath('/' + pathname.slice(previewPrefix.length))
+                      } else if (pathname === previewBase || pathname === previewBase + '/') {
+                        setPreviewIframePath(null) // home — use activeSlug
+                      }
+                    } catch {
+                      // cross-origin or srcdoc — ignore
+                    }
                     if (scrollTarget) {
                       previewIframeRef.current?.contentWindow?.postMessage({ type: 'scroll-to-text', text: scrollTarget }, '*')
                       setScrollTarget(null)
