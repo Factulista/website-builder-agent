@@ -903,9 +903,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       ? `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
       : `${window.location.origin}/preview/${projectSlug}`
   })()
-  const publicUrl = publicBaseUrl
-    ? (activeSlug === 'home' ? publicBaseUrl : `${publicBaseUrl}/${activeSlug}`)
-    : ''
+  const publicUrl = (() => {
+    if (!publicBaseUrl) return ''
+    if (viewMode === 'blog') {
+      return selectedPost
+        ? `${publicBaseUrl}/blog/${selectedPost.slug}`
+        : `${publicBaseUrl}/blog`
+    }
+    return activeSlug === 'home' ? publicBaseUrl : `${publicBaseUrl}/${activeSlug}`
+  })()
 
   const copyUrl = async () => {
     if (!publicUrl) return
@@ -2117,18 +2123,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 {/* Selectable base URL */}
                 <input
                   readOnly
-                  value={publicBaseUrl.replace(/^https?:\/\//, '') + (activeSlug === 'home' ? '' : '/')}
+                  value={publicBaseUrl.replace(/^https?:\/\//, '') + '/'}
                   onClick={e => (e.target as HTMLInputElement).select()}
                   title="Clicca per selezionare l'URL"
                   style={{
                     border: 'none', outline: 'none', background: 'transparent',
                     fontSize: '0.75rem', fontFamily: 'monospace', color: C.textMuted,
-                    width: `${(publicBaseUrl.replace(/^https?:\/\//, '').length + (activeSlug === 'home' ? 0 : 1))}ch`,
+                    width: `${publicBaseUrl.replace(/^https?:\/\//, '').length + 1}ch`,
                     minWidth: 0, cursor: 'text', padding: 0, flexShrink: 1,
                   }}
                 />
-                {/* Slug — dropdown if multiple pages, static text if single */}
-                {pages.length > 1 ? (
+                {/* Blog mode: show blog path */}
+                {viewMode === 'blog' ? (
+                  <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: C.text, fontWeight: 600 }}>
+                    {selectedPost ? `blog/${selectedPost.slug}` : 'blog'}
+                  </span>
+                ) : /* Slug — dropdown if multiple pages, static text if single */
+                pages.length > 1 ? (
                   <select
                     value={activeSlug}
                     onChange={e => setActiveSlug(e.target.value)}
