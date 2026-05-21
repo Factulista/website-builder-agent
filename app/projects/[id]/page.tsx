@@ -713,6 +713,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
   const [blogLoading, setBlogLoading] = useState(false)
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
+  const [showUrlDropdown, setShowUrlDropdown] = useState(false)
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [blogPublishing, setBlogPublishing] = useState(false)
@@ -2109,69 +2110,104 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             />
           </div>
 
-          {/* URL bar — selectable text + slug dropdown for page navigation */}
-          <div style={{
-            flex: 1, maxWidth: '400px',
-            display: 'flex', alignItems: 'center', gap: '0',
-            background: C.white, border: `1px solid ${C.border}`,
-            borderRadius: '7px', padding: '0 6px 0 8px',
-            overflow: 'hidden',
-          }}>
-            <span style={{ fontSize: '0.75rem', color: C.textFaint, flexShrink: 0, marginRight: '6px' }}>□</span>
-            {publicBaseUrl ? (
+          {/* URL bar — single scrollable input + dropdown for page navigation */}
+          <div style={{ flex: 1, maxWidth: '420px', position: 'relative' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              background: C.white, border: `1px solid ${showUrlDropdown ? C.blue : C.border}`,
+              borderRadius: showUrlDropdown ? '7px 7px 0 0' : '7px', padding: '0 6px 0 8px',
+              overflow: 'hidden', transition: 'border-color 0.15s',
+            }}>
+              <span style={{ fontSize: '0.75rem', color: C.textFaint, flexShrink: 0, marginRight: '6px', lineHeight: 1 }}>□</span>
+              <input
+                readOnly
+                value={publicUrl ? publicUrl.replace(/^https?:\/\//, '') : '—'}
+                onClick={() => publicBaseUrl && setShowUrlDropdown(v => !v)}
+                title="Clicca per navigare tra le pagine"
+                style={{
+                  border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: '0.75rem', fontFamily: 'monospace', color: publicBaseUrl ? C.text : C.textFaint,
+                  fontWeight: 400, flex: 1, minWidth: 0, cursor: publicBaseUrl ? 'pointer' : 'default',
+                  padding: '5px 0', overflow: 'hidden',
+                }}
+              />
+              {publicUrl && (
+                <button onClick={copyUrl} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: copied ? '#10b981' : C.textFaint, fontSize: '0.75rem', flexShrink: 0, marginLeft: '2px' }} title={t('project.copyUrl' as const, language as any)}>
+                  {copied ? '✓' : '⧉'}
+                </button>
+              )}
+            </div>
+            {/* Dropdown */}
+            {showUrlDropdown && publicBaseUrl && (
               <>
-                {/* Selectable base URL */}
-                <input
-                  readOnly
-                  value={publicBaseUrl.replace(/^https?:\/\//, '') + '/'}
-                  onClick={e => (e.target as HTMLInputElement).select()}
-                  title="Clicca per selezionare l'URL"
-                  style={{
-                    border: 'none', outline: 'none', background: 'transparent',
-                    fontSize: '0.75rem', fontFamily: 'monospace', color: C.textMuted,
-                    width: `${publicBaseUrl.replace(/^https?:\/\//, '').length + 1}ch`,
-                    minWidth: 0, cursor: 'text', padding: 0, flexShrink: 1,
-                  }}
-                />
-                {/* Blog mode: show blog path */}
-                {viewMode === 'blog' ? (
-                  <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: C.text, fontWeight: 600 }}>
-                    {selectedPost ? `blog/${selectedPost.slug}` : 'blog'}
-                  </span>
-                ) : /* Slug — dropdown if multiple pages, static text if single */
-                pages.length > 1 ? (
-                  <select
-                    value={activeSlug}
-                    onChange={e => setActiveSlug(e.target.value)}
-                    title="Naviga tra le pagine"
-                    style={{
-                      border: 'none', outline: 'none', background: 'transparent',
-                      fontSize: '0.75rem', fontFamily: 'monospace', color: C.text, fontWeight: 600,
-                      cursor: 'pointer', padding: '5px 0',
-                      appearance: 'none', WebkitAppearance: 'none',
-                    }}
-                  >
-                    {pages.map(p => (
-                      <option key={p.slug} value={p.slug}>
-                        {p.slug === 'home' ? '' : p.slug}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  activeSlug !== 'home' && (
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: C.text, fontWeight: 600 }}>
-                      {activeSlug}
-                    </span>
-                  )
-                )}
+                {/* Backdrop */}
+                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setShowUrlDropdown(false)} />
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                  background: C.white, border: `1px solid ${C.blue}`, borderTop: `1px solid ${C.border}`,
+                  borderRadius: '0 0 7px 7px', boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
+                  maxHeight: '260px', overflowY: 'auto',
+                }}>
+                  {pages.map(p => {
+                    const urlPath = p.slug === 'home' ? '' : p.slug
+                    const isActive = viewMode !== 'blog' && activeSlug === p.slug
+                    return (
+                      <button key={p.slug} onClick={() => { setActiveSlug(p.slug); if (viewMode === 'blog') setViewMode('preview'); setShowUrlDropdown(false) }}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '7px 12px', border: 'none', background: isActive ? '#f0f4ff' : 'transparent',
+                          fontSize: '0.75rem', fontFamily: 'monospace', color: isActive ? C.blue : C.text,
+                          cursor: 'pointer', fontWeight: 400,
+                        }}
+                        onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
+                        onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                      >
+                        /{urlPath}
+                      </button>
+                    )
+                  })}
+                  {/* Blog routes */}
+                  {blogPosts.length > 0 && (
+                    <>
+                      <div style={{ height: '1px', background: C.border, margin: '2px 0' }} />
+                      <button onClick={() => { setViewMode('blog'); setSelectedPost(null); setShowUrlDropdown(false) }}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '7px 12px', border: 'none',
+                          background: viewMode === 'blog' && !selectedPost ? '#f0f4ff' : 'transparent',
+                          fontSize: '0.75rem', fontFamily: 'monospace',
+                          color: viewMode === 'blog' && !selectedPost ? C.blue : C.text,
+                          cursor: 'pointer', fontWeight: 400,
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = viewMode === 'blog' && !selectedPost ? '#f0f4ff' : 'transparent' }}
+                      >
+                        /blog
+                      </button>
+                      {blogPosts.map(post => {
+                        const isSelected = viewMode === 'blog' && selectedPost?.id === post.id
+                        return (
+                          <button key={post.id} onClick={() => { setViewMode('blog'); setSelectedPost(post); setShowUrlDropdown(false) }}
+                            style={{
+                              display: 'block', width: '100%', textAlign: 'left',
+                              padding: '7px 12px', border: 'none',
+                              background: isSelected ? '#f0f4ff' : 'transparent',
+                              fontSize: '0.75rem', fontFamily: 'monospace',
+                              color: isSelected ? C.blue : C.text,
+                              cursor: 'pointer', fontWeight: 400,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}
+                            onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
+                            onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                          >
+                            /blog/{post.slug}
+                          </button>
+                        )
+                      })}
+                    </>
+                  )}
+                </div>
               </>
-            ) : (
-              <span style={{ flex: 1, fontSize: '0.75rem', color: C.textFaint, padding: '5px 0' }}>—</span>
-            )}
-            {publicUrl && (
-              <button onClick={copyUrl} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: copied ? '#10b981' : C.textFaint, fontSize: '0.75rem', flexShrink: 0, marginLeft: '4px' }} title={t('project.copyUrl' as const, language as any)}>
-                {copied ? '✓' : '⧉'}
-              </button>
             )}
           </div>
 
