@@ -13,6 +13,12 @@ function extractFooter(html: string) {
   return m.length > 0 ? m[m.length - 1][0] : ''
 }
 function extractStyles(html: string) { return (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n') }
+/** Detect language: context.language → <html lang="..."> → 'it' */
+function detectLang(context: Record<string, unknown>, homeHtml: string): string {
+  if (typeof context.language === 'string' && context.language) return context.language
+  const m = homeHtml.match(/<html[^>]+lang=["']([^"']+)["']/i)
+  return m?.[1]?.slice(0, 2) ?? 'it'
+}
 
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -29,9 +35,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const config = (project.site_config ?? {}) as Record<string, unknown>
   const pages = (config.pages as Array<{ slug: string; html: string }> | undefined) ?? []
-  const context = (config.context ?? {}) as Record<string, string>
-  const lang = context.language ?? 'it'
+  const context = (config.context ?? {}) as Record<string, unknown>
   const homePage = pages.find(p => p.slug === 'home')
+  const lang = detectLang(context, homePage?.html ?? '')
   const siteNav = homePage ? extractNav(homePage.html) : ''
   const siteFooter = homePage ? extractFooter(homePage.html) : ''
   const siteStyle = homePage ? extractStyles(homePage.html) : ''
