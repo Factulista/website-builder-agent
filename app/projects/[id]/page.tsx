@@ -3228,47 +3228,87 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       <span style={{ fontSize: '0.68rem', color: C.textFaint }}>— clicca sul testo per modificarlo</span>
                     </div>
                     {/* ── Formatting toolbar ── */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}>
-                      {([
-                        { label: 'H1', cmd: 'formatBlock', val: 'h1', title: 'Titolo 1', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
-                        { label: 'H2', cmd: 'formatBlock', val: 'h2', title: 'Titolo 2', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
-                        { label: 'H3', cmd: 'formatBlock', val: 'h3', title: 'Titolo 3', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
-                        null,
-                        { label: 'B', cmd: 'bold', val: undefined, title: 'Grassetto', style: { fontWeight: 800, fontSize: '0.82rem' } },
-                        { label: 'I', cmd: 'italic', val: undefined, title: 'Corsivo', style: { fontStyle: 'italic', fontSize: '0.82rem' } },
-                        { label: 'U', cmd: 'underline', val: undefined, title: 'Sottolineato', style: { textDecoration: 'underline', fontSize: '0.82rem' } },
-                        null,
-                        { label: '🔗', cmd: 'link', val: undefined, title: 'Inserisci link', style: { fontSize: '0.78rem' } },
-                      ] as (null | { label: string; cmd: string; val?: string; title: string; style: React.CSSProperties })[]).map((btn, i) => {
-                        if (!btn) return <div key={`sep-${i}`} style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
-                        return (
+                    {(() => {
+                      const blogImgInputRef = { current: null as HTMLInputElement | null }
+                      const handleBlogImageUpload = async (file: File) => {
+                        if (!file.type.startsWith('image/')) return
+                        const { data: { session } } = await supabase.auth.getSession()
+                        if (!session) return
+                        const ext = file.name.split('.').pop() || 'png'
+                        const path = `${session.user.id}/${id}/blog-${Date.now()}.${ext}`
+                        const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
+                        if (error) return
+                        const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
+                        const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${publicUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
+                        blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
+                      }
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}>
+                          {([
+                            { label: 'H1', cmd: 'formatBlock', val: 'h1', title: 'Titolo 1', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
+                            { label: 'H2', cmd: 'formatBlock', val: 'h2', title: 'Titolo 2', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
+                            { label: 'H3', cmd: 'formatBlock', val: 'h3', title: 'Titolo 3', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
+                            null,
+                            { label: 'B', cmd: 'bold', val: undefined, title: 'Grassetto', style: { fontWeight: 800, fontSize: '0.82rem' } },
+                            { label: 'I', cmd: 'italic', val: undefined, title: 'Corsivo', style: { fontStyle: 'italic', fontSize: '0.82rem' } },
+                            { label: 'U', cmd: 'underline', val: undefined, title: 'Sottolineato', style: { textDecoration: 'underline', fontSize: '0.82rem' } },
+                            null,
+                            { label: '🔗', cmd: 'link', val: undefined, title: 'Inserisci link', style: { fontSize: '0.78rem' } },
+                          ] as (null | { label: string; cmd: string; val?: string; title: string; style: React.CSSProperties })[]).map((btn, i) => {
+                            if (!btn) return <div key={`sep-${i}`} style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+                            return (
+                              <button
+                                key={btn.cmd + (btn.val ?? '')}
+                                title={btn.title}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  const win = blogIframeRef.current?.contentWindow
+                                  if (!win) return
+                                  if (btn.cmd === 'link') {
+                                    win.postMessage({ type: 'fact-link' }, '*')
+                                  } else {
+                                    win.postMessage({ type: 'fact-format', cmd: btn.cmd, val: btn.val }, '*')
+                                  }
+                                }}
+                                style={{
+                                  padding: '2px 7px',
+                                  border: `1px solid ${C.border}`,
+                                  borderRadius: 4,
+                                  background: C.white,
+                                  cursor: 'pointer',
+                                  color: C.text,
+                                  lineHeight: 1.4,
+                                  ...btn.style,
+                                }}
+                              >{btn.label}</button>
+                            )
+                          })}
+                          {/* Image upload button */}
+                          <div key="sep-img" style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
                           <button
-                            key={btn.cmd + (btn.val ?? '')}
-                            title={btn.title}
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              const win = blogIframeRef.current?.contentWindow
-                              if (!win) return
-                              if (btn.cmd === 'link') {
-                                win.postMessage({ type: 'fact-link' }, '*')
-                              } else {
-                                win.postMessage({ type: 'fact-format', cmd: btn.cmd, val: btn.val }, '*')
-                              }
+                            title="Inserisci immagine"
+                            onMouseDown={(e) => { e.preventDefault() }}
+                            onClick={() => blogImgInputRef.current?.click()}
+                            style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, lineHeight: 1.4, display: 'flex', alignItems: 'center' }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                            </svg>
+                          </button>
+                          <input
+                            ref={el => { blogImgInputRef.current = el }}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={e => {
+                              const file = e.target.files?.[0]
+                              if (file) handleBlogImageUpload(file)
+                              e.target.value = ''
                             }}
-                            style={{
-                              padding: '2px 7px',
-                              border: `1px solid ${C.border}`,
-                              borderRadius: 4,
-                              background: C.white,
-                              cursor: 'pointer',
-                              color: C.text,
-                              lineHeight: 1.4,
-                              ...btn.style,
-                            }}
-                          >{btn.label}</button>
-                        )
-                      })}
-                    </div>
+                          />
+                        </div>
+                      )
+                    })()}
                     {blogEditorSrcDoc && (
                       <iframe
                         ref={blogIframeRef}
