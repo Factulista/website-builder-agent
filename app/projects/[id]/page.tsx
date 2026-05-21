@@ -3301,6 +3301,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             { label: 'U', cmd: 'underline', val: undefined, title: 'Sottolineato', style: { textDecoration: 'underline', fontSize: '0.82rem' } },
                             null,
                             { label: '🔗', cmd: 'link', val: undefined, title: 'Inserisci link', style: { fontSize: '0.78rem' } },
+                            null,
+                            { label: 'ul', cmd: 'insertUnorderedList', val: undefined, title: 'Elenco puntato', style: { fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700 } },
+                            { label: 'ol', cmd: 'insertOrderedList', val: undefined, title: 'Elenco numerato', style: { fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700 } },
+                            { label: 'table', cmd: 'insertTable', val: undefined, title: 'Inserisci tabella', style: { fontSize: '0.68rem', fontFamily: 'monospace', fontWeight: 700 } },
                           ] as (null | { label: string; cmd: string; val?: string; title: string; style: React.CSSProperties })[]).map((btn, i) => {
                             if (!btn) return <div key={`sep-${i}`} style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
                             return (
@@ -3313,6 +3317,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   if (!win) return
                                   if (btn.cmd === 'link') {
                                     win.postMessage({ type: 'fact-link' }, '*')
+                                  } else if (btn.cmd === 'insertTable') {
+                                    const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:0.95rem"><thead><tr><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 1</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 2</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 3</th></tr></thead><tbody><tr><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 1</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 2</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 3</td></tr><tr><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 4</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 5</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 6</td></tr></tbody></table>`
+                                    win.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: tableHtml }, '*')
                                   } else {
                                     win.postMessage({ type: 'fact-format', cmd: btn.cmd, val: btn.val }, '*')
                                   }
