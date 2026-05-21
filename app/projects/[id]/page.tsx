@@ -723,11 +723,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   // ── Blog state ──────────────────────────────────────────────────────────────
-  type BlogPost = { id: string; title: string; slug: string; excerpt: string; featured_image: string | null; status: 'draft' | 'published'; published_at: string | null; categories: string[]; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string }
+  type BlogPost = { id: string; title: string; slug: string; excerpt: string; featured_image: string | null; status: 'draft' | 'published'; published_at: string | null; categories: string[]; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string; author: string }
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
   const [blogLoading, setBlogLoading] = useState(false)
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
+  const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -925,9 +926,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const publicUrl = (() => {
     if (!publicBaseUrl) return ''
     if (viewMode === 'blog') {
-      return selectedPost
-        ? `${publicBaseUrl}/blog/${selectedPost.slug}`
-        : `${publicBaseUrl}/blog`
+      if (!selectedPost) return `${publicBaseUrl}/blog`
+      const cat = selectedPost.categories?.[0] ? slugify(selectedPost.categories[0]) : null
+      return cat
+        ? `${publicBaseUrl}/blog/${cat}/${selectedPost.slug}`
+        : `${publicBaseUrl}/blog/${selectedPost.slug}`
     }
     // If the preview iframe has navigated internally (e.g. user clicked Blog in nav),
     // reflect that path in the URL bar
@@ -1087,6 +1090,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   useEffect(() => {
     if (viewMode !== 'blog') return
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const meta = session.user.user_metadata ?? {}
+        setUserFullName([meta.first_name, meta.last_name].filter(Boolean).join(' ') || session.user.email?.split('@')[0] || '')
+      }
+    })
     loadBlogPosts()
     // Auto-aggiungi link Blog al menu se non presente
     if (pages.length > 0 && !hasBlogNavLink(pages)) {
@@ -2209,6 +2218,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </button>
                       {blogPosts.map(post => {
                         const isSelected = viewMode === 'blog' && selectedPost?.id === post.id
+                        const postPath = post.categories?.[0] ? `blog/${slugify(post.categories[0])}/${post.slug}` : `blog/${post.slug}`
                         return (
                           <button key={post.id} onClick={() => { setViewMode('blog'); setSelectedPost(post); setShowUrlDropdown(false) }}
                             style={{
@@ -2223,7 +2233,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
                             onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
                           >
-                            /blog/{post.slug}
+                            /{postPath}
                           </button>
                         )
                       })}
@@ -2954,7 +2964,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               const res = await fetch('/api/blog-posts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ projectId: id, title, slug, content_html: '<p>Inizia a scrivere il tuo articolo qui...</p>' }),
+                body: JSON.stringify({ projectId: id, title, slug, author: userFullName, content_html: '<p>Inizia a scrivere il tuo articolo qui...</p>' }),
               })
               const json = await res.json()
               if (json.post) {
@@ -3268,6 +3278,61 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const }}
                       />
                     </div>
+                    {/* Featured image */}
+                    {(() => {
+                      const featImgInputRef = { current: null as HTMLInputElement | null }
+                      const handleFeatImg = async (file: File) => {
+                        if (!file.type.startsWith('image/')) return
+                        const { data: { session } } = await supabase.auth.getSession()
+                        if (!session) return
+                        const ext = file.name.split('.').pop() || 'png'
+                        const path = `${session.user.id}/${id}/feat-${Date.now()}.${ext}`
+                        const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
+                        if (error) return
+                        const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
+                        saveMeta(post.id, { featured_image: publicUrl })
+                      }
+                      return (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Immagine copertina</label>
+                          {post.featured_image ? (
+                            <div style={{ position: 'relative', marginBottom: '6px' }}>
+                              <img src={post.featured_image} alt="" style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: '7px', border: `1px solid ${C.border}` }} />
+                              <button onClick={() => saveMeta(post.id, { featured_image: null })} style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '0.7rem', cursor: 'pointer' }}>✕</button>
+                            </div>
+                          ) : null}
+                          <button onClick={() => featImgInputRef.current?.click()} style={{ width: '100%', padding: '6px', border: `1px dashed ${C.border}`, borderRadius: '7px', background: 'transparent', color: C.textMuted, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {post.featured_image ? '↺ Cambia immagine' : '+ Carica immagine'}
+                          </button>
+                          <input ref={el => { featImgInputRef.current = el }} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFeatImg(f); e.target.value = '' }} />
+                        </div>
+                      )
+                    })()}
+
+                    {/* Publication date */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Data pubblicazione</label>
+                      <input
+                        type="date"
+                        defaultValue={post.published_at ? post.published_at.slice(0, 10) : new Date().toISOString().slice(0, 10)}
+                        onBlur={e => {
+                          const val = e.target.value
+                          if (val) saveMeta(post.id, { published_at: new Date(val).toISOString() })
+                        }}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+
+                    {/* Author */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Autore</label>
+                      <input
+                        defaultValue={post.author || userFullName}
+                        onBlur={e => saveMeta(post.id, { author: e.target.value.trim() })}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                      />
+                    </div>
+
                     <div>
                       <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Categorie</label>
                       <input
@@ -3660,6 +3725,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: C.text }}>Impostazioni Progetto</h2>
               <button onClick={() => { setShowSettingsModal(false); setDnsInstructions(''); setRegistrarInfo(null); setShowManualDns(false) }}
                 style={{ background: 'transparent', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: C.textFaint, padding: '2px 6px' }}>×</button>
+            </div>
+
+            {/* User profile */}
+            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: `1px solid ${C.border}` }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: '0.85rem', fontWeight: 700, color: C.text }}>Profilo utente</h3>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Nome</label>
+                  <input
+                    defaultValue={userFullName.split(' ')[0] || ''}
+                    onBlur={async e => {
+                      const firstName = e.target.value.trim()
+                      const lastName = userFullName.split(' ').slice(1).join(' ')
+                      const full = [firstName, lastName].filter(Boolean).join(' ')
+                      setUserFullName(full)
+                      await supabase.auth.updateUser({ data: { first_name: firstName, last_name: lastName } })
+                    }}
+                    placeholder="Nome"
+                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Cognome</label>
+                  <input
+                    defaultValue={userFullName.split(' ').slice(1).join(' ') || ''}
+                    onBlur={async e => {
+                      const lastName = e.target.value.trim()
+                      const firstName = userFullName.split(' ')[0] || ''
+                      const full = [firstName, lastName].filter(Boolean).join(' ')
+                      setUserFullName(full)
+                      await supabase.auth.updateUser({ data: { first_name: firstName, last_name: lastName } })
+                    }}
+                    placeholder="Cognome"
+                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Staging domain */}

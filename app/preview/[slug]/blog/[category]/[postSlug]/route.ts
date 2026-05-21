@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildBlogPostPage, type Post } from '../../../../../lib/blog-serve'
+import { buildBlogPostPage, type Post } from '../../../../../../lib/blog-serve'
 
 export const runtime = 'nodejs'
 
@@ -13,14 +13,13 @@ function extractFooter(html: string) {
   return m.length > 0 ? m[m.length - 1][0] : ''
 }
 function extractStyles(html: string) { return (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n') }
-/** Detect language: context.language → <html lang="..."> → 'it' */
 function detectLang(context: Record<string, unknown>, homeHtml: string): string {
   if (typeof context.language === 'string' && context.language) return context.language
   const m = homeHtml.match(/<html[^>]+lang=["']([^"']+)["']/i)
   return m?.[1]?.slice(0, 2) ?? 'it'
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ slug: string; postSlug: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ slug: string; category: string; postSlug: string }> }) {
   const { slug, postSlug } = await params
   const supabase = getSupabase()
 

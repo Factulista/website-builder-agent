@@ -44,7 +44,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const { data: posts } = await supabase
     .from('blog_posts')
-    .select('id, title, slug, excerpt, featured_image, published_at, categories, tags, content_html, seo_title, seo_description')
+    .select('id, title, slug, excerpt, featured_image, published_at, categories, tags, content_html, seo_title, seo_description, author')
     .eq('project_id', project.id)
     .eq('status', 'published')
     .order('published_at', { ascending: false })

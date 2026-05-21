@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const { data: posts, error } = await supabase
     .from('blog_posts')
-    .select('id, title, slug, excerpt, featured_image, status, published_at, categories, tags, created_at, updated_at')
+    .select('id, title, slug, excerpt, featured_image, status, published_at, categories, tags, author, created_at, updated_at')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false })
 
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       tags: tags ?? [],
       seo_title: seo_title ?? null,
       seo_description: seo_description ?? null,
+      author: body.author ?? '',
       status: 'draft',
     })
     .select()

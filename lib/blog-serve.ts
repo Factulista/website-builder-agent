@@ -10,6 +10,11 @@ export type Post = {
   content_html: string
   seo_title: string | null
   seo_description: string | null
+  author?: string
+}
+
+function slugifySimple(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
 export function formatDate(iso: string | null, lang = 'it'): string {
@@ -38,15 +43,23 @@ export function buildBlogListPage(
     const img = post.featured_image
       ? `<img class="blog-card-img" src="${post.featured_image}" alt="${post.title}" loading="lazy">`
       : ''
-    const tags = (post.categories ?? []).slice(0, 3).map(c => `<span class="blog-tag">${c}</span>`).join('')
+    const firstCat = (post.categories ?? [])[0]
+    const catSlug = firstCat ? slugifySimple(firstCat) : null
+    const postHref = catSlug ? `${baseUrl}/blog/${catSlug}/${post.slug}` : `${baseUrl}/blog/${post.slug}`
+    const catTag = firstCat ? `<span class="blog-tag blog-tag-cat">${firstCat}</span>` : ''
     const dateStr = formatDate(post.published_at, lang)
+    const authorStr = post.author ? `<span class="blog-card-author">${post.author}</span>` : ''
     return `<article class="blog-card">
   ${img}
   <div class="blog-card-body">
-    <div class="blog-card-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}</div>
-    <h2 class="blog-card-title"><a href="${baseUrl}/blog/${post.slug}">${post.title}</a></h2>
+    ${catTag ? `<div class="blog-card-cats">${catTag}</div>` : ''}
+    <div class="blog-card-meta">${dateStr}</div>
+    <h2 class="blog-card-title"><a href="${postHref}">${post.title}</a></h2>
     ${post.excerpt ? `<p class="blog-card-excerpt">${post.excerpt}</p>` : ''}
-    <a class="blog-read-more" href="${baseUrl}/blog/${post.slug}">${readMoreLabel}</a>
+    <div class="blog-card-footer">
+      <a class="blog-read-more" href="${postHref}">${readMoreLabel}</a>
+      ${authorStr}
+    </div>
   </div>
 </article>`
   }).join('\n')
@@ -80,8 +93,12 @@ export function buildBlogListPage(
     .blog-card-title a{color:inherit;text-decoration:none}
     .blog-card-title a:hover{text-decoration:underline}
     .blog-card-excerpt{font-size:.9rem;color:#555;margin:0 0 1rem;line-height:1.6;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+    .blog-card-cats{margin-bottom:.5rem}
+    .blog-tag-cat{background:#dbeafe;color:#1d4ed8}
+    .blog-card-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
     .blog-read-more{font-size:.85rem;font-weight:600;color:var(--color-accent,#2563eb);text-decoration:none}
     .blog-read-more:hover{text-decoration:underline}
+    .blog-card-author{font-size:.75rem;color:#888;font-style:italic}
     @media(min-width:640px){.blog-grid{grid-template-columns:repeat(2,1fr)}}
     @media(min-width:1024px){.blog-grid{grid-template-columns:repeat(3,1fr)}}
   </style>
@@ -109,6 +126,7 @@ export function buildBlogPostPage(
   const backLabel = '← Blog'
   const dateStr = formatDate(post.published_at, lang)
   const tags = (post.categories ?? []).map(c => `<span class="blog-tag">${c}</span>`).join('')
+  const authorLine = post.author ? `<span class="blog-post-author">${post.author}</span>` : ''
   const featuredImg = post.featured_image
     ? `<img class="post-featured-img" src="${post.featured_image}" alt="${post.title}" loading="lazy">`
     : ''
@@ -152,6 +170,7 @@ export function buildBlogPostPage(
     .blog-post-content pre{background:#1a1a1a;color:#f8f8f8;border-radius:10px;padding:1.25rem;overflow-x:auto;font-size:.88rem;margin:1.5rem 0}
     .blog-post-content code{font-family:'Fira Code',monospace;font-size:.88em;background:#f3f4f6;padding:2px 5px;border-radius:4px}
     .blog-post-content pre code{background:none;padding:0}
+    .blog-post-author{font-size:.75rem;color:#666;font-style:italic}
     @media(max-width:640px){.blog-post-header h1{font-size:1.7rem}.blog-post-wrapper{padding:1.5rem 1rem 3rem}}
   </style>
 </head>
@@ -160,7 +179,7 @@ export function buildBlogPostPage(
   <article class="blog-post-wrapper">
     <a class="blog-back-link" href="${baseUrl}/blog">${backLabel}</a>
     <header class="blog-post-header">
-      <div class="blog-post-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}</div>
+      <div class="blog-post-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}${authorLine ? ` &nbsp;${authorLine}` : ''}</div>
       <h1>${post.title}</h1>
       ${post.excerpt ? `<p class="blog-post-excerpt">${post.excerpt}</p>` : ''}
     </header>
