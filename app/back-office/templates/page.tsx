@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { getAllTemplates } from '../../../lib/templates/index'
+import { getAllTemplatesMeta, type TemplateMeta } from '../../../lib/templates/index'
 import { supabase } from '../../../lib/supabase'
 
 const C = {
@@ -32,13 +32,7 @@ type DbTemplate = {
   _source: 'db'
 }
 
-type HardcodedTemplate = {
-  id: string
-  name: string
-  sector: string
-  keywords: string[]
-  description: string
-  html: string
+type HardcodedTemplate = TemplateMeta & {
   _source: 'hardcoded'
   source_url?: null
   created_at?: null
@@ -62,7 +56,7 @@ function sectorColor(sector: string) {
 }
 
 export default function TemplatesPage() {
-  const hardcoded: HardcodedTemplate[] = getAllTemplates().map(t => ({ ...t, _source: 'hardcoded' as const, source_url: null, created_at: null }))
+  const hardcoded: HardcodedTemplate[] = getAllTemplatesMeta().map(t => ({ ...t, _source: 'hardcoded' as const, source_url: null, created_at: null }))
   const [dbTemplates, setDbTemplates] = useState<DbTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)

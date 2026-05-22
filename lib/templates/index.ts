@@ -76,6 +76,14 @@ export function getAllTemplates(): Template[] {
   return TEMPLATE_REGISTRY
 }
 
+export type TemplateMeta = Omit<Template, 'html'>
+
+/** Restituisce i template senza l'HTML — da usare nelle list view client-side
+ *  per evitare di includere 100KB+ di template nel JS bundle. */
+export function getAllTemplatesMeta(): TemplateMeta[] {
+  return TEMPLATE_REGISTRY.map(({ html: _html, ...meta }) => meta)
+}
+
 export function getTemplatesBySector(sector: string): Template[] {
   return TEMPLATE_REGISTRY.filter(t => t.sector === sector)
 }
