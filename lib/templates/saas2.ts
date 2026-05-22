@@ -10,30 +10,24 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
   <meta property="og:type" content="website">
   <link rel="canonical" href="{{canonical_url}}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
       --accent: {{primary_color}};
-      --accent-dark: color-mix(in srgb, {{primary_color}} 80%, #000);
-      --accent-light: color-mix(in srgb, {{primary_color}} 12%, #fff);
-      --navy: #0a0f1e;
-      --navy2: #111827;
-      --text: #0f172a;
-      --text-mid: #334155;
-      --text-muted: #64748b;
+      --primary: #000000;
+      --primary-fg: #ffffff;
+      --text: #000000;
+      --text-mid: #333333;
+      --text-muted: #737373;
       --surface: #ffffff;
-      --surface-alt: #f8fafc;
-      --surface-alt2: #f1f5f9;
-      --border: #e2e8f0;
-      --border-strong: #cbd5e1;
-      --radius: 14px;
-      --radius-sm: 8px;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
-      --shadow: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
-      --shadow-lg: 0 12px 40px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
-      --font: 'Inter', sans-serif;
+      --surface-alt: #f5f5f5;
+      --border: #000000;
+      --border-light: #e5e5e5;
+      --radius-card: 12px;
+      --radius-btn: 0px;
+      --font: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
     }
 
     body {
@@ -46,16 +40,20 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     /* ── NAVBAR ── */
     nav {
-      position: sticky;
+      position: fixed;
       top: 0;
+      left: 0;
+      right: 0;
       z-index: 200;
-      background: var(--navy);
+      background: rgba(255,255,255,0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid #000;
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 40px;
       height: 64px;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.25);
     }
 
     .nav-logo {
@@ -69,7 +67,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .nav-logo-mark {
       width: 32px;
       height: 32px;
-      background: var(--accent);
+      background: #000;
       border-radius: 8px;
       display: flex;
       align-items: center;
@@ -83,7 +81,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .nav-logo-text {
       font-size: 1.05rem;
       font-weight: 700;
-      color: #fff;
+      color: #000;
       letter-spacing: -0.3px;
     }
 
@@ -96,17 +94,16 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .nav-links a {
       text-decoration: none;
-      color: rgba(255,255,255,0.72);
-      font-size: 0.9rem;
+      color: #737373;
+      font-size: 16px;
       font-weight: 500;
       padding: 6px 14px;
-      border-radius: 6px;
-      transition: color 0.2s, background 0.2s;
+      border-radius: 0;
+      transition: color 0.2s;
     }
 
     .nav-links a:hover {
-      color: #fff;
-      background: rgba(255,255,255,0.08);
+      color: #000;
     }
 
     .nav-actions {
@@ -118,39 +115,36 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .btn-ghost-nav {
       background: transparent;
-      border: 1px solid rgba(255,255,255,0.2);
-      color: rgba(255,255,255,0.85);
-      padding: 7px 18px;
-      border-radius: 7px;
+      border: none;
+      color: #000;
+      padding: 8px 16px;
+      border-radius: 0;
       font-size: 0.88rem;
       font-weight: 500;
       cursor: pointer;
       text-decoration: none;
-      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      transition: color 0.2s;
     }
 
     .btn-ghost-nav:hover {
-      border-color: rgba(255,255,255,0.5);
-      color: #fff;
-      background: rgba(255,255,255,0.06);
+      color: #737373;
     }
 
     .btn-accent-nav {
-      background: var(--accent);
+      background: #000;
       color: #fff;
-      padding: 7px 18px;
-      border-radius: 7px;
+      padding: 8px 16px;
+      border-radius: 0;
       font-size: 0.88rem;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       text-decoration: none;
       border: none;
-      transition: background 0.2s, transform 0.15s;
+      transition: opacity 0.2s;
     }
 
     .btn-accent-nav:hover {
-      background: var(--accent-dark);
-      transform: translateY(-1px);
+      opacity: 0.85;
     }
 
     /* Hamburger */
@@ -168,8 +162,8 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       display: block;
       width: 22px;
       height: 2px;
-      background: rgba(255,255,255,0.85);
-      border-radius: 2px;
+      background: #000;
+      border-radius: 0;
       transition: transform 0.25s, opacity 0.25s;
     }
 
@@ -177,7 +171,8 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       display: none;
       position: fixed;
       inset: 64px 0 0 0;
-      background: var(--navy);
+      background: #fff;
+      border-bottom: 1px solid #000;
       z-index: 199;
       flex-direction: column;
       padding: 24px 24px;
@@ -189,16 +184,16 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .mobile-menu a {
       text-decoration: none;
-      color: rgba(255,255,255,0.8);
+      color: #000;
       font-size: 1rem;
       font-weight: 500;
       padding: 12px 16px;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 0;
+      border: 1px solid #e5e5e5;
       transition: background 0.2s;
     }
 
-    .mobile-menu a:hover { background: rgba(255,255,255,0.06); }
+    .mobile-menu a:hover { background: #f5f5f5; }
 
     .mobile-menu .btn-accent-nav {
       text-align: center;
@@ -209,34 +204,12 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .hero {
       position: relative;
       overflow: hidden;
-      background: linear-gradient(160deg, #ffffff 0%, #f0f7ff 40%, #e8f4ff 100%);
-      padding: 100px 40px 110px;
+      background: #ffffff;
+      padding-top: 64px;
+      padding-bottom: 110px;
+      padding-left: 40px;
+      padding-right: 40px;
       text-align: center;
-    }
-
-    /* Geometric shapes */
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: -120px;
-      right: -120px;
-      width: 560px;
-      height: 560px;
-      border-radius: 50%;
-      background: radial-gradient(circle, color-mix(in srgb, {{primary_color}} 14%, transparent) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .hero::after {
-      content: '';
-      position: absolute;
-      bottom: -80px;
-      left: -80px;
-      width: 400px;
-      height: 400px;
-      border-radius: 50%;
-      background: radial-gradient(circle, color-mix(in srgb, {{primary_color}} 10%, transparent) 0%, transparent 70%);
-      pointer-events: none;
     }
 
     .hero-grid-bg {
@@ -254,19 +227,20 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       z-index: 1;
       max-width: 760px;
       margin: 0 auto;
+      padding-top: 56px;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      background: var(--accent-light);
-      color: var(--accent);
-      border: 1px solid color-mix(in srgb, {{primary_color}} 30%, transparent);
+      background: #f5f5f5;
+      color: #000;
+      border: 1px solid #000;
       padding: 5px 14px 5px 10px;
-      border-radius: 100px;
-      font-size: 0.82rem;
-      font-weight: 600;
+      border-radius: 0;
+      font-size: 0.78rem;
+      font-weight: 700;
       letter-spacing: 0.01em;
       margin-bottom: 28px;
     }
@@ -280,10 +254,10 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     }
 
     .hero h1 {
-      font-size: clamp(2.4rem, 5.5vw, 3.6rem);
-      font-weight: 900;
-      line-height: 1.12;
-      letter-spacing: -0.03em;
+      font-size: clamp(2.6rem, 5.5vw, 3.75rem);
+      font-weight: 700;
+      line-height: 1.0;
+      letter-spacing: -0.02em;
       color: var(--text);
       margin-bottom: 22px;
     }
@@ -294,7 +268,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .hero-sub {
       font-size: 1.15rem;
-      color: var(--text-mid);
+      color: #737373;
       max-width: 560px;
       margin: 0 auto 36px;
       line-height: 1.7;
@@ -310,48 +284,43 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     }
 
     .btn-primary {
-      background: var(--accent);
+      background: #000;
       color: #fff;
       padding: 13px 28px;
-      border-radius: 9px;
+      border-radius: 0;
       font-size: 0.97rem;
-      font-weight: 700;
+      font-weight: 500;
       cursor: pointer;
       text-decoration: none;
       border: none;
-      box-shadow: 0 4px 14px color-mix(in srgb, {{primary_color}} 40%, transparent);
-      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      transition: opacity 0.2s;
       display: inline-flex;
       align-items: center;
       gap: 8px;
     }
 
     .btn-primary:hover {
-      background: var(--accent-dark);
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px color-mix(in srgb, {{primary_color}} 45%, transparent);
+      opacity: 0.85;
     }
 
     .btn-secondary {
-      background: #fff;
-      color: var(--text);
+      background: #f5f5f5;
+      color: #000;
       padding: 13px 28px;
-      border-radius: 9px;
+      border-radius: 0;
       font-size: 0.97rem;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       text-decoration: none;
-      border: 1.5px solid var(--border-strong);
-      transition: border-color 0.2s, background 0.2s, transform 0.15s;
+      border: 1px solid #000;
+      transition: background 0.2s;
       display: inline-flex;
       align-items: center;
       gap: 8px;
     }
 
     .btn-secondary:hover {
-      border-color: var(--accent);
-      background: var(--accent-light);
-      transform: translateY(-2px);
+      background: #e5e5e5;
     }
 
     .social-proof {
@@ -381,19 +350,19 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       z-index: 1;
       max-width: 820px;
       margin: 56px auto 0;
-      border-radius: 14px;
+      border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.14), 0 4px 16px rgba(0,0,0,0.08);
-      border: 1px solid var(--border);
+      box-shadow: 3px 3px 0 0 #000;
+      border: 1px solid #000;
     }
 
     .mockup-bar {
-      background: #f1f5f9;
+      background: #f5f5f5;
       padding: 10px 16px;
       display: flex;
       align-items: center;
       gap: 12px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid #000;
     }
 
     .mockup-dots {
@@ -414,11 +383,11 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .mockup-url {
       flex: 1;
       background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 5px;
+      border: 1px solid #e5e5e5;
+      border-radius: 0;
       padding: 4px 12px;
       font-size: 0.78rem;
-      color: var(--text-muted);
+      color: #737373;
       max-width: 380px;
       margin: 0 auto;
     }
@@ -435,10 +404,10 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .mockup-row {
       height: 12px;
       border-radius: 6px;
-      background: var(--surface-alt2);
+      background: #f5f5f5;
     }
 
-    .mockup-row.accent { background: color-mix(in srgb, {{primary_color}} 20%, #fff); width: 40%; }
+    .mockup-row.accent { background: var(--accent); opacity: 0.2; width: 40%; }
     .mockup-row.wide { width: 80%; }
     .mockup-row.medium { width: 60%; }
     .mockup-row.short { width: 30%; }
@@ -451,8 +420,8 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     }
 
     .mockup-card {
-      background: var(--surface-alt);
-      border: 1px solid var(--border);
+      background: #f5f5f5;
+      border: 1px solid #e5e5e5;
       border-radius: 8px;
       padding: 14px;
       display: flex;
@@ -464,12 +433,12 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       width: 28px;
       height: 28px;
       border-radius: 6px;
-      background: var(--accent-light);
+      background: #e5e5e5;
     }
 
     .mockup-card-line {
       height: 8px;
-      background: var(--surface-alt2);
+      background: #e5e5e5;
       border-radius: 4px;
     }
 
@@ -480,7 +449,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .section-label {
       display: inline-block;
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.1em;
@@ -513,8 +482,8 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     /* ── COMPARISON SECTION ── */
     .comparison {
       background: var(--surface-alt);
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
+      border-top: 1px solid #e5e5e5;
+      border-bottom: 1px solid #e5e5e5;
     }
 
     .comparison-grid {
@@ -525,36 +494,28 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .comparison-card {
       background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: 18px;
+      border: 1px solid #000;
+      border-radius: 12px;
       padding: 40px 36px;
       position: relative;
-      transition: box-shadow 0.2s;
+      box-shadow: 3px 3px 0 0 #000;
     }
 
     .comparison-card.featured {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 4px color-mix(in srgb, {{primary_color}} 10%, transparent), var(--shadow);
-    }
-
-    .comparison-card:not(.featured) {
-      box-shadow: var(--shadow-sm);
-    }
-
-    .comparison-card:not(.featured):hover {
-      box-shadow: var(--shadow);
+      border: 2px solid #000;
+      box-shadow: 5px 5px 0 0 #000;
     }
 
     .card-recommended {
       position: absolute;
       top: -14px;
       left: 36px;
-      background: var(--accent);
+      background: #000;
       color: #fff;
       font-size: 0.75rem;
       font-weight: 700;
       padding: 4px 12px;
-      border-radius: 100px;
+      border-radius: 0;
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
@@ -562,7 +523,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .comparison-icon {
       width: 52px;
       height: 52px;
-      border-radius: 13px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -570,11 +531,11 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     }
 
     .comparison-icon.accent-bg {
-      background: var(--accent-light);
+      background: var(--surface-alt);
     }
 
     .comparison-icon.neutral-bg {
-      background: var(--surface-alt2);
+      background: var(--surface-alt);
     }
 
     .comparison-card h3 {
@@ -619,13 +580,13 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     }
 
     .comparison-list li .check.yes {
-      background: var(--accent-light);
+      background: #f5f5f5;
       color: var(--accent);
     }
 
     .comparison-list li .check.no {
-      background: var(--surface-alt2);
-      color: var(--text-muted);
+      background: #f5f5f5;
+      color: #737373;
     }
 
     /* ── FEATURES GRID ── */
@@ -635,22 +596,21 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 2px;
-      border: 1px solid var(--border);
-      border-radius: 18px;
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
       overflow: hidden;
-      box-shadow: var(--shadow);
     }
 
     .feature-card {
       background: var(--surface);
       padding: 36px 32px;
-      border-right: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
+      border-right: 1px solid #e5e5e5;
+      border-bottom: 1px solid #e5e5e5;
       transition: background 0.2s;
       position: relative;
     }
 
-    .feature-card:hover { background: var(--surface-alt); }
+    .feature-card:hover { background: #f5f5f5; }
 
     .feature-card:nth-child(3n) { border-right: none; }
     .feature-card:nth-last-child(-n+3) { border-bottom: none; }
@@ -658,8 +618,8 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .feature-icon {
       width: 46px;
       height: 46px;
-      background: var(--accent-light);
-      border-radius: 11px;
+      background: var(--surface-alt);
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -670,7 +630,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .feature-icon svg {
       width: 22px;
       height: 22px;
-      stroke: var(--accent);
+      stroke: #000;
       fill: none;
       stroke-width: 1.8;
       stroke-linecap: round;
@@ -693,7 +653,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     /* ── STATS BAR ── */
     .stats {
-      background: var(--navy);
+      background: #000;
       padding: 56px 40px;
     }
 
@@ -710,7 +670,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .stat-number {
       font-size: 2.4rem;
-      font-weight: 900;
+      font-weight: 800;
       color: #fff;
       letter-spacing: -0.03em;
       line-height: 1;
@@ -738,16 +698,16 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .pricing-card {
       background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: 20px;
+      border: 1px solid #000;
+      border-radius: 12px;
       padding: 40px 36px;
       position: relative;
-      transition: box-shadow 0.2s;
+      box-shadow: 3px 3px 0 0 #000;
     }
 
     .pricing-card.recommended {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 4px color-mix(in srgb, {{primary_color}} 10%, transparent), var(--shadow-lg);
+      border: 2px solid #000;
+      box-shadow: 5px 5px 0 0 #000;
     }
 
     .pricing-badge {
@@ -755,12 +715,12 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       top: -14px;
       left: 50%;
       transform: translateX(-50%);
-      background: var(--accent);
+      background: #000;
       color: #fff;
       font-size: 0.73rem;
       font-weight: 700;
       padding: 4px 14px;
-      border-radius: 100px;
+      border-radius: 0;
       letter-spacing: 0.05em;
       text-transform: uppercase;
       white-space: nowrap;
@@ -808,7 +768,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       color: var(--text-muted);
       margin-bottom: 28px;
       padding-bottom: 28px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid #e5e5e5;
       line-height: 1.6;
     }
 
@@ -837,81 +797,52 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     }
 
     .pricing-features li.included .pf-icon { color: var(--accent); }
-    .pricing-features li.excluded .pf-icon { color: var(--border-strong); }
+    .pricing-features li.excluded .pf-icon { color: #737373; }
 
     .btn-outline {
       display: block;
       text-align: center;
       text-decoration: none;
-      border: 1.5px solid var(--border-strong);
-      color: var(--text);
+      border: 1px solid #000;
+      background: #f5f5f5;
+      color: #000;
       padding: 12px 24px;
-      border-radius: 9px;
+      border-radius: 0;
       font-size: 0.93rem;
-      font-weight: 600;
-      transition: border-color 0.2s, background 0.2s;
+      font-weight: 500;
+      transition: background 0.2s;
     }
 
     .btn-outline:hover {
-      border-color: var(--accent);
-      background: var(--accent-light);
+      background: #e5e5e5;
     }
 
     .btn-full {
       display: block;
       text-align: center;
       text-decoration: none;
-      background: var(--accent);
+      background: #000;
       color: #fff;
       padding: 12px 24px;
-      border-radius: 9px;
+      border-radius: 0;
+      border: none;
       font-size: 0.93rem;
-      font-weight: 700;
-      transition: background 0.2s, transform 0.15s;
-      box-shadow: 0 3px 12px color-mix(in srgb, {{primary_color}} 35%, transparent);
+      font-weight: 500;
+      transition: opacity 0.2s;
     }
 
     .btn-full:hover {
-      background: var(--accent-dark);
-      transform: translateY(-1px);
+      opacity: 0.85;
     }
 
     /* ── CTA BANNER ── */
     .cta-banner {
-      background: linear-gradient(135deg, var(--navy) 0%, var(--navy2) 100%);
+      background: #000;
       padding: 100px 40px;
       text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .cta-banner::before {
-      content: '';
-      position: absolute;
-      top: -100px;
-      right: -100px;
-      width: 500px;
-      height: 500px;
-      border-radius: 50%;
-      background: radial-gradient(circle, color-mix(in srgb, {{primary_color}} 18%, transparent) 0%, transparent 65%);
-      pointer-events: none;
-    }
-
-    .cta-banner::after {
-      content: '';
-      position: absolute;
-      bottom: -120px;
-      left: -80px;
-      width: 420px;
-      height: 420px;
-      border-radius: 50%;
-      background: radial-gradient(circle, color-mix(in srgb, {{primary_color}} 10%, transparent) 0%, transparent 65%);
-      pointer-events: none;
     }
 
     .cta-inner {
-      position: relative;
-      z-index: 1;
       max-width: 640px;
       margin: 0 auto;
     }
@@ -930,6 +861,16 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       color: rgba(255,255,255,0.65);
       margin-bottom: 36px;
       line-height: 1.7;
+    }
+
+    .cta-banner .btn-primary {
+      background: #fff;
+      color: #000;
+      border: none;
+    }
+
+    .cta-banner .btn-primary:hover {
+      opacity: 0.85;
     }
 
     /* ── CONTACT FORM ── */
@@ -968,8 +909,9 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .contact-detail-icon {
       width: 38px;
       height: 38px;
-      background: var(--accent-light);
-      border-radius: 9px;
+      background: #f5f5f5;
+      border-radius: 8px;
+      border: 1px solid #e5e5e5;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -979,7 +921,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .contact-detail-icon svg {
       width: 18px;
       height: 18px;
-      stroke: var(--accent);
+      stroke: #000;
       fill: none;
       stroke-width: 1.8;
       stroke-linecap: round;
@@ -993,11 +935,11 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     }
 
     .contact-form {
-      background: var(--surface-alt);
-      border: 1px solid var(--border);
-      border-radius: 20px;
+      background: #f5f5f5;
+      border: 1px solid #000;
+      border-radius: 12px;
       padding: 40px;
-      box-shadow: var(--shadow);
+      box-shadow: 3px 3px 0 0 #000;
     }
 
     .form-group {
@@ -1015,10 +957,11 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .form-group input,
     .form-group textarea {
       width: 100%;
-      background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: 9px;
-      padding: 11px 15px;
+      background: #fff;
+      border: 1px solid #000;
+      border-radius: 0;
+      height: 48px;
+      padding: 8px 12px;
       font-size: 0.92rem;
       font-family: var(--font);
       color: var(--text);
@@ -1026,15 +969,16 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       outline: none;
     }
 
-    .form-group input:focus,
-    .form-group textarea:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px color-mix(in srgb, {{primary_color}} 15%, transparent);
-    }
-
     .form-group textarea {
+      height: auto;
       min-height: 130px;
       resize: vertical;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      border-color: #000;
+      box-shadow: 3px 3px 0 0 var(--accent);
     }
 
     .form-row {
@@ -1045,28 +989,27 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .btn-submit {
       width: 100%;
-      background: var(--accent);
+      background: #000;
       color: #fff;
       border: none;
+      border-radius: 0;
       padding: 13px 24px;
-      border-radius: 9px;
       font-size: 0.95rem;
-      font-weight: 700;
+      font-weight: 500;
       font-family: var(--font);
       cursor: pointer;
-      transition: background 0.2s, transform 0.15s;
-      box-shadow: 0 4px 14px color-mix(in srgb, {{primary_color}} 35%, transparent);
+      transition: opacity 0.2s;
     }
 
     .btn-submit:hover {
-      background: var(--accent-dark);
-      transform: translateY(-1px);
+      opacity: 0.85;
     }
 
     /* ── FOOTER ── */
     footer {
-      background: var(--navy);
-      color: rgba(255,255,255,0.7);
+      background: #fff;
+      border-top: 1px solid #000;
+      color: #737373;
       padding: 64px 40px 0;
     }
 
@@ -1090,8 +1033,8 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .footer-logo-mark {
       width: 30px;
       height: 30px;
-      background: var(--accent);
-      border-radius: 7px;
+      background: #000;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1103,13 +1046,13 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .footer-logo-text {
       font-size: 1rem;
       font-weight: 700;
-      color: #fff;
+      color: #000;
     }
 
     .footer-desc {
       font-size: 0.87rem;
       line-height: 1.7;
-      color: rgba(255,255,255,0.5);
+      color: #737373;
       margin-bottom: 24px;
     }
 
@@ -1121,22 +1064,22 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     .footer-social-btn {
       width: 36px;
       height: 36px;
-      background: rgba(255,255,255,0.07);
-      border-radius: 8px;
+      background: #f5f5f5;
+      border-radius: 0;
+      border: 1px solid #e5e5e5;
       display: flex;
       align-items: center;
       justify-content: center;
       text-decoration: none;
       transition: background 0.2s;
-      border: 1px solid rgba(255,255,255,0.08);
     }
 
-    .footer-social-btn:hover { background: rgba(255,255,255,0.13); }
+    .footer-social-btn:hover { background: #e5e5e5; }
 
     .footer-social-btn svg {
       width: 16px;
       height: 16px;
-      fill: rgba(255,255,255,0.6);
+      fill: #000;
     }
 
     .footer-col h5 {
@@ -1144,7 +1087,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.09em;
-      color: rgba(255,255,255,0.45);
+      color: #737373;
       margin-bottom: 18px;
     }
 
@@ -1157,17 +1100,17 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .footer-links a {
       text-decoration: none;
-      color: rgba(255,255,255,0.58);
+      color: #737373;
       font-size: 0.88rem;
       transition: color 0.2s;
     }
 
-    .footer-links a:hover { color: #fff; }
+    .footer-links a:hover { color: #000; }
 
     .footer-bottom {
       max-width: 1120px;
       margin: 0 auto;
-      border-top: 1px solid rgba(255,255,255,0.07);
+      border-top: 1px solid #e5e5e5;
       padding: 22px 0;
       display: flex;
       align-items: center;
@@ -1178,17 +1121,17 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
     .footer-bottom p {
       font-size: 0.82rem;
-      color: rgba(255,255,255,0.35);
+      color: #737373;
     }
 
     .footer-bottom a {
       text-decoration: none;
-      color: rgba(255,255,255,0.4);
+      color: #737373;
       font-size: 0.82rem;
       transition: color 0.2s;
     }
 
-    .footer-bottom a:hover { color: rgba(255,255,255,0.75); }
+    .footer-bottom a:hover { color: #000; }
 
     .footer-bottom-links {
       display: flex;
@@ -1198,9 +1141,9 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     /* ── RESPONSIVE ── */
     @media (max-width: 1024px) {
       .features-grid { grid-template-columns: repeat(2, 1fr); }
-      .feature-card:nth-child(3n) { border-right: 1px solid var(--border); }
+      .feature-card:nth-child(3n) { border-right: 1px solid #e5e5e5; }
       .feature-card:nth-child(2n) { border-right: none; }
-      .feature-card:nth-last-child(-n+3) { border-bottom: 1px solid var(--border); }
+      .feature-card:nth-last-child(-n+3) { border-bottom: 1px solid #e5e5e5; }
       .feature-card:nth-last-child(-n+2) { border-bottom: none; }
       .stats-inner { grid-template-columns: repeat(2, 1fr); }
       .footer-grid { grid-template-columns: 1fr 1fr; }
@@ -1213,7 +1156,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       .hamburger { display: flex; }
 
       section { padding: 64px 20px; }
-      .hero { padding: 72px 20px 80px; }
+      .hero { padding-top: 64px; padding-bottom: 80px; padding-left: 20px; padding-right: 20px; }
 
       .hero h1 { font-size: 2.2rem; }
       .hero-sub { font-size: 1rem; }
@@ -1223,10 +1166,10 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       .comparison-grid { grid-template-columns: 1fr; }
       .comparison-card { padding: 32px 24px; }
 
-      .features-grid { grid-template-columns: 1fr; border-radius: 14px; }
+      .features-grid { grid-template-columns: 1fr; border-radius: 12px; }
       .feature-card { border-right: none !important; }
       .feature-card:nth-last-child(1) { border-bottom: none !important; }
-      .feature-card:nth-last-child(-n+2) { border-bottom: 1px solid var(--border) !important; }
+      .feature-card:nth-last-child(-n+2) { border-bottom: 1px solid #e5e5e5 !important; }
 
       .stats { padding: 48px 20px; }
       .stats-inner { grid-template-columns: repeat(2, 1fr); gap: 24px; }
