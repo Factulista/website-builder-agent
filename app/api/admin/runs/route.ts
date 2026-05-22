@@ -33,7 +33,12 @@ export async function GET(req: NextRequest) {
     const result = await listRuns({ agent_type, status, project_id, limit, offset, from_date, to_date })
     return Response.json(result)
   } catch (err) {
+    const msg = String(err)
+    if (msg.includes('TABLE_MISSING')) {
+      // Table not yet created — return empty result instead of 500
+      return Response.json({ runs: [], total: 0, _warning: 'agent_runs table missing — run SQL migration' })
+    }
     console.error('[admin/runs] listRuns error:', err)
-    return Response.json({ error: String(err) }, { status: 500 })
+    return Response.json({ error: msg }, { status: 500 })
   }
 }

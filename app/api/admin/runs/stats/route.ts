@@ -24,6 +24,19 @@ export async function GET(req: NextRequest) {
     const stats = await getRunStats()
     return Response.json(stats)
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 })
+    const msg = String(err)
+    if (msg.includes('TABLE_MISSING')) {
+      // Table not yet created — return empty stats instead of 500
+      return Response.json({
+        byDay: [],
+        totals: { success: 0, error: 0, running: 0, total: 0 },
+        tokens: { input: 0, output: 0, cache_read: 0 },
+        avgDuration: null,
+        totalCost: 0,
+        _warning: 'agent_runs table missing — run SQL migration',
+      })
+    }
+    console.error('[admin/runs/stats] getRunStats error:', err)
+    return Response.json({ error: msg }, { status: 500 })
   }
 }

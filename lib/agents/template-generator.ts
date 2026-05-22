@@ -21,7 +21,8 @@ const GENERATOR_TOOLS = [
         keywords: {
           type: 'array',
           items: { type: 'string' },
-          description: '6-10 keyword che identificano il settore/tipo di business per questo template.',
+          maxItems: 1,
+          description: 'Esattamente 1 keyword in inglese che identifica il tipo di business (es: "restaurant", "hotel", "agency", "clinic", "ecommerce").',
         },
         html: {
           type: 'string',
@@ -71,7 +72,8 @@ REGOLE FONDAMENTALI:
 7. Usa Google Fonts per i font specificati con @import nel CSS.
 8. Il template deve funzionare standalone — nessuna dipendenza esterna tranne Google Fonts e icone SVG inline.
 9. Lunghezza HTML: almeno 400 righe. Qualità professionale.
-10. Le immagini hero e sezioni usano background-color con {{primary_color}} o gradient, oppure placeholder SVG inline.`
+10. Le immagini hero e sezioni usano background-color con {{primary_color}} o gradient, oppure placeholder SVG inline.
+11. Il campo keywords deve contenere ESATTAMENTE 1 keyword in inglese (es: "restaurant", "hotel", "clinic", "agency"). MAI più di una.`
 
   const userMessage = `${designContext}
 

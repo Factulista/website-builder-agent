@@ -22,7 +22,7 @@ export const TEMPLATE_REGISTRY: Template[] = [
     sector: 'Tech',
     description: 'Template dark per startup tech, app, piattaforme SaaS generiche, CRM, ERP. Hero scuro, palette navy, design minimale e moderno.',
     html: SAAS_TEMPLATE,
-    keywords: ['saas', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'crm', 'erp'],
+    keywords: ['saas'],
   },
   {
     id: 'saas2',
@@ -30,7 +30,7 @@ export const TEMPLATE_REGISTRY: Template[] = [
     sector: 'Fintech',
     description: 'Template light per software di fatturazione, contabilità e gestione finanziaria. Hero bianco, comparazione modalità, 9 feature, pricing, form contatto.',
     html: SAAS2_TEMPLATE,
-    keywords: ['fatturazione', 'invoicing', 'billing', 'contabilità', 'accounting', 'fintech', 'autonomos', 'pyme', 'partita iva', 'piccole imprese'],
+    keywords: ['invoicing'],
   },
 ]
 
