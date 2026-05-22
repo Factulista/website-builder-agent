@@ -1319,7 +1319,63 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return [html.slice(0, origIdx) + replace + html.slice(origEnd), true]
     }
 
-    // 3. Image src swap: extract old src from find, new src from replace, swap in html
+    // 3. Landmark match: if find is a large block starting with an HTML tag that has
+    //    a unique id="..." or a distinctive class="...", locate that element in the
+    //    actual HTML by its opening tag and replace the whole block up to its closing tag.
+    //    Handles pricing/hero/features sections where whitespace mapping breaks down.
+    const landmarkTagMatch = find.trimStart().match(/^<(\w+)([^>]*)>/)
+    if (landmarkTagMatch) {
+      const tag = landmarkTagMatch[1]          // e.g. "section", "div"
+      const attrs = landmarkTagMatch[2]        // e.g. ' class="pricing" id="pricing"'
+      // Extract id first (most unique), then class
+      const idMatch = attrs.match(/id=["']([^"']+)["']/)
+      const classMatch = attrs.match(/class=["']([^"']+)["']/)
+      const landmarks = [
+        idMatch    ? `id="${idMatch[1]}"`              : null,
+        idMatch    ? `id='${idMatch[1]}'`              : null,
+        classMatch ? `class="${classMatch[1]}"`        : null,
+        classMatch ? `class='${classMatch[1]}'`        : null,
+        // Also try first class only (e.g. "pricing" from "pricing recommended")
+        classMatch ? `class="${classMatch[1].split(' ')[0]}"` : null,
+      ].filter(Boolean) as string[]
+
+      for (const landmark of landmarks) {
+        // Find the opening tag in the actual HTML
+        const openRe = new RegExp(`<${tag}[^>]*${landmark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^>]*>`, 'i')
+        const openMatch = html.match(openRe)
+        if (!openMatch || openMatch.index === undefined) continue
+
+        // Walk forward to find the matching closing tag (handles nesting)
+        const start = openMatch.index
+        let depth = 0
+        let i = start
+        const openTagRe  = new RegExp(`<${tag}[\\s>]`, 'gi')
+        const closeTagRe = new RegExp(`</${tag}>`, 'gi')
+        openTagRe.lastIndex  = start
+        closeTagRe.lastIndex = start
+
+        // Simple stack-based scan
+        let end = -1
+        const scan = html.slice(start)
+        let d = 0
+        let pos = 0
+        while (pos < scan.length) {
+          const nextOpen  = scan.indexOf(`<${tag}`,   pos)
+          const nextClose = scan.indexOf(`</${tag}>`, pos)
+          if (nextClose === -1) break
+          if (nextOpen !== -1 && nextOpen < nextClose) {
+            d++; pos = nextOpen + 1
+          } else {
+            d--; pos = nextClose + `</${tag}>`.length
+            if (d === 0) { end = start + pos; break }
+          }
+        }
+        if (end === -1) continue
+        return [html.slice(0, start) + replace + html.slice(end), true]
+      }
+    }
+
+    // 4. Image src swap: extract old src from find, new src from replace, swap in html
     const imgSrcRe = /src=["']([^"']+)["']/
     if (find.includes('<img') && replace.includes('<img')) {
       const oldSrc = find.match(imgSrcRe)?.[1]
@@ -1335,7 +1391,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }
     }
 
-    // 4. src-only swap even without <img context (background-image, video poster, etc.)
+    // 5. src-only swap even without <img context (background-image, video poster, etc.)
     const oldSrc = find.match(imgSrcRe)?.[1]
     const newSrc = replace.match(imgSrcRe)?.[1]
     if (oldSrc && newSrc && html.includes(oldSrc)) {
