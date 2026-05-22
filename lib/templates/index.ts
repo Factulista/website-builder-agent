@@ -80,6 +80,22 @@ export function getTemplatesBySector(sector: string): Template[] {
   return TEMPLATE_REGISTRY.filter(t => t.sector === sector)
 }
 
+/** Picks the best matching template from a combined list (DB templates + hardcoded).
+ *  DB templates are prioritised (they come first). Same scoring logic as detectTemplate. */
+export function detectTemplateFromList(templates: Template[], text: string): string | null {
+  const lower = text.toLowerCase()
+  let bestId: string | null = null
+  let bestScore = 0
+  for (const tmpl of templates) {
+    const score = tmpl.keywords.filter(k => lower.includes(k.toLowerCase())).length
+    if (score > bestScore) {
+      bestScore = score
+      bestId = tmpl.id
+    }
+  }
+  return bestId
+}
+
 export function applyPlaceholders(html: string, values: Record<string, string>): string {
   return Object.entries(values).reduce((acc, [key, val]) => {
     return acc.split(`{{${key}}}`).join(val ?? '')

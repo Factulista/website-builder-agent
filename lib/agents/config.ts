@@ -140,3 +140,57 @@ export async function callClaude(
 
   return new Response(JSON.stringify({ error: 'Max retries exceeded' }), { status: 503 })
 }
+
+// Content block types for multimodal messages
+export type ImageBlock = {
+  type: 'image'
+  source:
+    | { type: 'base64'; media_type: string; data: string }
+    | { type: 'url'; url: string }
+}
+export type TextBlock = { type: 'text'; text: string }
+export type ContentBlock = ImageBlock | TextBlock
+
+/** callClaudeMultimodal — like callClaude but supports image content blocks in messages.
+ *  Used by the site-analyzer (Claude Vision) to analyze screenshots. */
+export async function callClaudeMultimodal(
+  model: string,
+  system: string,
+  content: ContentBlock[],
+  tools: object[],
+  apiKey: string,
+  maxRetries = 2
+): Promise<Response> {
+  const messages = [{ role: 'user', content }]
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2048,
+        system,
+        ...(tools.length > 0 && { tools, tool_choice: { type: 'any' } }),
+        messages,
+      }),
+    })
+
+    if (res.ok) return res
+
+    const isRetryable = res.status === 529 || res.status === 500 || res.status === 503
+    if (isRetryable && attempt < maxRetries) {
+      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500
+      await new Promise(r => setTimeout(r, delay))
+      continue
+    }
+
+    return res
+  }
+
+  return new Response(JSON.stringify({ error: 'Max retries exceeded' }), { status: 503 })
+}

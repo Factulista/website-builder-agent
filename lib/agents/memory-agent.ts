@@ -16,6 +16,8 @@ export type ProjectContext = {
   updatedAt?: string
   /** Design generato dal Design agent — riusato su add-page per coerenza e risparmio token */
   design?: DesignOutput
+  /** URL del sito di ispirazione dall'ultima richiesta con URL — usato per abbinare gli screenshot */
+  lastInspirationUrl?: string
 }
 
 const MEMORY_TOOLS = [

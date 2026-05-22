@@ -1513,6 +1513,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return
     }
 
+    if (result.requestScreenshots) {
+      // Pipeline detected an inspiration URL and is asking the user for screenshots
+      const msg = result.input?.summary ?? '📸 Carica 2-3 screenshot del sito di ispirazione per generare un template personalizzato.'
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
+      const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
+      await supabase.from('projects').update({
+        site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+      setLoading(false)
+      return
+    }
+
     if (result.tool === 'create_site') {
       const rawPages = result.input.pages
       if (!Array.isArray(rawPages)) { markFailed('risposta non valida dal server'); return }

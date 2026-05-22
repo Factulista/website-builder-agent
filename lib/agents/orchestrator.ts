@@ -6,7 +6,8 @@ import { runSeoAgent } from './seo-agent'
 import { runImagesAgent } from './images-agent'
 import { runAccessibilityAgent } from './accessibility-agent'
 import { runMemoryAgent, type ProjectContext } from './memory-agent'
-import { analyzeSite, extractUrls, type DesignBrief } from './site-analyzer'
+import { analyzeSite, analyzeScreenshots, extractUrls, extractImageUrls, type DesignBrief } from './site-analyzer'
+import { generateTemplate, type GeneratedTemplate } from './template-generator'
 import { detectTemplate, loadTemplate, TEMPLATE_REGISTRY } from '../templates/index'
 
 /** Rileva se l'utente menziona esplicitamente un template per ID (es: "saas2", "usa il template saas") */
@@ -116,6 +117,12 @@ export type PipelineResult = {
   usage?: object
   requestLanguage?: boolean
   requestClarification?: boolean
+  /** Chiede all'utente di caricare screenshot del sito di ispirazione */
+  requestScreenshots?: boolean
+  /** URL del sito di ispirazione rilevato nel messaggio */
+  inspirationUrl?: string
+  /** Template generato da screenshot — da salvare nel DB lato route */
+  generatedTemplate?: GeneratedTemplate
 }
 
 /** Estrae il design system aggiornato dalle pagine dopo un design-update.
@@ -203,6 +210,81 @@ export async function runFullPipeline(
 ): Promise<PipelineResult> {
   const steps: string[] = []
 
+  // Step 0a: Ispirazione URL — gestisci il flusso in due round
+  const urls = extractUrls(userRequest)
+  const imageUrls = extractImageUrls(userRequest)
+
+  // Round 2: user ha caricato screenshot dopo una richiesta con URL
+  // Condizione: context ha lastInspirationUrl + ci sono immagini nel messaggio corrente
+  if (context.lastInspirationUrl && imageUrls.length > 0) {
+    emit?.('🖼️ Analisi screenshot con Claude Vision')
+    const screenshotBrief = await analyzeScreenshots(imageUrls, apiKey).catch(() => null)
+
+    // Rimuovi lastInspirationUrl dal contesto in ogni caso — anche se la Vision fallisce
+    const updatedContextAfterTemplate: ProjectContext = { ...context, lastInspirationUrl: undefined }
+
+    if (screenshotBrief) {
+      screenshotBrief.sourceUrl = context.lastInspirationUrl
+      emit?.('🎨 Generazione template da ispirazione')
+      const generatedTemplate = await generateTemplate(screenshotBrief, userRequest, apiKey).catch(() => null)
+
+      return {
+        tool: 'create_site',
+        input: { pages: existingPages, summary: generatedTemplate
+          ? `✨ Template "${generatedTemplate.name}" generato e salvato! Ora genera il tuo sito con "crea un sito per [tipo business]".`
+          : '⚠️ Non sono riuscito a generare il template. Prova con "crea un sito" per usare lo stile standard.' },
+        agent: 'pipeline',
+        steps: generatedTemplate
+          ? [`✅ Template "${generatedTemplate.name}" (settore: ${generatedTemplate.sector}) salvato`]
+          : ['⚠️ Generazione template fallita'],
+        updatedContext: updatedContextAfterTemplate,
+        generatedTemplate: generatedTemplate ?? undefined,
+      }
+    }
+
+    // Vision fallita — informa l'utente ma pulisci il contesto
+    return {
+      tool: 'create_site',
+      input: { pages: existingPages, summary: '⚠️ Non ho potuto analizzare gli screenshot (potrebbero essere troppo grandi o in formato non supportato). Puoi comunque generare il sito con "crea un sito per [tipo business]".' },
+      agent: 'pipeline',
+      steps: ['⚠️ Analisi screenshot fallita'],
+      updatedContext: updatedContextAfterTemplate,
+    }
+  }
+
+  // Round 1: user ha incollato un URL ma nessuno screenshot ancora
+  // Condizione: c'è un URL nel messaggio E non ci sono immagini E non è già stato salvato lastInspirationUrl
+  if (urls.length > 0 && imageUrls.length === 0 && !context.lastInspirationUrl) {
+    const inspirationUrl = urls[0]
+    emit?.(`🔍 Analisi sito: ${inspirationUrl}`)
+
+    // Analizza CSS/HTML in background (usiamo il brief per il design, non per fermare il pipeline)
+    // Salviamo l'URL nel contesto per abbinarlo agli screenshot nel round successivo
+    const cssAnalysis = await analyzeSite(inspirationUrl, apiKey).catch(() => null)
+
+    // Aggiorna contesto con lastInspirationUrl per riconoscere gli screenshot nel round successivo
+    const updatedContextWithInspiration: ProjectContext = {
+      ...context,
+      lastInspirationUrl: inspirationUrl,
+    }
+
+    const screenshotMsg = `🎨 Ho analizzato il design di ${inspirationUrl}.
+
+Per generare un template fedele a questo stile, ho bisogno di vedere il sito visivamente. Carica 2-3 screenshot della homepage e delle sezioni che ti piacciono di più (usa il pulsante 📎 nella chat).
+
+Nel frattempo, dimmi: che tipo di business vuoi creare e come si chiama?`
+
+    return {
+      tool: 'create_site',
+      input: { pages: existingPages, summary: screenshotMsg },
+      agent: 'pipeline',
+      steps: [`🔍 Sito analizzato: ${inspirationUrl}${cssAnalysis ? ' (design estratto)' : ''}`],
+      updatedContext: updatedContextWithInspiration,
+      requestScreenshots: true,
+      inspirationUrl,
+    }
+  }
+
   // Step 0a: Rileva lingua dal prompt
   const detectedLanguage = detectLanguage(userRequest)
   if (!detectedLanguage && existingPages.length === 0) {
@@ -240,8 +322,8 @@ export async function runFullPipeline(
   if (!plan?.pages?.length) throw new Error('Planner non ha prodotto un piano valido')
   steps.push(`✅ Piano: ${plan.pages.map(p => p.slug).join(', ')}`)
 
-  // Step 2a: Site Analyzer
-  const urls = extractUrls(userRequest)
+  // Step 2a: Site Analyzer — analizza URL di ispirazione (se presenti e non già gestiti in cima)
+  // `urls` è già estratto in cima alla funzione; qui lo riusiamo solo per la design inspiration
   let inspirationBriefs: DesignBrief[] = []
   if (urls.length > 0) {
     emit?.(`🔍 Analisi siti di ispirazione`)

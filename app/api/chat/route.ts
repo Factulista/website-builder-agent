@@ -184,7 +184,14 @@ export async function POST(req: NextRequest) {
     }
 
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
-    const agent = classify(lastUserMessage, pages?.length > 0)
+
+    // Se il contesto ha un URL di ispirazione in sospeso e il messaggio contiene immagini,
+    // forza il pipeline agent per gestire Round 2 (analisi screenshot + generazione template)
+    const hasInspiration = !!context.lastInspirationUrl
+    const hasAttachedImages = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
+    const agent = (hasInspiration && hasAttachedImages)
+      ? ('pipeline' as const)
+      : classify(lastUserMessage, pages?.length > 0)
 
     // Clarifier — runs before any agent if the request is ambiguous
     const clarifierConfig = dbConfigs.find(c => c.name === 'clarifier')
@@ -263,6 +270,20 @@ export async function POST(req: NextRequest) {
             await supabase.from('projects').update({
               site_config: { ...siteConfig, context: result.updatedContext },
             }).eq('id', projectId)
+          }
+          // Se il pipeline ha generato un template, salvalo nel DB (non-blocking)
+          if (result.generatedTemplate) {
+            const t = result.generatedTemplate
+            supabase.from('templates').insert({
+              name: t.name,
+              sector: t.sector,
+              keywords: t.keywords,
+              html: t.html,
+              source_url: t.sourceUrl ?? null,
+            }).then(({ error }) => {
+              if (error) console.error('[template-save] error:', error.message)
+              else console.log('[template-save] saved:', t.name)
+            })
           }
           // Log completion
           if (runId) {
