@@ -72,11 +72,10 @@ export default function TemplatesPage() {
       .from('templates')
       .select('id, name, sector, keywords, source_url, created_at')
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setDbTemplates((data ?? []).map((t: any) => ({ ...t, _source: 'db' as const })))
+      .then(({ data, error }) => {
+        if (!error) setDbTemplates((data ?? []).map((t: any) => ({ ...t, _source: 'db' as const })))
         setLoading(false)
       })
-      .catch(() => setLoading(false))
   }, [])
 
   const allRows: Row[] = [...hardcoded, ...dbTemplates]

@@ -75,7 +75,11 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
     .from('agent_configs')
     .select('*')
 
-  if (error) throw new Error(`getAgentConfigs: ${error.message}`)
+  // Se la tabella non esiste o c'è un errore grave, fai fallback al manifest
+  if (error) {
+    console.warn('[db-config] agent_configs read failed, falling back to manifest:', error.message)
+    return manifestFallback()
+  }
 
   const existingNames = new Set((existing ?? []).map((r: DbAgentConfig) => r.name))
 
@@ -88,7 +92,7 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
       max_tokens: a.maxTokens,
       enabled: a.enabled,
       system_prompt: a.systemPromptPreview,
-      // Metadati
+      // Metadati (potrebbero non esistere se Migration 2 non è stata eseguita)
       display_name: a.displayName,
       description: a.description,
       category: a.category,
@@ -102,19 +106,63 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
     const { error: insertError } = await supabase
       .from('agent_configs')
       .insert(toInsert)
-    if (insertError) throw new Error(`getAgentConfigs seed: ${insertError.message}`)
-  }
 
-  // Re-fetch after potential insert
-  if (toInsert.length > 0) {
+    if (insertError) {
+      // Migration 2 potrebbe non essere stata eseguita: riprova senza colonne metadati
+      console.warn('[db-config] full seed failed, retrying without metadata columns:', insertError.message)
+      const basicInsert = toInsert.map(a => ({
+        name: a.name,
+        model: a.model,
+        max_tokens: a.max_tokens,
+        enabled: a.enabled,
+        system_prompt: a.system_prompt,
+      }))
+      const { error: basicError } = await supabase.from('agent_configs').insert(basicInsert)
+      if (basicError) {
+        console.warn('[db-config] basic seed also failed:', basicError.message)
+        // Restituisci comunque quelli già presenti + manifest come fallback per i nuovi
+        return mergeWithManifest(existing ?? [])
+      }
+    }
+
+    // Re-fetch after insert
     const { data: fresh, error: freshError } = await supabase
       .from('agent_configs')
       .select('*')
-    if (freshError) throw new Error(`getAgentConfigs re-fetch: ${freshError.message}`)
+    if (freshError) {
+      console.warn('[db-config] re-fetch failed:', freshError.message)
+      return mergeWithManifest(existing ?? [])
+    }
     return (fresh ?? []) as DbAgentConfig[]
   }
 
   return (existing ?? []) as DbAgentConfig[]
+}
+
+/** Converte il manifest in DbAgentConfig per usarlo come fallback quando il DB non è disponibile */
+function manifestFallback(): DbAgentConfig[] {
+  return AGENTS_MANIFEST.map(a => ({
+    name: a.name,
+    model: a.model,
+    max_tokens: a.maxTokens,
+    enabled: a.enabled,
+    system_prompt: a.systemPromptPreview,
+    updated_at: new Date().toISOString(),
+    display_name: a.displayName,
+    description: a.description,
+    category: a.category,
+    file_path: a.filePath,
+    rules: a.rules ?? [],
+    inputs: a.inputs,
+    outputs: a.outputs,
+  }))
+}
+
+/** Merge DB rows con il manifest per riempire gli agenti mancanti */
+function mergeWithManifest(dbRows: DbAgentConfig[]): DbAgentConfig[] {
+  const dbNames = new Set(dbRows.map(r => r.name))
+  const missing = manifestFallback().filter(a => !dbNames.has(a.name))
+  return [...dbRows, ...missing]
 }
 
 export async function syncAgentMetadata(): Promise<void> {
