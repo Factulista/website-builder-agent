@@ -3732,43 +3732,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 style={{ background: 'transparent', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: C.textFaint, padding: '2px 6px' }}>×</button>
             </div>
 
-            {/* User profile */}
-            <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: `1px solid ${C.border}` }}>
-              <h3 style={{ margin: '0 0 12px', fontSize: '0.85rem', fontWeight: 700, color: C.text }}>Profilo utente</h3>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Nome</label>
-                  <input
-                    defaultValue={userFullName.split(' ')[0] || ''}
-                    onBlur={async e => {
-                      const firstName = e.target.value.trim()
-                      const lastName = userFullName.split(' ').slice(1).join(' ')
-                      const full = [firstName, lastName].filter(Boolean).join(' ')
-                      setUserFullName(full)
-                      await supabase.auth.updateUser({ data: { first_name: firstName, last_name: lastName } })
-                    }}
-                    placeholder="Nome"
-                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Cognome</label>
-                  <input
-                    defaultValue={userFullName.split(' ').slice(1).join(' ') || ''}
-                    onBlur={async e => {
-                      const lastName = e.target.value.trim()
-                      const firstName = userFullName.split(' ')[0] || ''
-                      const full = [firstName, lastName].filter(Boolean).join(' ')
-                      setUserFullName(full)
-                      await supabase.auth.updateUser({ data: { first_name: firstName, last_name: lastName } })
-                    }}
-                    placeholder="Cognome"
-                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* Staging domain */}
             <div style={{ marginBottom: '1.25rem', padding: '12px 14px', background: C.bg, borderRadius: '10px', border: `1px solid ${C.border}` }}>
               <p style={{ margin: '0 0 4px', fontSize: '0.75rem', color: C.textFaint, fontWeight: 500 }}>Dominio di preview (staging)</p>

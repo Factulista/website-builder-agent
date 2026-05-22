@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
@@ -248,6 +248,18 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
   const router = useRouter()
   const { language, loaded } = useLanguage()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [profileSaved, setProfileSaved] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const meta = session?.user?.user_metadata ?? {}
+      setFirstName(meta.first_name ?? '')
+      setLastName(meta.last_name ?? '')
+    })
+  }, [])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -259,7 +271,14 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
     router.push('/back-office/settings')
   }
 
-  const userInitial = userEmail?.[0]?.toUpperCase() ?? 'U'
+  const saveProfile = async () => {
+    await supabase.auth.updateUser({ data: { first_name: firstName, last_name: lastName } })
+    setProfileSaved(true)
+    setTimeout(() => setProfileSaved(false), 2000)
+  }
+
+  const displayName = [firstName, lastName].filter(Boolean).join(' ') || userEmail
+  const userInitial = (firstName?.[0]?.toUpperCase() || userEmail?.[0]?.toUpperCase()) ?? 'U'
 
   return (
     <aside style={{
@@ -345,12 +364,19 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '26px', height: '26px', background: '#e05a2b', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.7rem', fontWeight: 700 }}>
+            <div style={{ width: '26px', height: '26px', background: '#e05a2b', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 }}>
               {userInitial}
             </div>
-            <span style={{ fontSize: '0.78rem', color: '#6b6563', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
-              {userEmail}
-            </span>
+            <div style={{ minWidth: 0 }}>
+              {(firstName || lastName) && (
+                <div style={{ fontSize: '0.78rem', color: '#1a1a1a', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
+                  {[firstName, lastName].filter(Boolean).join(' ')}
+                </div>
+              )}
+              <div style={{ fontSize: '0.7rem', color: '#9b9896', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
+                {userEmail}
+              </div>
+            </div>
           </div>
           <span style={{ fontSize: '0.7rem', color: '#9b9896', transition: 'transform 0.2s', transform: userMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
             ▾
@@ -370,57 +396,36 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
             boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
             zIndex: 1000,
             marginBottom: '8px',
+            overflow: 'hidden',
           }}>
+            {/* Profile option — visible to all */}
+            <button
+              onClick={() => { setUserMenuOpen(false); setShowProfileModal(true) }}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '10px 12px', border: 'none', background: 'transparent', color: '#1a1a1a', fontSize: '0.8375rem', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid #f0f0f0' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f9f9f9'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+            >
+              <span style={{ fontSize: '0.95rem' }}>👤</span>
+              Profilo
+            </button>
+
             {/* Settings option (only for admin) */}
             {isAdmin(userEmail) && (
-              <>
-                <button
-                  onClick={handleSettings}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#1a1a1a',
-                    fontSize: '0.8375rem',
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    borderBottom: '1px solid #f0f0f0',
-                  }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f9f9f9'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                >
-                  <span style={{ fontSize: '0.95rem' }}>⚙️</span>
-                  {loaded ? t('sidebar.settings' as const, language) : 'Settings'}
-                </button>
-              </>
+              <button
+                onClick={handleSettings}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '10px 12px', border: 'none', background: 'transparent', color: '#1a1a1a', fontSize: '0.8375rem', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid #f0f0f0' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f9f9f9'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+              >
+                <span style={{ fontSize: '0.95rem' }}>⚙️</span>
+                {loaded ? t('sidebar.settings' as const, language) : 'Settings'}
+              </button>
             )}
 
             {/* Logout option */}
             <button
-              onClick={() => {
-                setUserMenuOpen(false)
-                handleLogout()
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                width: '100%',
-                padding: '10px 12px',
-                border: 'none',
-                background: 'transparent',
-                color: '#ef4444',
-                fontSize: '0.8375rem',
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                textAlign: 'left',
-                borderRadius: '0 0 9px 9px',
-              }}
+              onClick={() => { setUserMenuOpen(false); handleLogout() }}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '10px 12px', border: 'none', background: 'transparent', color: '#ef4444', fontSize: '0.8375rem', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#fef2f2'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
             >
@@ -430,6 +435,53 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
           </div>
         )}
       </div>
+
+      {/* Profile modal */}
+      {showProfileModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={() => setShowProfileModal(false)} />
+          <div style={{ position: 'relative', background: 'white', borderRadius: '14px', padding: '28px', width: '340px', boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
+            <button onClick={() => setShowProfileModal(false)} style={{ position: 'absolute', top: '14px', right: '16px', background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#9b9896', lineHeight: 1 }}>✕</button>
+            {/* Avatar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+              <div style={{ width: '44px', height: '44px', background: '#e05a2b', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '1rem', fontWeight: 700, flexShrink: 0 }}>
+                {userInitial}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#1a1a1a' }}>{displayName}</div>
+                <div style={{ fontSize: '0.75rem', color: '#9b9896' }}>{userEmail}</div>
+              </div>
+            </div>
+            {/* Fields */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#9b9896', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Nome</label>
+                <input
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  placeholder="Nome"
+                  style={{ width: '100%', border: '1px solid #e8e4de', borderRadius: '8px', padding: '7px 10px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#9b9896', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Cognome</label>
+                <input
+                  value={lastName}
+                  onChange={e => setLastName(e.target.value)}
+                  placeholder="Cognome"
+                  style={{ width: '100%', border: '1px solid #e8e4de', borderRadius: '8px', padding: '7px 10px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                />
+              </div>
+            </div>
+            <button
+              onClick={saveProfile}
+              style={{ width: '100%', padding: '9px', background: profileSaved ? '#10b981' : '#1a1a1a', color: 'white', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.2s' }}
+            >
+              {profileSaved ? '✓ Salvato' : 'Salva'}
+            </button>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
