@@ -1216,7 +1216,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
   </ul>
 
   <div class="nav-actions">
-    <a href="#" class="btn-ghost-nav">Accedi</a>
+    <a href="#" class="btn-ghost-nav">{{nav_login}}</a>
     <a href="#" class="btn-accent-nav">{{cta_primary}}</a>
   </div>
 
@@ -1232,7 +1232,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
   <a href="#features">{{nav_link_1}}</a>
   <a href="#pricing">{{nav_link_2}}</a>
   <a href="#contact">{{nav_link_3}}</a>
-  <a href="#" class="btn-ghost-nav" style="text-align:center;margin-top:8px;">Accedi</a>
+  <a href="#" class="btn-ghost-nav" style="text-align:center;margin-top:8px;">{{nav_login}}</a>
   <a href="#" class="btn-accent-nav">{{cta_primary}}</a>
 </div>
 
@@ -1300,20 +1300,20 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 <div class="stats" aria-label="Statistics">
   <div class="stats-inner">
     <div class="stat-item">
-      <div class="stat-number">12<span>k+</span></div>
-      <div class="stat-label">Aziende attive</div>
+      <div class="stat-number">{{stat_1_number}}</div>
+      <div class="stat-label">{{stat_1_label}}</div>
     </div>
     <div class="stat-item">
-      <div class="stat-number">98<span>%</span></div>
-      <div class="stat-label">Soddisfazione clienti</div>
+      <div class="stat-number">{{stat_2_number}}</div>
+      <div class="stat-label">{{stat_2_label}}</div>
     </div>
     <div class="stat-item">
-      <div class="stat-number">4.9<span>/5</span></div>
-      <div class="stat-label">Rating medio</div>
+      <div class="stat-number">{{stat_3_number}}</div>
+      <div class="stat-label">{{stat_3_label}}</div>
     </div>
     <div class="stat-item">
-      <div class="stat-number">24<span>/7</span></div>
-      <div class="stat-label">Supporto dedicato</div>
+      <div class="stat-number">{{stat_4_number}}</div>
+      <div class="stat-label">{{stat_4_label}}</div>
     </div>
   </div>
 </div>
@@ -1342,25 +1342,25 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
             <span class="check yes">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             </span>
-            Automazione completa del ciclo di fatturazione
+            {{mode_1_feature_1}}
           </li>
           <li>
             <span class="check yes">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             </span>
-            Integrazione con tutti i sistemi contabili
+            {{mode_1_feature_2}}
           </li>
           <li>
             <span class="check yes">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             </span>
-            Dashboard avanzata con analisi in tempo reale
+            {{mode_1_feature_3}}
           </li>
           <li>
             <span class="check yes">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             </span>
-            Reportistica personalizzata e export
+            {{mode_1_feature_4}}
           </li>
         </ul>
       </div>
@@ -1380,25 +1380,25 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
             <span class="check yes">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             </span>
-            Gestione manuale delle fatture con template
+            {{mode_2_feature_1}}
           </li>
           <li>
             <span class="check yes">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
             </span>
-            Rubrica clienti e archivio documenti
+            {{mode_2_feature_2}}
           </li>
           <li>
             <span class="check no">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </span>
-            Automazioni avanzate non disponibili
+            {{mode_2_feature_3}}
           </li>
           <li>
             <span class="check no">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </span>
-            Analisi e report limitati al piano base
+            {{mode_2_feature_4}}
           </li>
         </ul>
       </div>
@@ -1530,7 +1530,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 
       <!-- PRO Plan -->
       <div class="pricing-card recommended">
-        <div class="pricing-badge">Più popolare</div>
+        <div class="pricing-badge">{{pricing_popular_badge}}</div>
         <div class="pricing-plan-name">{{price_paid_label}}</div>
         <div class="pricing-price">
           <span class="currency">€</span>
@@ -1554,8 +1554,8 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
 <!-- ── CTA BANNER ── -->
 <section class="cta-banner">
   <div class="cta-inner">
-    <h2>Pronto a semplificare il tuo lavoro?</h2>
-    <p>Unisciti a migliaia di aziende che usano {{company_name}} ogni giorno per gestire la propria fatturazione.</p>
+    <h2>{{cta_banner_title}}</h2>
+    <p>{{cta_banner_desc}}</p>
     <a href="#" class="btn-primary" style="display:inline-flex;">
       {{cta_primary}}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -1604,7 +1604,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
               <input type="text" id="contact-name" name="name" placeholder="{{form_name_placeholder}}" autocomplete="name">
             </div>
             <div class="form-group">
-              <label for="contact-email">Email</label>
+              <label for="contact-email">{{form_email_label}}</label>
               <input type="email" id="contact-email" name="email" placeholder="{{form_email_placeholder}}" autocomplete="email">
             </div>
           </div>
@@ -1666,7 +1666,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       <h5>{{footer_col2_title}}</h5>
       <ul class="footer-links">
         <li><a href="#">{{footer_about_link}}</a></li>
-        <li><a href="#">Blog</a></li>
+        <li><a href="#">{{footer_blog_link}}</a></li>
         <li><a href="#">{{footer_careers_link}}</a></li>
         <li><a href="#contact">{{nav_link_3}}</a></li>
         <li><a href="#">{{footer_partner_link}}</a></li>
