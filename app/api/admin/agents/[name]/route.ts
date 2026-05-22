@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { isAdmin } from '../../../../../lib/admin'
 import { getAgentConfig, getAgentConfigs, updateAgentConfig } from '../../../../../lib/agents/db-config'
 import { AGENTS_MANIFEST } from '../../../../../lib/agents/manifest'
+import { invalidateAgentsCache } from '../../../../../lib/agents/agents-cache'
 
 async function verifyAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false; error: string }> {
   const token = req.headers.get('authorization')?.replace('Bearer ', '')
@@ -92,6 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<Para
     if (body.outputs !== undefined) patch.outputs = body.outputs
 
     const updated = await updateAgentConfig(name, patch)
+    invalidateAgentsCache()  // bust the list cache so changes appear immediately
     const meta = AGENTS_MANIFEST.find(a => a.name === name)
     return Response.json({
       ...updated,

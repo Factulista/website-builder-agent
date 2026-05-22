@@ -1,8 +1,17 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isAdmin } from '../../../../lib/admin'
-import { getAgentConfigs, syncAgentMetadata } from '../../../../lib/agents/db-config'
+import { getAgentConfigs, syncAgentMetadata, type DbAgentConfig } from '../../../../lib/agents/db-config'
 import { AGENTS_MANIFEST } from '../../../../lib/agents/manifest'
+import { getAgentsCache, setAgentsCache, shouldRunSync, resetSyncFlag } from '../../../../lib/agents/agents-cache'
+
+function triggerSyncOnce() {
+  if (!shouldRunSync()) return
+  syncAgentMetadata().catch(e => {
+    resetSyncFlag() // allow retry on failure
+    console.warn('[agents] syncAgentMetadata failed:', e?.message ?? e)
+  })
+}
 
 async function verifyAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false; error: string }> {
   const token = req.headers.get('authorization')?.replace('Bearer ', '')
@@ -57,25 +66,30 @@ export async function GET(req: NextRequest) {
 
   // Top-level try/catch: in caso di qualsiasi crash, restituisci sempre il manifest
   try {
-    // Sync metadati in background (non-blocking, best-effort)
-    syncAgentMetadata().catch(e => console.warn('[agents] syncAgentMetadata failed:', e?.message ?? e))
+    // Run sync only ONCE per server lifetime (was: every request → 14 serial DB updates)
+    triggerSyncOnce()
 
-    // getAgentConfigs ora ha fallback interno — non lancia mai eccezioni fatali
-    let dbConfigs
+    // Cache hit: skip Supabase entirely (60s TTL)
+    const cached = getAgentsCache()
+    if (cached) {
+      return Response.json(mergeWithManifestFields(cached))
+    }
+
+    let dbConfigs: DbAgentConfig[]
     try {
       dbConfigs = await getAgentConfigs()
     } catch (e) {
       console.warn('[agents] getAgentConfigs threw, using manifest:', e instanceof Error ? e.message : e)
-      dbConfigs = manifestAsConfigs()
+      dbConfigs = manifestAsConfigs() as DbAgentConfig[]
     }
 
     if (!Array.isArray(dbConfigs) || dbConfigs.length === 0) {
       console.warn('[agents] dbConfigs empty, using manifest')
-      dbConfigs = manifestAsConfigs()
+      dbConfigs = manifestAsConfigs() as DbAgentConfig[]
     }
 
-    const merged = mergeWithManifestFields(dbConfigs)
-    return Response.json(merged)
+    setAgentsCache(dbConfigs)
+    return Response.json(mergeWithManifestFields(dbConfigs))
   } catch (err) {
     console.error('[agents] uncaught error, falling back to manifest:', err instanceof Error ? err.message : err)
     // Ultimo baluardo: anche se tutto crasha, restituiamo il manifest puro
