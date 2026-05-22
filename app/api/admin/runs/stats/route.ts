@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { isAdmin } from '../../../../../lib/admin'
 import { getRunStats } from '../../../../../lib/agents/run-logger'
+import { getStatsCache, setStatsCache } from '../../../../../lib/agents/runs-cache'
 
 async function verifyAdmin(req: NextRequest): Promise<{ ok: true } | { ok: false; error: string }> {
   const token = req.headers.get('authorization')?.replace('Bearer ', '')
@@ -20,8 +21,13 @@ export async function GET(req: NextRequest) {
   const auth = await verifyAdmin(req)
   if (!auth.ok) return Response.json({ error: auth.error }, { status: 401 })
 
+  // Cache hit: skip Supabase entirely (30s TTL)
+  const cached = getStatsCache()
+  if (cached) return Response.json(cached)
+
   try {
     const stats = await getRunStats()
+    setStatsCache(stats)
     return Response.json(stats)
   } catch (err) {
     const msg = String(err)

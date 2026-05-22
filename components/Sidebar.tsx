@@ -93,9 +93,7 @@ function SearchBar({
   const menuItems = [
     { label: loaded ? t('sidebar.projects' as const, language) : 'Projects', href: '/projects', icon: '⊞' },
     { label: loaded ? t('sidebar.newSite' as const, language) : 'New site', href: '/projects/new', icon: '✦' },
-    { label: loaded ? t('sidebar.agentsList' as const, language) : 'Agents List', href: '/back-office/agents', icon: '⌬' },
-    { label: loaded ? t('sidebar.agentsWorkflow' as const, language) : 'Agents Workflow', href: '/back-office/pipeline', icon: '◇' },
-    { label: loaded ? t('sidebar.agentsRun' as const, language) : 'Agents Run', href: '/back-office/runs', icon: '◉' },
+    { label: 'Agents', href: '/back-office/agents', icon: '⌬' },
     { label: loaded ? t('sidebar.templates' as const, language) : 'Templates', href: '/back-office/templates', icon: '▦' },
     { label: loaded ? t('sidebar.settings' as const, language) : 'Settings', href: '/back-office/settings', icon: '⚙' },
   ]
@@ -325,9 +323,16 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
         {isAdmin(userEmail) && (
           <>
             <SectionLabel>{loaded ? t('sidebar.backOffice' as const, language) : 'Back Office'}</SectionLabel>
-            <NavItem icon="⌬" label={loaded ? t('sidebar.agentsList' as const, language) : 'Agents List'} href="/back-office/agents" active={pathname.startsWith('/back-office/agents')} />
-            <NavItem icon="◇" label={loaded ? t('sidebar.agentsWorkflow' as const, language) : 'Agents Workflow'} href="/back-office/pipeline" active={pathname.startsWith('/back-office/pipeline')} />
-            <NavItem icon="◉" label={loaded ? t('sidebar.agentsRun' as const, language) : 'Agents Run'} href="/back-office/runs" active={pathname.startsWith('/back-office/runs')} />
+            <NavItem
+              icon="⌬"
+              label="Agents"
+              href="/back-office/agents"
+              active={
+                pathname.startsWith('/back-office/agents') ||
+                pathname.startsWith('/back-office/pipeline') ||
+                pathname.startsWith('/back-office/runs')
+              }
+            />
             <NavItem icon="▦" label={loaded ? t('sidebar.templates' as const, language) : 'Templates'} href="/back-office/templates" active={pathname.startsWith('/back-office/templates')} />
           </>
         )}

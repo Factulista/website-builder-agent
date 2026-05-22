@@ -1,10 +1,21 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { isAdmin } from '../../lib/admin'
 import { Sidebar } from '../../components/Sidebar'
+import { AgentsTabs } from '../../components/AgentsTabs'
+
+// Tabs appear only on the 3 index pages — not on detail views like
+// /back-office/agents/[name] or /back-office/runs/[id]
+function isAgentsTabbedRoute(pathname: string): boolean {
+  return (
+    pathname === '/back-office/agents' ||
+    pathname === '/back-office/pipeline' ||
+    pathname === '/back-office/runs'
+  )
+}
 
 type Project = {
   id: string
@@ -17,6 +28,7 @@ type Project = {
 
 export default function BackOfficeLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname() ?? ''
   const [authorized, setAuthorized] = useState<boolean | null>(null)
   const [userEmail, setUserEmail] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
@@ -65,6 +77,7 @@ export default function BackOfficeLayout({ children }: { children: React.ReactNo
     <div style={{ minHeight: '100vh', background: '#faf9f7', fontFamily: 'inherit', display: 'flex' }}>
       <Sidebar userEmail={userEmail} projects={projects} />
       <main style={{ flex: 1, overflow: 'auto' }}>
+        {isAgentsTabbedRoute(pathname) && <AgentsTabs />}
         {children}
       </main>
     </div>
