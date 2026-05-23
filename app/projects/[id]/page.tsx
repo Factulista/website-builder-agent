@@ -2851,6 +2851,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               pages={pages}
               activeSlug={activeSlug}
               onPageSelect={(slug) => setActiveSlug(slug)}
+              hasBlog={hasBlogNavLink(pages) || blogPosts.length > 0}
+              isBlogActive={viewMode === 'blog'}
+              onBlogSelect={() => setViewMode('blog')}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
@@ -2901,6 +2904,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 setCodeContent(pages.find(p => p.slug === slug)?.html ?? '')
                 setCodeSaving('idle')
               }}
+              hasBlog={hasBlogNavLink(pages) || blogPosts.length > 0}
+              isBlogActive={viewMode === 'blog'}
+              onBlogSelect={() => setViewMode('blog')}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>

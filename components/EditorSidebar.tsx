@@ -17,10 +17,16 @@ export function EditorSidebar({
   pages,
   activeSlug,
   onPageSelect,
+  hasBlog,
+  isBlogActive,
+  onBlogSelect,
 }: {
   pages: Page[]
   activeSlug: string
   onPageSelect: (slug: string) => void
+  hasBlog?: boolean
+  isBlogActive?: boolean
+  onBlogSelect?: () => void
 }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['pages']))
 
@@ -58,7 +64,7 @@ export function EditorSidebar({
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
             <span style={{ fontSize: '0.7rem' }}>{expandedSections.has('pages') ? '▼' : '▶'}</span>
-            <span>Pagine ({pages.length})</span>
+            <span>Pagine ({pages.length + (hasBlog ? 1 : 0)})</span>
           </button>
 
           {expandedSections.has('pages') && (
@@ -71,16 +77,16 @@ export function EditorSidebar({
                     width: 'calc(100% - 8px)',
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '6px 8px', margin: '2px 0',
-                    background: page.slug === activeSlug ? C.blue : 'transparent',
-                    border: `1px solid ${page.slug === activeSlug ? C.blue : 'transparent'}`,
+                    background: !isBlogActive && page.slug === activeSlug ? C.blue : 'transparent',
+                    border: `1px solid ${!isBlogActive && page.slug === activeSlug ? C.blue : 'transparent'}`,
                     borderRadius: '6px', cursor: 'pointer',
-                    color: page.slug === activeSlug ? 'white' : C.text,
-                    fontSize: '0.8rem', fontWeight: page.slug === activeSlug ? 600 : 400,
+                    color: !isBlogActive && page.slug === activeSlug ? 'white' : C.text,
+                    fontSize: '0.8rem', fontWeight: !isBlogActive && page.slug === activeSlug ? 600 : 400,
                     fontFamily: 'inherit', textAlign: 'left',
                     transition: 'background 0.12s, color 0.12s',
                   }}
-                  onMouseEnter={(e) => { if (page.slug !== activeSlug) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
-                  onMouseLeave={(e) => { if (page.slug !== activeSlug) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  onMouseEnter={(e) => { if (isBlogActive || page.slug !== activeSlug) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={(e) => { if (isBlogActive || page.slug !== activeSlug) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                   title={page.name}
                 >
                   <span style={{ fontSize: '0.75rem' }}>📄</span>
@@ -92,6 +98,34 @@ export function EditorSidebar({
                   )}
                 </button>
               ))}
+              {hasBlog && onBlogSelect && (
+                <button
+                  onClick={onBlogSelect}
+                  style={{
+                    width: 'calc(100% - 8px)',
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 8px', margin: '2px 0',
+                    background: isBlogActive ? C.blue : 'transparent',
+                    border: `1px solid ${isBlogActive ? C.blue : 'transparent'}`,
+                    borderRadius: '6px', cursor: 'pointer',
+                    color: isBlogActive ? 'white' : C.text,
+                    fontSize: '0.8rem', fontWeight: isBlogActive ? 600 : 400,
+                    fontFamily: 'inherit', textAlign: 'left',
+                    transition: 'background 0.12s, color 0.12s',
+                  }}
+                  onMouseEnter={(e) => { if (!isBlogActive) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={(e) => { if (!isBlogActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  title="Blog"
+                >
+                  <span style={{ fontSize: '0.75rem' }}>📝</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Blog
+                  </span>
+                  <span style={{ fontSize: '0.6rem', opacity: 0.65, flexShrink: 0, background: 'rgba(255,255,255,0.25)', borderRadius: '3px', padding: '1px 4px' }}>
+                    dinamico
+                  </span>
+                </button>
+              )}
             </div>
           )}
         </div>
