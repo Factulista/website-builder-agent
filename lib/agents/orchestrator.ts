@@ -70,7 +70,13 @@ const CREATE_KEYWORDS = [
   'generate a website', 'generate a site',
   'voglio un sito', 'voglio una pagina web', 'voglio un website',
   'ho bisogno di un sito', 'ho bisogno di un website',
-  'aggiungi una pagina', 'aggiungi pagina', 'nuova pagina', 'add a page', 'add page',
+]
+
+/** Parole chiave per aggiungere una nuova pagina a un sito esistente.
+ *  Devono passare all'html agent (che usa add_page) e NON alla pipeline (che usa create_site). */
+const ADD_PAGE_KEYWORDS = [
+  'aggiungi una pagina', 'aggiungi pagina', 'nuova pagina', 'crea una pagina', 'crea pagina',
+  'add a page', 'add page', 'new page', 'create a page', 'create page',
 ]
 
 const DESIGN_UPDATE_KEYWORDS = [
@@ -98,6 +104,8 @@ export function classify(userMessage: string, hasPages: boolean): AgentType {
   if (!hasPages) return 'pipeline'
   // Template esplicito menzionato → pipeline sempre (il template richiede create_site, non edit_page)
   if (detectExplicitTemplate(userMessage)) return 'pipeline'
+  // Aggiunta pagina a sito esistente → html agent (usa add_page, non create_site)
+  if (hasPages && ADD_PAGE_KEYWORDS.some(k => lower.includes(k))) return 'html'
   // Sito esistente → pipeline SOLO se la richiesta è esplicitamente di creazione/aggiunta pagina
   if (CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
   // Modifica sito — classifica ulteriormente quale tipo
