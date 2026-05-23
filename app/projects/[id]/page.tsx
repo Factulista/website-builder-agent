@@ -1093,6 +1093,70 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }, [id])
 
+  /**
+   * Generates 3 demo blog articles and saves them as published to blog_posts.
+   * Called automatically after create_site when the user requested a blog.
+   * Runs silently in the background — UI shows posts in sidebar once done.
+   */
+  const autoSeedBlogPosts = useCallback(async (token: string) => {
+    const lang = projectContext.language ?? 'it'
+    const businessType = projectContext.businessType ?? ''
+
+    // Pick 3 generic topics relevant to any business — agent will localise them
+    const topics = lang === 'en'
+      ? ['Getting started guide', 'Top tips for success', 'Industry news and trends']
+      : lang === 'es'
+      ? ['Guía para comenzar', 'Consejos para el éxito', 'Noticias del sector']
+      : ['Guida introduttiva', 'Consigli per il successo', 'News e tendenze del settore']
+
+    const context = {
+      businessName: projectContext.businessName,
+      businessType,
+      services: projectContext.services,
+      language: lang,
+      targetAudience: projectContext.targetAudience,
+    }
+
+    const created: BlogPost[] = []
+    for (const topic of topics) {
+      try {
+        const genRes = await fetch('/api/generate-blog-post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ topic, context }),
+        })
+        if (!genRes.ok) continue
+        const post = await genRes.json()
+
+        const saveRes = await fetch('/api/blog-posts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ projectId: id, ...post }),
+        })
+        if (!saveRes.ok) continue
+        const saved = await saveRes.json()
+        if (!saved.post) continue
+
+        // Publish immediately so they appear in the blog preview
+        const publishRes = await fetch(`/api/blog-posts/${saved.post.id}?action=publish`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const published = publishRes.ok ? await publishRes.json() : null
+        created.push(published?.post ?? saved.post)
+      } catch (e) {
+        console.warn('[autoSeedBlogPosts] error for topic:', topic, e)
+      }
+    }
+
+    if (created.length > 0) {
+      setBlogPosts(prev => {
+        const existingIds = new Set(prev.map(p => p.id))
+        return [...prev, ...created.filter(p => !existingIds.has(p.id))]
+      })
+    }
+  }, [id, projectContext])
+
   useEffect(() => {
     if (viewMode !== 'blog') return
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -1592,6 +1656,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const newSlugs = result.input.newPageSlugs as string[] | undefined
       const firstNew = newSlugs?.find(s => newPages.some(p => p.slug === s))
       newActiveSlug = firstNew ?? (newPages.length > 0 ? newPages[0].slug : activeSlug)
+
+      // Auto-seed blog posts if user requested a blog and none exist yet
+      const blogMentioned = /\bblog\b/i.test(effectiveInput) ||
+        newPages.some(p => /blog/i.test(p.slug) || /blog/i.test(p.name))
+      if (blogMentioned && blogPosts.length === 0) {
+        const lang = projectContext.language ?? 'it'
+        const blogLabel = lang === 'es' ? 'Blog' : 'Blog'
+        // Add Blog nav link to all pages if not already present
+        if (!hasBlogNavLink(newPages)) newPages = addBlogLinkToNav(newPages, blogLabel)
+        // Fire-and-forget: generate articles in background after state is saved
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          const token = session?.access_token
+          if (token) autoSeedBlogPosts(token)
+        })
+      }
     } else if (result.tool === 'edit_page') {
       const targetSlug = result.input.pageSlug as string
       const edits = result.input.edits as { find: string; replace: string }[]
