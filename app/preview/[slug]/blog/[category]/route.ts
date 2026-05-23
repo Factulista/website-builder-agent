@@ -19,8 +19,11 @@ function detectLang(context: Record<string, unknown>, homeHtml: string): string 
   return m?.[1]?.slice(0, 2) ?? 'it'
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ slug: string; postSlug: string }> }) {
-  const { slug, postSlug } = await params
+// NOTE: this route handles `/preview/{slug}/blog/{X}` where X is treated as the POST slug.
+// The param is named `category` to share the dynamic segment with the deeper
+// `[category]/[postSlug]/route.ts` (Next.js requires identical param names at the same level).
+export async function GET(_req: Request, { params }: { params: Promise<{ slug: string; category: string }> }) {
+  const { slug, category: postSlug } = await params
   const supabase = getSupabase()
 
   const { data: project } = await supabase
