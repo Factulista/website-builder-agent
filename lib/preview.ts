@@ -3,13 +3,36 @@ import { createClient } from '@supabase/supabase-js'
 type Page = { slug: string; name: string; html: string }
 type SiteConfig = { html?: string; pages?: Page[]; published_pages?: Page[] } | null
 
-function injectBase(html: string, base: string): string {
+/**
+ * Prepares page HTML for serving:
+ * 1. Injects <base href> so all relative links (./blog, ./contact …) resolve correctly.
+ * 2. Replaces every {{site_url}} placeholder with the absolute canonical root URL.
+ * 3. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
+ *    indexed) and injects <meta name="robots" content="noindex, follow">.
+ */
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean): string {
   const baseTag = `<base href="${base}">`
-  if (/<base[^>]*>/i.test(html)) return html
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
+
+  // Replace {{site_url}} placeholder with the actual canonical root (no trailing slash)
+  let result = html.replace(/\{\{site_url\}\}/g, siteUrl)
+
+  if (isStaging) {
+    // Remove canonical and og:url — staging previews must not be indexed
+    result = result.replace(/<link[^>]+rel=["']canonical["'][^>]*\/?>/gi, '')
+    result = result.replace(/<meta[^>]+property=["']og:url["'][^>]*\/?>/gi, '')
+    // Inject noindex
+    const noindex = '<meta name="robots" content="noindex, follow">'
+    if (/<head[^>]*>/i.test(result)) {
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${noindex}`)
+    }
   }
-  return baseTag + html
+
+  // Inject <base href> (skip if the page already has one)
+  if (/<base[^>]*>/i.test(result)) return result
+  if (/<head[^>]*>/i.test(result)) {
+    return result.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
+  }
+  return baseTag + result
 }
 
 function errorPage(status: number, title: string, message: string) {
@@ -18,6 +41,8 @@ function errorPage(status: number, title: string, message: string) {
     { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   )
 }
+
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
 
 // Staging preview: always serves the latest draft (pages)
 export async function servePreview(projectSlug: string, pageSlug: string = 'home') {
@@ -48,7 +73,11 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
 
   if (!pageHtml) return errorPage(200, data.name, 'Il sito non è ancora stato generato.')
 
-  return new Response(injectBase(pageHtml, `/preview/${projectSlug}/`), {
+  // Staging: base = /preview/{slug}/, siteUrl = https://myweb.{ROOT_DOMAIN}/{slug}
+  const base = `/preview/${projectSlug}/`
+  const siteUrl = `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
+
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -79,7 +108,11 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const page = config.published_pages.find(p => p.slug === pageSlug)
   if (!page) return errorPage(404, '404', `La pagina "/${pageSlug}" non esiste.`)
 
-  return new Response(injectBase(page.html, `https://${customDomain}/`), {
+  // Custom domain: base = https://{domain}/, siteUrl = https://{domain} (no trailing slash)
+  const base = `https://${customDomain}/`
+  const siteUrl = `https://${customDomain}`
+
+  return new Response(prepareHtml(page.html, base, siteUrl, false), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })

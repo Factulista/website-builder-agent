@@ -170,7 +170,11 @@ REGOLE:
 - Link tra pagine con href relativi senza .html (es: ./chi-siamo).
 - Includi Schema.org JSON-LD nel <head> dove fornito.
 - Mobile-first, semantico, accessibile.
-${allPages.length > plan.pages.length ? `- TUTTE LE PAGINE DEL SITO (per i link navbar): ${allPages.map(p => `${p.name} → ./${p.slug === 'home' ? '' : p.slug}`).join(', ')}` : ''}`
+${allPages.length > plan.pages.length ? `- TUTTE LE PAGINE DEL SITO (per i link navbar): ${allPages.map(p => `${p.name} → ./${p.slug === 'home' ? '' : p.slug}`).join(', ')}` : ''}
+SEO URL — REGOLA CRITICA:
+- canonical e og:url usano SEMPRE {{site_url}} come radice (MAI URL inventati come https://miodominio.com).
+- Formato: <link rel="canonical" href="{{site_url}}/PAGE_SLUG"> — home → {{site_url}}/, altre pagine → {{site_url}}/SLUG.
+- Schema.org JSON-LD: campo "url" e "@id" → {{site_url}} o {{site_url}}/SLUG.`
 
   const userMessage = `Richiesta: ${userRequest}
 
@@ -451,14 +455,17 @@ OGNI PAGINA: HTML completo, CSS inline, mobile-friendly, design moderno e coeren
 SEO — REGOLE DI DEFAULT (applica SEMPRE su ogni pagina che crei o modifichi):
 - <title> presente, 50–60 chars, con keyword primaria. Formato: "Keyword — Brand" o "Brand | Servizio".
 - <meta name="description"> presente, 150–160 chars, termina con CTA.
-- <link rel="canonical" href="[URL_PAGINA]"> nella <head>.
+- <link rel="canonical" href="{{site_url}}/PAGE_SLUG"> — usa SEMPRE {{site_url}} come radice dell'URL; aggiungi lo slug della pagina (home → {{site_url}}/, about → {{site_url}}/about, blog → {{site_url}}/blog, ecc.).
+- <meta property="og:url" content="{{site_url}}/PAGE_SLUG"> — stessa logica di canonical.
+- NON usare mai URL assoluti inventati (es: https://miodominio.com) — usa SOLO {{site_url}}.
 - <html lang="[LINGUA]"> — usa la lingua del sito (it/es/en/...).
 - Un solo <h1> per pagina, contenente la keyword principale.
 - Gerarchia heading corretta: H1→H2→H3 senza salti.
 - Tag semantici: <header>, <nav>, <main>, <footer>.
 - Ogni <img> ha: alt="[descrizione]", width, height, loading="lazy" (tranne la prima above-the-fold).
 - <link rel="preconnect" href="https://fonts.googleapis.com"> se usi Google Fonts.
-- og:title, og:description, og:url nella <head> (og:image se hai URL immagine).
+- og:title, og:description nella <head> (og:image se hai URL immagine).
+- Schema.org JSON-LD: usa {{site_url}} come valore del campo "url" (es: "@id": "{{site_url}}", "url": "{{site_url}}").
 Queste regole si applicano ANCHE alle modifiche parziali: se aggiungi una sezione, assicurati che la pagina soddisfi questi requisiti.
 
 IMMAGINI — REGOLE DI PRIORITÀ (importante):
