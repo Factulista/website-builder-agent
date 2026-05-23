@@ -1,52 +1,145 @@
 /** CSS for individual blog post content — shared between server render and editor preview */
 export const BLOG_POST_CONTENT_CSS = `
-  /* ── Layout 3 colonne ───────────────────────────────────────────────── */
-  .blog-post-layout{display:grid;grid-template-columns:220px 1fr 220px;gap:2rem;max-width:1280px;margin:0 auto;padding:2.5rem 1.5rem 5rem;align-items:start}
-  /* ── TOC (sinistra) ─────────────────────────────────────────────────── */
-  .blog-toc{position:sticky;top:5rem}
-  .blog-toc-back{display:inline-flex;align-items:center;gap:4px;font-size:.8rem;font-weight:600;color:var(--color-accent,#2563eb);text-decoration:none;margin-bottom:1.25rem}
-  .blog-toc-back:hover{text-decoration:underline}
-  .blog-toc-title{font-size:.7rem;font-weight:700;color:#9b9896;text-transform:uppercase;letter-spacing:.07em;margin:0 0 .75rem}
-  .blog-toc-list{list-style:none;margin:0;padding:0;border-left:2px solid #e8e4de}
-  .blog-toc-list li{margin-bottom:2px}
-  .blog-toc-list a{display:block;padding:.35rem .75rem;font-size:.8rem;color:#6b6563;text-decoration:none;border-left:2px solid transparent;margin-left:-2px;line-height:1.4;transition:color .15s,border-color .15s}
-  .blog-toc-list a:hover{color:var(--color-accent,#2563eb)}
-  .blog-toc-list a.toc-active{color:var(--color-accent,#2563eb);font-weight:600;border-left-color:var(--color-accent,#2563eb)}
-  /* ── Content (centro) ───────────────────────────────────────────────── */
-  .blog-post-wrapper{min-width:0}
-  .blog-post-header{margin-bottom:2rem}
+  /* ── Layout 3 colonne ─────────────────────────────────────────────────
+     Heavy !important defenses below — the site's own CSS (extracted from
+     home page <style>) gets injected BEFORE this block and often has
+     aggressive selectors like \`nav { display:flex }\` or container resets
+     that break the post layout. */
+  .blog-post-layout{
+    display:grid !important;
+    grid-template-columns:260px minmax(0,1fr) 260px !important;
+    gap:2.5rem !important;
+    max-width:1320px !important;
+    width:100% !important;
+    margin:0 auto !important;
+    padding:3rem 1.5rem 5rem !important;
+    align-items:start !important;
+    box-sizing:border-box !important;
+    background:transparent !important;
+  }
+  .blog-post-layout, .blog-post-layout *{box-sizing:border-box}
+  /* ── TOC (sinistra) ──────────────────────────────────────────────── */
+  .blog-toc{
+    display:block !important;
+    position:sticky !important;
+    top:5rem !important;
+    width:100% !important;
+    margin:0 !important;
+    padding:0 !important;
+    background:transparent !important;
+    border:none !important;
+    font-family:inherit;
+  }
+  .blog-toc-back{
+    display:inline-flex !important;
+    align-items:center;
+    gap:6px;
+    font-size:.82rem !important;
+    font-weight:600 !important;
+    color:var(--color-accent,#2563eb) !important;
+    text-decoration:none !important;
+    margin:0 0 1.4rem !important;
+    padding:0 !important;
+    background:transparent !important;
+    border:none !important;
+    line-height:1.3 !important;
+  }
+  .blog-toc-back:hover{text-decoration:underline !important}
+  .blog-toc-title{
+    font-size:.72rem !important;
+    font-weight:700 !important;
+    color:#9b9896 !important;
+    text-transform:uppercase !important;
+    letter-spacing:.08em !important;
+    margin:0 0 .85rem !important;
+    padding:0 !important;
+    line-height:1.3 !important;
+  }
+  .blog-toc-list{
+    list-style:none !important;
+    margin:0 !important;
+    padding:0 !important;
+    border-left:2px solid #e8e4de !important;
+    display:block !important;
+    background:transparent !important;
+  }
+  .blog-toc-list li{
+    margin:0 0 1px !important;
+    padding:0 !important;
+    display:block !important;
+    list-style:none !important;
+  }
+  .blog-toc-list a{
+    display:block !important;
+    padding:.45rem .9rem !important;
+    font-size:.82rem !important;
+    color:#6b6563 !important;
+    text-decoration:none !important;
+    border-left:2px solid transparent !important;
+    border-top:none !important;border-right:none !important;border-bottom:none !important;
+    margin-left:-2px !important;
+    line-height:1.45 !important;
+    transition:color .15s,border-color .15s;
+    background:transparent !important;
+    font-weight:400 !important;
+    text-transform:none !important;
+    letter-spacing:normal !important;
+  }
+  .blog-toc-list a:hover{color:var(--color-accent,#2563eb) !important}
+  .blog-toc-list a.toc-active{
+    color:var(--color-accent,#2563eb) !important;
+    font-weight:600 !important;
+    border-left-color:var(--color-accent,#2563eb) !important;
+  }
+  /* ── Content (centro) ───────────────────────────────────────────── */
+  .blog-post-wrapper{min-width:0 !important;width:100% !important;max-width:none !important;margin:0 !important;padding:0 !important;background:transparent !important}
+  .blog-post-header{margin:0 0 2rem !important;padding:0 !important}
   .blog-post-meta{font-size:.78rem;color:#888;margin-bottom:.7rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .blog-tag{background:#f3f4f6;color:#374151;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}
-  .blog-post-header h1{font-size:2.2rem;font-weight:800;line-height:1.25;margin:0 0 .75rem}
-  .blog-post-excerpt{font-size:1.05rem;color:#555;line-height:1.6;margin:0}
-  .post-featured-img{width:100%;border-radius:12px;margin:1.5rem 0 2rem;max-height:420px;object-fit:cover}
-  .blog-post-content{font-size:1rem;line-height:1.8;color:#1a1a1a}
-  .blog-post-content h2{font-size:1.5rem;font-weight:700;margin:2.5rem 0 .75rem;scroll-margin-top:5.5rem}
-  .blog-post-content h3{font-size:1.2rem;font-weight:600;margin:2rem 0 .6rem;scroll-margin-top:5.5rem}
-  .blog-post-content p{margin:0 0 1.25rem}
-  .blog-post-content ul,.blog-post-content ol{margin:0 0 1.25rem;padding-left:1.5rem}
-  .blog-post-content li{margin-bottom:.4rem}
-  .blog-post-content img{max-width:100%;height:auto;border-radius:8px;margin:1.5rem 0}
-  .blog-post-content a{color:var(--color-accent,#2563eb)}
-  .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.5rem 0;padding:.75rem 1.25rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}
+  .blog-post-header h1{font-size:2.4rem !important;font-weight:800 !important;line-height:1.2 !important;margin:0 0 .85rem !important;color:#1a1a1a !important}
+  .blog-post-excerpt{font-size:1.1rem !important;color:#555 !important;line-height:1.6 !important;margin:0 !important;font-weight:400 !important}
+  .post-featured-img{width:100% !important;border-radius:14px !important;margin:1.75rem 0 2.25rem !important;max-height:460px !important;object-fit:cover !important;display:block !important}
+  .blog-post-content{font-size:1.05rem;line-height:1.8;color:#1a1a1a}
+  .blog-post-content h2{font-size:1.6rem !important;font-weight:700 !important;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.3 !important}
+  .blog-post-content h3{font-size:1.25rem !important;font-weight:600 !important;margin:2rem 0 .6rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.35 !important}
+  .blog-post-content h4{font-size:1.05rem !important;font-weight:600 !important;margin:1.5rem 0 .5rem !important;color:#1a1a1a !important}
+  .blog-post-content p{margin:0 0 1.25rem !important}
+  .blog-post-content ul,.blog-post-content ol{margin:0 0 1.35rem !important;padding-left:1.5rem !important}
+  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7}
+  .blog-post-content img{max-width:100% !important;height:auto !important;border-radius:10px !important;margin:1.75rem 0 !important;display:block}
+  .blog-post-content a{color:var(--color-accent,#2563eb) !important;text-decoration:underline}
+  .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.75rem 0;padding:.85rem 1.35rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}
   .blog-post-content pre{background:#1a1a1a;color:#f8f8f8;border-radius:10px;padding:1.25rem;overflow-x:auto;font-size:.88rem;margin:1.5rem 0}
   .blog-post-content code{font-family:'Fira Code',monospace;font-size:.88em;background:#f3f4f6;padding:2px 5px;border-radius:4px}
   .blog-post-content pre code{background:none;padding:0}
+  .blog-post-content table{border-collapse:collapse;width:100%;margin:1.5rem 0;font-size:.95rem}
+  .blog-post-content table th,.blog-post-content table td{border:1px solid #e5e7eb;padding:8px 12px;text-align:left}
+  .blog-post-content table th{background:#f9fafb;font-weight:600}
   .blog-post-author{font-size:.75rem;color:#666;font-style:italic}
-  /* ── Banner (destra) ────────────────────────────────────────────────── */
-  .blog-sidebar-right{position:sticky;top:5rem}
-  .blog-sidebar-banner{display:block;border-radius:12px;overflow:hidden;border:1px solid #e8e4de;transition:box-shadow .2s,transform .2s}
-  .blog-sidebar-banner:hover{box-shadow:0 6px 20px rgba(0,0,0,.1);transform:translateY(-2px)}
-  .blog-sidebar-banner img{width:100%;height:auto;display:block}
-  /* ── Responsive ─────────────────────────────────────────────────────── */
-  @media(max-width:1100px){
-    .blog-post-layout{grid-template-columns:200px 1fr;gap:1.5rem}
-    .blog-sidebar-right{display:none}
+  /* ── Banner (destra) ────────────────────────────────────────────── */
+  .blog-sidebar-right{
+    display:block !important;
+    position:sticky !important;
+    top:5rem !important;
+    width:100% !important;
+    margin:0 !important;
+    padding:0 !important;
+    background:transparent !important;
+    border:none !important;
   }
-  @media(max-width:768px){
-    .blog-post-layout{grid-template-columns:1fr;padding:1.5rem 1rem 3rem}
-    .blog-toc{position:static;margin-bottom:1.5rem;border:1px solid #e8e4de;border-radius:10px;padding:1rem}
-    .blog-post-header h1{font-size:1.7rem}
+  .blog-sidebar-banner{display:block !important;border-radius:12px;overflow:hidden;border:1px solid #e8e4de;transition:box-shadow .2s,transform .2s;text-decoration:none !important}
+  .blog-sidebar-banner:hover{box-shadow:0 6px 20px rgba(0,0,0,.1);transform:translateY(-2px)}
+  .blog-sidebar-banner img{width:100% !important;height:auto !important;display:block !important;margin:0 !important;border-radius:0 !important}
+  /* ── Responsive ─────────────────────────────────────────────────── */
+  @media(max-width:1180px){
+    .blog-post-layout{grid-template-columns:230px minmax(0,1fr) !important;gap:2rem !important;max-width:1000px !important}
+    .blog-sidebar-right{display:none !important}
+  }
+  @media(max-width:820px){
+    .blog-post-layout{grid-template-columns:1fr !important;padding:1.75rem 1.1rem 3rem !important;gap:1.25rem !important}
+    .blog-toc{position:static !important;border:1px solid #e8e4de !important;border-radius:12px !important;padding:1rem 1.1rem !important;background:#fafaf9 !important}
+    .blog-post-header h1{font-size:1.85rem !important}
+    .blog-post-content{font-size:1rem}
   }
 `
 
@@ -335,10 +428,10 @@ ${tocItems.map(item => `  <li><a href="#${item.id}">${item.text}</a></li>`).join
   ${siteNav}
   <div class="blog-post-layout">
     <!-- TOC sinistra -->
-    <nav class="blog-toc" aria-label="Indice">
+    <aside class="blog-toc" aria-label="Indice">
       <a class="blog-toc-back" href="${baseUrl}/blog">${backLabel}</a>
       ${tocInner}
-    </nav>
+    </aside>
 
     <!-- Contenuto centrale -->
     <article class="blog-post-wrapper">
