@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const { data: posts, error } = await supabase
     .from('blog_posts')
-    .select('id, title, slug, excerpt, featured_image, status, published_at, categories, tags, author, created_at, updated_at')
+    .select('id, title, slug, excerpt, featured_image, status, published_at, categories, tags, author, created_at, updated_at, seo_title, seo_description, content_html')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false })
 

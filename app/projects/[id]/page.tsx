@@ -11,7 +11,7 @@ import { t } from '../../../lib/i18n/translations'
 import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
-import { BLOG_POST_CONTENT_CSS } from '../../../lib/blog-serve'
+import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { LibraryView } from '../../../components/LibraryView'
 import type { Component } from '../../../lib/components/index'
 
@@ -977,10 +977,53 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   useEffect(() => { latestPagesRef.current = pages }, [pages])
 
-  // Re-analyze SEO whenever pages change or the SEO tab is opened
+  // Re-analyze SEO whenever pages or blog posts change or the SEO tab is opened.
+  // Blog posts are rendered to their published HTML form (same builder used by the
+  // /preview and custom-domain routes) so the SEO checks see exactly what Google sees.
   useEffect(() => {
-    if (pages.length > 0) setSeoAnalyses(analyzeAllPages(pages))
-  }, [pages, viewMode])
+    if (pages.length === 0) return
+    // Build "virtual pages" for blog posts using the same renderer as the live site
+    const homePage = pages.find(p => p.slug === 'home')
+    const homeHtml = homePage?.html ?? ''
+    const siteNav = homeHtml.match(/<nav[\s\S]*?<\/nav>/i)?.[0] ?? ''
+    const footerMatches = [...homeHtml.matchAll(/<footer[\s\S]*?<\/footer>/gi)]
+    const siteFooter = footerMatches.length > 0 ? footerMatches[footerMatches.length - 1][0] : ''
+    const siteStyle = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
+    const lang = projectContext?.language
+      || homeHtml.match(/<html[^>]+lang=["']([^"']{2})/i)?.[1]
+      || 'it'
+    const sidebarBanner = blogSidebarBannerUrl
+      ? { url: blogSidebarBannerUrl, link: blogSidebarBannerLink }
+      : null
+    const baseUrl = `/preview/${projectSlug}`
+
+    const blogPagesForSeo = blogPosts
+      .filter(bp => bp.status === 'published' && bp.content_html)  // only analyze published posts with content
+      .map(bp => {
+        const post: BlogServePost = {
+          id: bp.id,
+          title: bp.title,
+          slug: bp.slug,
+          excerpt: bp.excerpt ?? '',
+          featured_image: bp.featured_image,
+          published_at: bp.published_at,
+          categories: bp.categories ?? [],
+          tags: bp.tags ?? [],
+          content_html: bp.content_html ?? '',
+          seo_title: bp.seo_title,
+          seo_description: bp.seo_description,
+          author: bp.author,
+        }
+        const html = buildBlogPostPage(post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner)
+        return {
+          slug: `blog/${bp.slug}`,         // prefix to avoid collision with regular page slugs
+          name: `📝 ${bp.title}`,           // prefixed in dropdown so it's recognizable
+          html,
+        }
+      })
+
+    setSeoAnalyses(analyzeAllPages([...pages, ...blogPagesForSeo]))
+  }, [pages, viewMode, blogPosts, projectSlug, projectContext, blogSidebarBannerUrl, blogSidebarBannerLink])
 
   // Elapsed-seconds timer — ticks every second while an agent is running
   useEffect(() => {
@@ -2819,7 +2862,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             const statusColor = (s: 'pass' | 'warn' | 'fail') =>
               s === 'pass' ? '#10b981' : s === 'warn' ? '#f59e0b' : '#ef4444'
 
-            // fixScope: all page slugs when "all", single slug otherwise
+            // fixScope: regular page slugs only ("all" → every regular page).
+            // Blog posts are auto-rendered HTML — their SEO is fixed by editing
+            // the post directly (seo_title / seo_description fields) in the Blog tab.
+            const isBlogPostSelected = seoPageSlug.startsWith('blog/')
             const fixScope: string | string[] = seoPageSlug === 'all'
               ? pages.map(p => p.slug)
               : seoPageSlug
@@ -2876,6 +2922,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </option>
                         )
                       })}
+                      {seoAnalyses.filter(a => a.pageSlug.startsWith('blog/')).length > 0 && (
+                        <optgroup label="📝 Blog">
+                          {seoAnalyses.filter(a => a.pageSlug.startsWith('blog/')).map(a => (
+                            <option key={a.pageSlug} value={a.pageSlug}>
+                              {a.pageName.replace(/^📝 /, '')} ({a.overallScore})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   </div>
 
@@ -2903,8 +2958,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     })}
                   </div>
 
-                  {/* Fix All button */}
-                  {primaryAnalysis && (
+                  {/* Fix All button (only for regular pages; blog posts are fixed inline) */}
+                  {primaryAnalysis && !isBlogPostSelected && (
                     <button
                       onClick={() => fixAllFailing(fixScope)}
                       disabled={!!seoFixing || !primaryAnalysis.results.some(r => r.status !== 'pass')}
@@ -2918,6 +2973,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     >
                       {seoFixing ? '⏳ Fix in corso…' : '⚡ Fix All Failing'}
                     </button>
+                  )}
+                  {isBlogPostSelected && (
+                    <div style={{
+                      padding: '10px 12px', borderRadius: '8px',
+                      background: C.bgPanel, border: `1px dashed ${C.border}`,
+                      fontSize: '0.72rem', color: C.textMuted, lineHeight: 1.5,
+                    }}>
+                      💡 Per correggere un articolo, modifica i campi SEO direttamente nel tab <strong>Blog</strong>.
+                    </div>
                   )}
                 </div>
 
