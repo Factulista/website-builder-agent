@@ -432,6 +432,9 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     if(!e.data||typeof e.data!=='object') return;
     if(e.data.type==='fact-format'){
       var cmd=e.data.cmd,val=e.data.val||null;
+      // Enable CSS-based styling for fontName so we get <span style="font-family:...">
+      // instead of the deprecated <font face="..."> tag
+      if(cmd==='fontName'){document.execCommand('styleWithCSS',false,'true');}
       document.execCommand(cmd,false,val);
       triggerSave();
     }
@@ -3269,7 +3272,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               // Extract siteStyle from home page so CSS variables (--color-accent etc.) are inherited
               const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
               const siteStyleBlocks = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
-              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
+              const googleFontsUrl = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Roboto:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&display=swap'
+              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="${googleFontsUrl}" rel="stylesheet">${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
               setBlogEditorSrcDoc(editorHtml)
               blogBaseHtmlRef.current = editorHtml
             }
@@ -3792,6 +3796,48 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       }
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}>
+                          {/* Font picker */}
+                          <select
+                            title="Scegli font"
+                            defaultValue=""
+                            onMouseDown={e => e.stopPropagation()}
+                            onChange={e => {
+                              const font = e.target.value
+                              const win = blogIframeRef.current?.contentWindow
+                              if (!win || !font) return
+                              win.postMessage({ type: 'fact-format', cmd: 'fontName', val: font }, '*')
+                              // Reset select to placeholder after applying
+                              e.target.value = ''
+                            }}
+                            style={{
+                              height: '26px', padding: '0 4px', border: `1px solid ${C.border}`,
+                              borderRadius: 4, background: C.white, cursor: 'pointer',
+                              fontSize: '0.75rem', color: C.text, fontFamily: 'inherit',
+                              maxWidth: '120px',
+                            }}
+                          >
+                            <option value="" disabled>Font</option>
+                            <optgroup label="Sistema">
+                              <option value="Georgia">Georgia</option>
+                              <option value="Times New Roman">Times New Roman</option>
+                              <option value="Arial">Arial</option>
+                              <option value="Helvetica">Helvetica</option>
+                              <option value="Verdana">Verdana</option>
+                              <option value="Trebuchet MS">Trebuchet MS</option>
+                              <option value="Courier New">Courier New</option>
+                            </optgroup>
+                            <optgroup label="Google Fonts">
+                              <option value="Inter">Inter</option>
+                              <option value="Lato">Lato</option>
+                              <option value="Roboto">Roboto</option>
+                              <option value="Open Sans">Open Sans</option>
+                              <option value="Montserrat">Montserrat</option>
+                              <option value="Merriweather">Merriweather</option>
+                              <option value="Playfair Display">Playfair Display</option>
+                              <option value="Source Serif 4">Source Serif 4</option>
+                            </optgroup>
+                          </select>
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
                           {([
                             { label: 'H1', cmd: 'formatBlock', val: 'h1', title: 'Titolo 1', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
                             { label: 'H2', cmd: 'formatBlock', val: 'h2', title: 'Titolo 2', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
