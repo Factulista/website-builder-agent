@@ -2871,7 +2871,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               activeSlug={activeSlug}
               onPageSelect={(slug) => setActiveSlug(slug)}
               hasBlog={hasBlogNavLink(pages) || blogPosts.length > 0}
-              isBlogActive={viewMode === 'blog'}
+              isBlogActive={false}
               onBlogSelect={() => setViewMode('blog')}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -2924,7 +2924,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 setCodeSaving('idle')
               }}
               hasBlog={hasBlogNavLink(pages) || blogPosts.length > 0}
-              isBlogActive={viewMode === 'blog'}
+              isBlogActive={false}
               onBlogSelect={() => setViewMode('blog')}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
