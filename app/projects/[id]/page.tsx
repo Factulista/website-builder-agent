@@ -1063,11 +1063,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setUploading(false)
     if (target === 'media' || viewMode === 'media') loadMedia()
 
+    // Detect project language: context.language → <html lang="..."> of first page → fallback 'it'
+    const detectedLang: string =
+      projectContext?.language ||
+      latestPagesRef.current[0]?.html?.match(/<html[^>]+lang=["']([^"']{2})/i)?.[1] ||
+      'it'
+
     // Generate SEO metadata for the image in background (non-blocking)
     fetch('/api/generate-image-meta', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageUrl, context: projectContext }),
+      body: JSON.stringify({ imageUrl, context: { ...projectContext, language: detectedLang } }),
     })
       .then(r => r.ok ? r.json() : null)
       .then(meta => {

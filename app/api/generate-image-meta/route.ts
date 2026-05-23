@@ -32,28 +32,73 @@ export async function POST(req: NextRequest) {
     }
 
     const lang = context?.language ?? 'it'
-    const langLabel = lang === 'es' ? 'spagnolo' : lang === 'en' ? 'inglese' : 'italiano'
 
-    const contextBlock = context ? `
-Contesto del sito:
-- Business: ${context.businessName ?? '—'}
-- Settore: ${context.businessType ?? '—'}
-- Servizi: ${context.services?.join(', ') ?? '—'}
-- Target: ${context.targetAudience ?? '—'}
-` : ''
+    // Build all prompt strings in the target language to avoid model confusion
+    const i18n: Record<string, Record<string, string>> = {
+      system: {
+        it: 'Sei un esperto SEO e accessibilità web. Analizzi immagini e generi metadati ottimizzati in ITALIANO. Rispondi SOLO con JSON valido, senza markdown o testo extra.',
+        es: 'Eres un experto en SEO y accesibilidad web. Analizas imágenes y generas metadatos optimizados en ESPAÑOL. Responde SOLO con JSON válido, sin markdown ni texto adicional.',
+        en: 'You are an SEO and web accessibility expert. You analyze images and generate optimized metadata in ENGLISH. Reply ONLY with valid JSON, no markdown or extra text.',
+        de: 'Du bist ein SEO- und Web-Accessibility-Experte. Du analysierst Bilder und generierst optimierte Metadaten auf DEUTSCH. Antworte NUR mit gültigem JSON, kein Markdown.',
+        fr: 'Tu es expert en SEO et accessibilité web. Tu analyses des images et génères des métadonnées optimisées en FRANÇAIS. Réponds UNIQUEMENT avec du JSON valide, sans markdown.',
+        pt: 'És um especialista em SEO e acessibilidade web. Analisas imagens e geras metadados otimizados em PORTUGUÊS. Responde APENAS com JSON válido, sem markdown.',
+      },
+      contextLabel: {
+        it: 'Contesto del sito',
+        es: 'Contexto del sitio',
+        en: 'Site context',
+        de: 'Website-Kontext',
+        fr: 'Contexte du site',
+        pt: 'Contexto do site',
+      },
+      prompt: {
+        it: 'Analizza questa immagine e genera i metadati SEO ottimizzati in italiano.',
+        es: 'Analiza esta imagen y genera los metadatos SEO optimizados en español.',
+        en: 'Analyze this image and generate optimized SEO metadata in English.',
+        de: 'Analysiere dieses Bild und generiere optimierte SEO-Metadaten auf Deutsch.',
+        fr: 'Analyse cette image et génère des métadonnées SEO optimisées en français.',
+        pt: 'Analisa esta imagem e gera metadados SEO otimizados em português.',
+      },
+      altDesc: {
+        it: 'testo alternativo descrittivo per accessibilità, max 125 caratteri, include keyword rilevanti per il settore',
+        es: 'texto alternativo descriptivo para accesibilidad, máx 125 caracteres, incluye keywords relevantes del sector',
+        en: 'descriptive alternative text for accessibility, max 125 chars, include relevant industry keywords',
+        de: 'beschreibender Alternativtext für Barrierefreiheit, max 125 Zeichen, relevante Branchenkeywords',
+        fr: 'texte alternatif descriptif pour l\'accessibilité, max 125 caractères, inclut les mots-clés du secteur',
+        pt: 'texto alternativo descritivo para acessibilidade, máx 125 caracteres, inclui palavras-chave do setor',
+      },
+      titleDesc: {
+        it: 'titolo breve dell\'immagine, max 60 caratteri',
+        es: 'título breve de la imagen, máx 60 caracteres',
+        en: 'short image title, max 60 chars',
+        de: 'kurzer Bildtitel, max 60 Zeichen',
+        fr: 'titre court de l\'image, max 60 caractères',
+        pt: 'título curto da imagem, máx 60 caracteres',
+      },
+      descDesc: {
+        it: 'descrizione estesa, max 200 caratteri',
+        es: 'descripción extendida, máx 200 caracteres',
+        en: 'extended description, max 200 chars',
+        de: 'erweiterte Beschreibung, max 200 Zeichen',
+        fr: 'description étendue, max 200 caractères',
+        pt: 'descrição alargada, máx 200 caracteres',
+      },
+    }
+    const L = (key: string) => (i18n[key] as Record<string,string>)[lang] ?? (i18n[key] as Record<string,string>)['it']
 
-    const system = `Sei un esperto SEO e accessibilità web. Analizzi immagini e generi metadati ottimizzati.
-Rispondi SEMPRE in ${langLabel}.
-Rispondi SOLO con JSON valido, senza markdown o testo extra.`
+    const contextBlock = context
+      ? `\n${L('contextLabel')}: ${context.businessName ?? ''} — ${context.businessType ?? ''} — ${context.services?.join(', ') ?? ''}`
+      : ''
 
-    const userMessage = `Analizza questa immagine e genera i metadati SEO ottimizzati.
-${contextBlock}
-Restituisci un JSON con questi campi:
+    const system = L('system')
+
+    const userMessage = `${L('prompt')}${contextBlock}
+
 {
-  "alt": "testo alternativo descrittivo per accessibilità, max 125 caratteri, include keyword rilevanti per il settore",
-  "title": "titolo breve dell'immagine, max 60 caratteri",
-  "description": "descrizione estesa per il campo description, max 200 caratteri",
-  "suggestedFilename": "nome-file-seo-friendly senza estensione, lowercase con trattini, include keyword del settore, max 50 caratteri"
+  "alt": "${L('altDesc')}",
+  "title": "${L('titleDesc')}",
+  "description": "${L('descDesc')}",
+  "suggestedFilename": "seo-friendly-filename-no-extension-lowercase-hyphens"
 }`
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
