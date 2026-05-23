@@ -50,14 +50,16 @@ function groupByRecency(projects: Project[]) {
 }
 
 function ProjectCard({
-  project, onDelete, onRename, language,
+  project, onDelete, onRename, onDuplicate, language,
 }: {
   project: Project
   onDelete: () => void
   onRename: (name: string) => void
+  onDuplicate: () => void
   language: string
 }) {
   const [renaming, setRenaming] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const [nameVal, setNameVal] = useState(project.name)
   const homeHtml = getHomeHtml(project)
   const updatedAt = new Date(project.updated_at ?? project.created_at)
@@ -119,6 +121,14 @@ function ProjectCard({
               {t('projects.rename' as const, language as any)}
             </button>
             <button
+              disabled={duplicating}
+              onClick={async () => { setDuplicating(true); await onDuplicate(); setDuplicating(false) }}
+              title="Duplica progetto"
+              style={{ background: 'transparent', color: '#6b6563', border: '1px solid #e8e4de', padding: '3px 8px', fontSize: '0.72rem', borderRadius: '5px', cursor: duplicating ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: duplicating ? 0.5 : 1 }}
+            >
+              {duplicating ? '…' : '⧉'}
+            </button>
+            <button
               onClick={onDelete}
               style={{ background: 'transparent', color: '#ef4444', border: '1px solid #fecaca', padding: '3px 8px', fontSize: '0.72rem', borderRadius: '5px', cursor: 'pointer', fontFamily: 'inherit' }}
             >
@@ -131,11 +141,12 @@ function ProjectCard({
   )
 }
 
-function ProjectGroup({ title, projects, onDelete, onRename, language }: {
+function ProjectGroup({ title, projects, onDelete, onRename, onDuplicate, language }: {
   title: string
   projects: Project[]
   onDelete: (id: string, name: string) => void
   onRename: (id: string, name: string) => void
+  onDuplicate: (id: string) => Promise<void>
   language: string
 }) {
   if (projects.length === 0) return null
@@ -149,6 +160,7 @@ function ProjectGroup({ title, projects, onDelete, onRename, language }: {
             project={p}
             onDelete={() => onDelete(p.id, p.name)}
             onRename={(name) => onRename(p.id, name)}
+            onDuplicate={() => onDuplicate(p.id)}
             language={language}
           />
         ))}
@@ -197,6 +209,30 @@ export default function ProjectsPage() {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
   }
 
+  const handleDuplicate = async (id: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    const source = projects.find(p => p.id === id)
+    if (!source) return
+
+    // Build a unique slug: base-copia → base-copia-2 → base-copia-3 …
+    const existingSlugs = new Set(projects.map(p => p.slug))
+    let newSlug = `${source.slug}-copia`
+    let counter = 2
+    while (existingSlugs.has(newSlug)) { newSlug = `${source.slug}-copia-${counter}`; counter++ }
+
+    const { data: created, error } = await supabase.from('projects').insert({
+      name: `${source.name} (copia)`,
+      slug: newSlug,
+      user_id: session.user.id,
+      site_config: source.site_config ?? null,
+    }).select('id, name, slug, created_at, updated_at, site_config').single()
+
+    if (!error && created) {
+      setProjects(prev => [created as Project, ...prev])
+    }
+  }
+
   const { recent, active, older } = useMemo(() => groupByRecency(projects), [projects])
 
   const userInitial = userEmail?.[0]?.toUpperCase() ?? 'U'
@@ -236,9 +272,9 @@ export default function ProjectsPage() {
             </div>
           ) : (
             <>
-              <ProjectGroup title={t('projects.recent' as const, language as any)} projects={recent} onDelete={handleDelete} onRename={handleRename} language={language} />
-              <ProjectGroup title={t('projects.active' as const, language as any)} projects={active} onDelete={handleDelete} onRename={handleRename} language={language} />
-              <ProjectGroup title={t('projects.older' as const, language as any)} projects={older} onDelete={handleDelete} onRename={handleRename} language={language} />
+              <ProjectGroup title={t('projects.recent' as const, language as any)} projects={recent} onDelete={handleDelete} onRename={handleRename} onDuplicate={handleDuplicate} language={language} />
+              <ProjectGroup title={t('projects.active' as const, language as any)} projects={active} onDelete={handleDelete} onRename={handleRename} onDuplicate={handleDuplicate} language={language} />
+              <ProjectGroup title={t('projects.older' as const, language as any)} projects={older} onDelete={handleDelete} onRename={handleRename} onDuplicate={handleDuplicate} language={language} />
             </>
           )}
         </div>
