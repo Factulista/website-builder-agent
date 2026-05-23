@@ -60,7 +60,10 @@ export function buildBlogListPage(
   siteNav: string,
   siteFooter: string,
   siteStyle: string,
-  lang = 'it'
+  lang = 'it',
+  headerHtml = '',
+  currentPage = 1,
+  totalPages = 1
 ): string {
   const title = 'Blog'
   const subtitle = lang === 'es' ? 'Artículos y novedades' : lang === 'en' ? 'Articles and updates' : 'Articoli e aggiornamenti'
@@ -95,6 +98,46 @@ export function buildBlogListPage(
     ? `<p style="color:#888;text-align:center;padding:3rem 0;">${lang === 'es' ? 'No hay artículos publicados aún.' : lang === 'en' ? 'No articles published yet.' : 'Nessun articolo pubblicato ancora.'}</p>`
     : ''
 
+  const headerSection = headerHtml ? `<div class="blog-header-custom">${headerHtml}</div>` : ''
+
+  // Build pagination HTML
+  let paginationHtml = ''
+  if (totalPages > 1) {
+    const pageHref = (n: number) => n === 1 ? `${baseUrl}/blog` : `${baseUrl}/blog?page=${n}`
+    const prevDisabled = currentPage <= 1
+    const nextDisabled = currentPage >= totalPages
+
+    const pageLinks: string[] = []
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) {
+        pageLinks.push(`<a class="blog-page-link${i === currentPage ? ' active' : ''}" href="${pageHref(i)}">${i}</a>`)
+      }
+    } else {
+      // Windowed pagination
+      const pages: (number | '...')[] = []
+      pages.push(1)
+      if (currentPage > 3) pages.push('...')
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+        pages.push(i)
+      }
+      if (currentPage < totalPages - 2) pages.push('...')
+      pages.push(totalPages)
+      for (const p of pages) {
+        if (p === '...') {
+          pageLinks.push(`<span class="blog-page-link disabled">…</span>`)
+        } else {
+          pageLinks.push(`<a class="blog-page-link${p === currentPage ? ' active' : ''}" href="${pageHref(p)}">${p}</a>`)
+        }
+      }
+    }
+
+    paginationHtml = `<nav class="blog-pagination" aria-label="Pagination">
+  <a class="blog-page-link${prevDisabled ? ' disabled' : ''}" href="${prevDisabled ? '#' : pageHref(currentPage - 1)}" ${prevDisabled ? 'aria-disabled="true"' : ''}>&#8592;</a>
+  ${pageLinks.join('\n  ')}
+  <a class="blog-page-link${nextDisabled ? ' disabled' : ''}" href="${nextDisabled ? '#' : pageHref(currentPage + 1)}" ${nextDisabled ? 'aria-disabled="true"' : ''}>&#8594;</a>
+</nav>`
+  }
+
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -128,14 +171,21 @@ export function buildBlogListPage(
     .blog-card-author{font-size:.75rem;color:#888;font-style:italic}
     @media(min-width:640px){.blog-grid{grid-template-columns:repeat(2,1fr)}}
     @media(min-width:1024px){.blog-grid{grid-template-columns:repeat(3,1fr)}}
+    .blog-pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:2.5rem;flex-wrap:wrap}
+    .blog-page-link{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-size:.85rem;font-weight:500;text-decoration:none;transition:background .15s,border-color .15s}
+    .blog-page-link:hover{background:#f3f4f6;border-color:#d1d5db}
+    .blog-page-link.active{background:var(--color-accent,#2563eb);border-color:var(--color-accent,#2563eb);color:#fff;font-weight:700;pointer-events:none}
+    .blog-page-link.disabled{opacity:.4;pointer-events:none}
   </style>
 </head>
 <body>
   ${siteNav}
+  ${headerSection}
   <section class="blog-listing">
     <div class="blog-listing-header"><h1>${title}</h1><p>${subtitle}</p></div>
     ${emptyState}
     <div class="blog-grid">${cards}</div>
+    ${paginationHtml}
   </section>
   ${siteFooter}
 </body>

@@ -20,9 +20,15 @@ function detectLang(context: Record<string, unknown>, homeHtml: string): string 
   return m?.[1]?.slice(0, 2) ?? 'it'
 }
 
+const PAGE_SIZE = 16
+
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const supabase = getSupabase()
+
+  const url = new URL(_req.url)
+  const currentPage = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10))
+  const offset = (currentPage - 1) * PAGE_SIZE
 
   const { data: project } = await supabase
     .from('projects')
@@ -41,15 +47,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const siteNav = homePage ? extractNav(homePage.html) : ''
   const siteFooter = homePage ? extractFooter(homePage.html) : ''
   const siteStyle = homePage ? extractStyles(homePage.html) : ''
+  const headerHtml = (config.blog_header_html as string) ?? ''
 
-  const { data: posts } = await supabase
+  const { data: posts, count } = await supabase
     .from('blog_posts')
-    .select('id, title, slug, excerpt, featured_image, published_at, categories, tags, content_html, seo_title, seo_description, author')
+    .select('id, title, slug, excerpt, featured_image, published_at, categories, tags, content_html, seo_title, seo_description, author', { count: 'exact' })
     .eq('project_id', project.id)
     .eq('status', 'published')
     .order('published_at', { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1)
 
+  const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
   const baseUrl = `/preview/${slug}`
-  const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang)
+  const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }

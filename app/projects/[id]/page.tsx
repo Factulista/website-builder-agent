@@ -789,6 +789,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
   const [blogLoading, setBlogLoading] = useState(false)
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
+  const [blogHeaderHtml, setBlogHeaderHtml] = useState('')
+  const [blogHeaderEditorOpen, setBlogHeaderEditorOpen] = useState(false)
+  const [blogHeaderSaving, setBlogHeaderSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
   const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
@@ -944,6 +947,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, selectedPost?.id])
 
+  const saveBlogHeader = async () => {
+    setBlogHeaderSaving('saving')
+    const { data: { session: sc } } = await supabase.auth.getSession()
+    if (!sc) { setBlogHeaderSaving('idle'); return }
+    // Merge blog_header_html into existing site_config
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existingConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: { ...existingConfig, blog_header_html: blogHeaderHtml },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setBlogHeaderSaving('saved')
+    setTimeout(() => setBlogHeaderSaving('idle'), 2000)
+  }
+
   useEffect(() => {
     if (viewMode === 'code' && activePage) {
       setCodeContent(activePage.html)
@@ -1071,7 +1089,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setCustomDomain(project.custom_domain)
         setCustomDomainStatus(project.custom_domain_status)
       }
-      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta>; context?: { businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string } } | null
+      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta>; context?: { businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }; blog_header_html?: string } | null
       if (config?.context) setProjectContext(config.context)
       let loadedPages: Page[] = []
       if (config?.pages?.length) loadedPages = config.pages
@@ -1092,6 +1110,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (config?.messages) setMessages(config.messages)
       if (config?.versions) setVersions(config.versions)
       if (config?.media) setMediaMeta(config.media)
+      setBlogHeaderHtml(config?.blog_header_html ?? '')
     }
     load()
   }, [id])
@@ -3360,6 +3379,35 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0 }}>✕</button>
                     </div>
                   )}
+
+                  {/* Blog header HTML panel */}
+                  <div style={{ borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.white }}>
+                    <button
+                      onClick={() => setBlogHeaderEditorOpen(v => !v)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 24px', fontSize: '0.82rem', fontWeight: 600, color: C.text, fontFamily: 'inherit' }}
+                    >
+                      <span>✏️ Sezione personalizzata</span>
+                      <span style={{ fontSize: '0.65rem', marginLeft: '2px' }}>{blogHeaderEditorOpen ? '▼' : '▶'}</span>
+                    </button>
+                    {blogHeaderEditorOpen && (
+                      <div style={{ padding: '0 24px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <textarea
+                          value={blogHeaderHtml}
+                          onChange={e => setBlogHeaderHtml(e.target.value)}
+                          style={{ width: '100%', height: '180px', fontFamily: 'monospace', fontSize: '0.8rem', border: `1px solid #e8e4de`, borderRadius: '6px', padding: '8px', resize: 'vertical', background: '#fafaf8', boxSizing: 'border-box' }}
+                          placeholder="<section>...</section>"
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <button
+                            onClick={saveBlogHeader}
+                            disabled={blogHeaderSaving === 'saving'}
+                            style={{ background: C.blue, color: 'white', border: 'none', padding: '6px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                          >{blogHeaderSaving === 'saving' ? '💾 Salvataggio...' : blogHeaderSaving === 'saved' ? '✓ Salvato' : 'Salva'}</button>
+                          <span style={{ fontSize: '0.72rem', color: C.textFaint }}>HTML statico mostrato sopra la griglia articoli</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Column headers */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 100px 120px', gap: '0 8px', padding: '8px 24px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
