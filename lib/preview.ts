@@ -4,17 +4,42 @@ type Page = { slug: string; name: string; html: string }
 type SiteConfig = { html?: string; pages?: Page[]; published_pages?: Page[] } | null
 
 /**
+ * Converts root-relative internal page links to path-relative ones so they
+ * work correctly under a <base href> prefix.
+ *
+ * e.g.  href="/blog"     →  href="./blog"
+ *        href="/precios"  →  href="./precios"
+ *
+ * Only touches <a href="/single-segment"> patterns (one path segment, no
+ * protocol, no double-slash, no API/Next internals). External links and
+ * resource URLs are left untouched.
+ */
+function normalizeInternalLinks(html: string, knownSlugs: string[]): string {
+  if (knownSlugs.length === 0) return html
+  const slugPattern = knownSlugs.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  // Match href="/slug" or href='/slug' (exact slug, optional trailing slash)
+  return html.replace(
+    new RegExp(`(href=["'])\/(${slugPattern})\/?(?=["'])`, 'g'),
+    (_match, prefix, slug) => `${prefix}./${slug}`
+  )
+}
+
+/**
  * Prepares page HTML for serving:
- * 1. Injects <base href> so all relative links (./blog, ./contact …) resolve correctly.
- * 2. Replaces every {{site_url}} placeholder with the absolute canonical root URL.
- * 3. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
+ * 1. Normalises root-relative internal links (href="/blog" → href="./blog").
+ * 2. Injects <base href> so all relative links (./blog, ./contact …) resolve correctly.
+ * 3. Replaces every {{site_url}} placeholder with the absolute canonical root URL.
+ * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = []): string {
   const baseTag = `<base href="${base}">`
 
-  // Replace {{site_url}} placeholder with the actual canonical root (no trailing slash)
-  let result = html.replace(/\{\{site_url\}\}/g, siteUrl)
+  // Step 1: fix root-relative internal links before base href takes effect
+  let result = normalizeInternalLinks(html, knownSlugs)
+
+  // Step 2: Replace {{site_url}} placeholder with the actual canonical root (no trailing slash)
+  result = result.replace(/\{\{site_url\}\}/g, siteUrl)
 
   if (isStaging) {
     // Remove canonical and og:url — staging previews must not be indexed
@@ -76,8 +101,9 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   // Staging: base = /preview/{slug}/, siteUrl = https://myweb.{ROOT_DOMAIN}/{slug}
   const base = `/preview/${projectSlug}/`
   const siteUrl = `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
+  const knownSlugs = ['blog', ...(config?.pages ?? []).map(p => p.slug)]
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -111,8 +137,9 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   // Custom domain: base = https://{domain}/, siteUrl = https://{domain} (no trailing slash)
   const base = `https://${customDomain}/`
   const siteUrl = `https://${customDomain}`
+  const knownSlugs = ['blog', ...(config.published_pages).map(p => p.slug)]
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
