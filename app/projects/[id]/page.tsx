@@ -160,7 +160,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       'border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,0.13);padding:5px;min-width:190px;'+
       'font-family:system-ui,sans-serif;font-size:13px;';
     menu.style.left=Math.min(e.clientX,window.innerWidth-210)+'px';
-    menu.style.top=Math.min(e.clientY,window.innerHeight-390)+'px';
+    menu.style.top=Math.min(e.clientY,window.innerHeight-430)+'px';
 
     function item(icon,label,danger,onClick){
       var d=document.createElement('div');
@@ -193,6 +193,32 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
           while(node&&!node.isContentEditable) node=node.parentElement;
           if(node){node.focus();restoreSelection();document.execCommand('insertText',false,text);triggerSave();}
         }).catch(function(){document.execCommand('paste');triggerSave();});
+      } else {
+        document.execCommand('paste');
+        triggerSave();
+      }
+    }));
+    menu.appendChild(item('📄','Incolla senza formattazione',false,function(){
+      restoreSelection();
+      var el=document.activeElement;
+      function pasteAsPlain(text){
+        var node=el;
+        while(node&&!node.isContentEditable) node=node.parentElement;
+        if(node){node.focus();restoreSelection();document.execCommand('insertText',false,text);triggerSave();}
+      }
+      if(navigator.clipboard&&navigator.clipboard.readText){
+        navigator.clipboard.readText().then(pasteAsPlain).catch(function(){
+          // fallback: ask user to paste, strip tags from pasted HTML
+          var tmp=document.createElement('div');
+          tmp.contentEditable='true';
+          tmp.style.cssText='position:fixed;left:-9999px;top:0;opacity:0;';
+          document.body.appendChild(tmp);
+          tmp.focus();
+          document.execCommand('paste');
+          var plain=tmp.innerText||'';
+          tmp.remove();
+          pasteAsPlain(plain);
+        });
       } else {
         document.execCommand('paste');
         triggerSave();
