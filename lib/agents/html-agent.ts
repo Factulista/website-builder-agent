@@ -1,6 +1,23 @@
 import { callClaude } from './config'
 import { fetchWithRetry } from './fetch-retry'
+import { extractImageUrls } from './site-analyzer'
 import type { LogoDefinition } from './design-agent'
+
+/** Fetches an image URL and returns it as base64 for multimodal API calls. */
+async function fetchImageAsBase64(url: string): Promise<{ data: string; media_type: string } | null> {
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(12000) })
+    if (!res.ok) return null
+    const buffer = await res.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString('base64')
+    const ct = res.headers.get('content-type') || 'image/jpeg'
+    const media_type = ct.split(';')[0].trim()
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    if (!allowed.includes(media_type)) return null
+    if (base64.length > 4_000_000) return null
+    return { data: base64, media_type }
+  } catch { return null }
+}
 
 type Page = { slug: string; name: string; html: string }
 
@@ -468,6 +485,16 @@ SEO — REGOLE DI DEFAULT (applica SEMPRE su ogni pagina che crei o modifichi):
 - Schema.org JSON-LD: usa {{site_url}} come valore del campo "url" (es: "@id": "{{site_url}}", "url": "{{site_url}}").
 Queste regole si applicano ANCHE alle modifiche parziali: se aggiungi una sezione, assicurati che la pagina soddisfi questi requisiti.
 
+IMMAGINI ALLEGATE — REGOLA CRITICA:
+Quando l'utente allega un'immagine, hai due comportamenti distinti:
+A) L'immagine contiene TESTO (screenshot di dati, lista prezzi, articolo, menu, scheda prodotto, tabella, documento):
+   → LEGGI tutto il testo visibile nell'immagine e usalo per RIEMPIRE il contenuto HTML (titoli, paragrafi, prezzi, voci, descrizioni).
+   → NON usare l'URL dell'immagine come src di <img>. Il testo è il contenuto, non l'immagine.
+B) L'utente chiede ESPLICITAMENTE di inserire/mostrare quell'immagine (es: "metti questa foto", "usa questo logo"):
+   → Usa l'URL come src di <img> normalmente.
+
+In caso di dubbio: se l'immagine ha testo leggibile → comportamento A (estrai testo).
+
 IMMAGINI — REGOLE DI PRIORITÀ (importante):
 1. Se l'utente fornisce un URL esplicito nel messaggio → USA QUELL'URL ESATTO.
 2. Se l'utente chiede di usare "una sua immagine" e la media library ha qualcosa di pertinente → usa quegli URL.
@@ -482,6 +509,41 @@ ${pageContextBlocks}`
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)
 
+  // Build API messages — if the last user message has attached images, fetch them
+  // as base64 and pass them as multimodal content so the model can actually SEE them
+  // (text extraction, reading data, etc.) instead of just seeing an opaque URL.
+  type TextBlock = { type: 'text'; text: string }
+  type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  type MsgContent = string | (TextBlock | ImageBlock)[]
+
+  const apiMessages: { role: string; content: MsgContent }[] = await Promise.all(
+    recentMessages.map(async (m, i) => {
+      const isLastUser = i === recentMessages.length - 1 && m.role === 'user'
+      if (!isLastUser) return { role: m.role, content: m.content }
+
+      const attachedUrls = extractImageUrls(m.content)
+      if (attachedUrls.length === 0) return { role: m.role, content: m.content }
+
+      const fetched = await Promise.all(attachedUrls.map(fetchImageAsBase64))
+      const validImages = fetched.filter((img): img is NonNullable<typeof img> => img !== null)
+      if (validImages.length === 0) return { role: m.role, content: m.content }
+
+      // Build multimodal content: images first, then the text prompt
+      const content: (TextBlock | ImageBlock)[] = [
+        ...validImages.map(img => ({
+          type: 'image' as const,
+          source: { type: 'base64' as const, media_type: img.media_type, data: img.data },
+        })),
+        { type: 'text' as const, text: m.content },
+      ]
+      return { role: m.role, content }
+    })
+  )
+
+  // Use Sonnet when images are attached (better vision/OCR than Haiku)
+  const hasImages = apiMessages.some(m => Array.isArray(m.content))
+  const model = hasImages ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001'
+
   const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -490,12 +552,12 @@ ${pageContextBlocks}`
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model,
       max_tokens: 16384,
       system,
       tools: HTML_TOOLS,
       tool_choice: { type: 'any' },
-      messages: recentMessages.map(m => ({ role: m.role, content: m.content })),
+      messages: apiMessages,
     }),
   }, 'html')
 
