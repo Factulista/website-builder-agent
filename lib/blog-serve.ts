@@ -1,3 +1,30 @@
+/** CSS for individual blog post content — shared between server render and editor preview */
+export const BLOG_POST_CONTENT_CSS = `
+  .blog-post-wrapper{max-width:760px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+  .blog-back-link{display:inline-block;font-size:.85rem;font-weight:600;color:var(--color-accent,#2563eb);text-decoration:none;margin-bottom:1.5rem}
+  .blog-back-link:hover{text-decoration:underline}
+  .blog-post-header{margin-bottom:2rem}
+  .blog-post-meta{font-size:.78rem;color:#888;margin-bottom:.7rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .blog-tag{background:#f3f4f6;color:#374151;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}
+  .blog-post-header h1{font-size:2.2rem;font-weight:800;line-height:1.25;margin:0 0 .75rem}
+  .blog-post-excerpt{font-size:1.05rem;color:#555;line-height:1.6;margin:0}
+  .post-featured-img{width:100%;border-radius:12px;margin:1.5rem 0 2rem;max-height:420px;object-fit:cover}
+  .blog-post-content{font-size:1rem;line-height:1.8;color:#1a1a1a}
+  .blog-post-content h2{font-size:1.5rem;font-weight:700;margin:2.5rem 0 .75rem}
+  .blog-post-content h3{font-size:1.2rem;font-weight:600;margin:2rem 0 .6rem}
+  .blog-post-content p{margin:0 0 1.25rem}
+  .blog-post-content ul,.blog-post-content ol{margin:0 0 1.25rem;padding-left:1.5rem}
+  .blog-post-content li{margin-bottom:.4rem}
+  .blog-post-content img{max-width:100%;height:auto;border-radius:8px;margin:1.5rem 0}
+  .blog-post-content a{color:var(--color-accent,#2563eb)}
+  .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.5rem 0;padding:.75rem 1.25rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}
+  .blog-post-content pre{background:#1a1a1a;color:#f8f8f8;border-radius:10px;padding:1.25rem;overflow-x:auto;font-size:.88rem;margin:1.5rem 0}
+  .blog-post-content code{font-family:'Fira Code',monospace;font-size:.88em;background:#f3f4f6;padding:2px 5px;border-radius:4px}
+  .blog-post-content pre code{background:none;padding:0}
+  .blog-post-author{font-size:.75rem;color:#666;font-style:italic}
+  @media(max-width:640px){.blog-post-header h1{font-size:1.7rem}.blog-post-wrapper{padding:1.5rem 1rem 3rem}}
+`
+
 export type Post = {
   id: string
   title: string
@@ -148,31 +175,7 @@ export function buildBlogPostPage(
   <meta property="og:type" content="article">
   ${post.published_at ? `<meta property="article:published_time" content="${post.published_at}">` : ''}
   ${siteStyle}
-  <style>
-    .blog-post-wrapper{max-width:760px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
-    .blog-back-link{display:inline-block;font-size:.85rem;font-weight:600;color:var(--color-accent,#2563eb);text-decoration:none;margin-bottom:1.5rem}
-    .blog-back-link:hover{text-decoration:underline}
-    .blog-post-header{margin-bottom:2rem}
-    .blog-post-meta{font-size:.78rem;color:#888;margin-bottom:.7rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-    .blog-tag{background:#f3f4f6;color:#374151;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}
-    .blog-post-header h1{font-size:2.2rem;font-weight:800;line-height:1.25;margin:0 0 .75rem}
-    .blog-post-excerpt{font-size:1.05rem;color:#555;line-height:1.6;margin:0}
-    .post-featured-img{width:100%;border-radius:12px;margin:1.5rem 0 2rem;max-height:420px;object-fit:cover}
-    .blog-post-content{font-size:1rem;line-height:1.8;color:#1a1a1a}
-    .blog-post-content h2{font-size:1.5rem;font-weight:700;margin:2.5rem 0 .75rem}
-    .blog-post-content h3{font-size:1.2rem;font-weight:600;margin:2rem 0 .6rem}
-    .blog-post-content p{margin:0 0 1.25rem}
-    .blog-post-content ul,.blog-post-content ol{margin:0 0 1.25rem;padding-left:1.5rem}
-    .blog-post-content li{margin-bottom:.4rem}
-    .blog-post-content img{max-width:100%;height:auto;border-radius:8px;margin:1.5rem 0}
-    .blog-post-content a{color:var(--color-accent,#2563eb)}
-    .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.5rem 0;padding:.75rem 1.25rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}
-    .blog-post-content pre{background:#1a1a1a;color:#f8f8f8;border-radius:10px;padding:1.25rem;overflow-x:auto;font-size:.88rem;margin:1.5rem 0}
-    .blog-post-content code{font-family:'Fira Code',monospace;font-size:.88em;background:#f3f4f6;padding:2px 5px;border-radius:4px}
-    .blog-post-content pre code{background:none;padding:0}
-    .blog-post-author{font-size:.75rem;color:#666;font-style:italic}
-    @media(max-width:640px){.blog-post-header h1{font-size:1.7rem}.blog-post-wrapper{padding:1.5rem 1rem 3rem}}
-  </style>
+  <style>${BLOG_POST_CONTENT_CSS}</style>
 </head>
 <body>
   ${siteNav}

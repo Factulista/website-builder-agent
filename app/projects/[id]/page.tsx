@@ -11,6 +11,7 @@ import { t } from '../../../lib/i18n/translations'
 import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
+import { BLOG_POST_CONTENT_CSS } from '../../../lib/blog-serve'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
@@ -3180,9 +3181,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               const full: BlogPost = json.post ?? post
               setSelectedPost(full)
               setBlogMetaEdits({})
-              // Build editor srcdoc
+              // Build editor srcdoc — uses the same CSS as the live blog preview
               const contentHtml = full.content_html ?? ''
-              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,sans-serif;padding:2rem;max-width:760px;margin:0 auto;line-height:1.7;color:#1a1a1a}h1{font-size:2rem;font-weight:800;margin:0 0 1rem}h2{font-size:1.5rem;font-weight:700;margin:2rem 0 0.75rem}h3{font-size:1.2rem;font-weight:600;margin:1.5rem 0 0.5rem}p{margin:0 0 1.2rem}ul,ol{margin:0 0 1.2rem;padding-left:1.5rem}li{margin-bottom:0.3rem}blockquote{border-left:4px solid #2563eb;margin:1.5rem 0;padding:0.75rem 1.25rem;background:#f8f9ff;color:#444;font-style:italic}img{max-width:100%;border-radius:8px}strong{font-weight:700}em{font-style:italic}</style></head><body>${contentHtml}</body></html>`
+              // Extract siteStyle from home page so CSS variables (--color-accent etc.) are inherited
+              const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
+              const siteStyleBlocks = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
+              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
               setBlogEditorSrcDoc(editorHtml)
               blogBaseHtmlRef.current = editorHtml
             }
