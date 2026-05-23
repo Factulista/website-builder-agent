@@ -160,7 +160,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       'border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,0.13);padding:5px;min-width:190px;'+
       'font-family:system-ui,sans-serif;font-size:13px;';
     menu.style.left=Math.min(e.clientX,window.innerWidth-210)+'px';
-    menu.style.top=Math.min(e.clientY,window.innerHeight-220)+'px';
+    menu.style.top=Math.min(e.clientY,window.innerHeight-390)+'px';
 
     function item(icon,label,danger,onClick){
       var d=document.createElement('div');
@@ -174,7 +174,34 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     }
     function sep(){var s=document.createElement('div');s.style.cssText='height:1px;background:#f1f5f9;margin:4px 0;';return s;}
 
-    // Link actions
+    // ── Clipboard ──────────────────────────────────────────────────────────────
+    menu.appendChild(item('✂️','Taglia',false,function(){
+      restoreSelection();
+      document.execCommand('cut');
+    }));
+    menu.appendChild(item('📋','Copia',false,function(){
+      restoreSelection();
+      document.execCommand('copy');
+    }));
+    menu.appendChild(item('📌','Incolla',false,function(){
+      restoreSelection();
+      var el=document.activeElement;
+      if(navigator.clipboard&&navigator.clipboard.readText){
+        navigator.clipboard.readText().then(function(text){
+          if(!text) return;
+          var node=el;
+          while(node&&!node.isContentEditable) node=node.parentElement;
+          if(node){node.focus();restoreSelection();document.execCommand('insertText',false,text);triggerSave();}
+        }).catch(function(){document.execCommand('paste');triggerSave();});
+      } else {
+        document.execCommand('paste');
+        triggerSave();
+      }
+    }));
+
+    menu.appendChild(sep());
+
+    // ── Link actions ───────────────────────────────────────────────────────────
     menu.appendChild(item('🔗', anchorEl?'Modifica link':'Inserisci link', false, function(){
       // If editing an existing anchor, ensure savedRange is inside it
       if(anchorEl){
@@ -201,10 +228,18 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
 
     menu.appendChild(sep());
 
-    // Text formatting
+    // ── Text formatting ────────────────────────────────────────────────────────
     menu.appendChild(item('𝐁','Grassetto',false,function(){restoreSelection();document.execCommand('bold');triggerSave();}));
     menu.appendChild(item('𝐼','Corsivo',false,function(){restoreSelection();document.execCommand('italic');triggerSave();}));
     menu.appendChild(item('U̲','Sottolineato',false,function(){restoreSelection();document.execCommand('underline');triggerSave();}));
+    menu.appendChild(item('S̶','Barrato',false,function(){restoreSelection();document.execCommand('strikeThrough');triggerSave();}));
+
+    menu.appendChild(sep());
+
+    // ── Alignment ──────────────────────────────────────────────────────────────
+    menu.appendChild(item('⬅','Allinea a sinistra',false,function(){restoreSelection();document.execCommand('justifyLeft');triggerSave();}));
+    menu.appendChild(item('↔','Allinea al centro',false,function(){restoreSelection();document.execCommand('justifyCenter');triggerSave();}));
+    menu.appendChild(item('➡','Allinea a destra',false,function(){restoreSelection();document.execCommand('justifyRight');triggerSave();}));
 
     document.body.appendChild(menu);
     ctxMenu=menu;
