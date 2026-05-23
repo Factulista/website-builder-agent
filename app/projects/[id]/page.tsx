@@ -1819,6 +1819,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       summary = `🔍 ${result.input.summary}${skipped ? ` (${skipped} edit non applicate)` : ''}`
     } else if (result.tool === 'generate_sitemap') {
       summary = `🗺️ ${result.input.summary}`
+    } else if (result.tool === 'update_blog_header') {
+      const newHeaderHtml = result.input.html as string
+      summary = `📝 ${result.input.summary}`
+      // Save blog_header_html to Supabase directly (merges into existing site_config)
+      const { data: existing } = await supabase.from('projects').select('site_config').eq('id', id).single()
+      const existingConfig = (existing?.site_config ?? {}) as Record<string, unknown>
+      await supabase.from('projects').update({
+        site_config: { ...existingConfig, blog_header_html: newHeaderHtml },
+      }).eq('id', id)
+      setBlogHeaderHtml(newHeaderHtml)
+      // Switch to blog view so user sees the result
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
+      const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
+      await saveState(finalMessages, newPages, versions)
+      setViewMode('blog')
+      setLoading(false)
+      return
     }
 
     setPages(newPages)

@@ -162,6 +162,18 @@ const HTML_TOOLS = [
       required: ['pageSlug', 'summary'],
     },
   },
+  {
+    name: 'update_blog_header',
+    description: 'Aggiorna la sezione HTML statica personalizzata che appare sopra la griglia degli articoli nel blog. Usalo quando l\'utente vuole modificare l\'intestazione, hero, titolo o testo introduttivo della pagina blog.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        html: { type: 'string', description: 'HTML della sezione statica da mostrare sopra la griglia articoli. Deve essere HTML completo e stilato inline.' },
+        summary: { type: 'string' },
+      },
+      required: ['html', 'summary'],
+    },
+  },
 ]
 
 export async function runHtmlAgentWithPlan(
@@ -446,6 +458,7 @@ REGOLE CRITICHE:
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
 - MAI creare una pagina con slug "blog". Il blog è gestito da un sistema dinamico separato. Se l'utente vuole il blog, aggiungi SOLO il link <a href="./blog">Blog</a> nella nav — non creare la pagina.
+- Per modificare l'intestazione/hero/testo della PAGINA BLOG (la sezione sopra gli articoli), usa update_blog_header — NON edit_page.
 
 TARGETING DELLA PAGINA — IMPORTANTISSIMO:
 - Se l'utente nomina esplicitamente una pagina (es: "nella pagina precios", "sulla pagina contatti", "per la pagina about"), usa edit_page su QUELLA pagina — NON sulla pagina attiva.
