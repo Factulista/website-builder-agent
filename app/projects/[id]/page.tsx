@@ -138,6 +138,75 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     }
     return null;
   }
+  function getTableCell(){
+    var sel=window.getSelection();
+    if(!sel||!sel.anchorNode) return null;
+    var node=sel.anchorNode;
+    while(node&&node!==document.body){
+      if(node.tagName==='TD'||node.tagName==='TH') return node;
+      node=node.parentElement;
+    }
+    return null;
+  }
+
+  // ── Table operations ──────────────────────────────────────────────────────
+  function tableAddRow(cell,after){
+    var row=cell.parentElement;
+    var newRow=document.createElement('tr');
+    newRow.style.cssText=row.style.cssText||'';
+    var isEven=(row.rowIndex%2===0);
+    var bg=isEven?'':'#f9fafb';
+    for(var i=0;i<row.cells.length;i++){
+      var ref=row.cells[i];
+      var c=document.createElement(ref.tagName.toLowerCase());
+      c.style.cssText=ref.style.cssText||'';
+      c.innerHTML='&nbsp;';
+      if(bg&&ref.tagName==='TD') c.style.background=bg;
+      newRow.appendChild(c);
+    }
+    if(after) row.insertAdjacentElement('afterend',newRow);
+    else row.insertAdjacentElement('beforebegin',newRow);
+    triggerSave();
+  }
+  function tableDeleteRow(cell){
+    var row=cell.parentElement;
+    var table=row.closest?row.closest('table'):null;
+    if(!table) return;
+    if(table.rows.length<=1) return;
+    row.remove();
+    triggerSave();
+  }
+  function tableAddCol(cell,after){
+    var colIdx=cell.cellIndex;
+    var table=cell.closest?cell.closest('table'):null;
+    if(!table) return;
+    for(var r=0;r<table.rows.length;r++){
+      var row=table.rows[r];
+      var ref=row.cells[colIdx];
+      if(!ref) continue;
+      var newCell=document.createElement(ref.tagName.toLowerCase());
+      newCell.style.cssText=ref.style.cssText||'';
+      newCell.innerHTML= (ref.tagName==='TH')?'<strong>Colonna</strong>':'&nbsp;';
+      if(after){
+        if(row.cells[colIdx+1]) row.insertBefore(newCell,row.cells[colIdx+1]);
+        else row.appendChild(newCell);
+      } else {
+        row.insertBefore(newCell,ref);
+      }
+    }
+    triggerSave();
+  }
+  function tableDeleteCol(cell){
+    var colIdx=cell.cellIndex;
+    var table=cell.closest?cell.closest('table'):null;
+    if(!table) return;
+    if(table.rows[0]&&table.rows[0].cells.length<=1) return;
+    for(var r=0;r<table.rows.length;r++){
+      var c=table.rows[r].cells[colIdx];
+      if(c) c.remove();
+    }
+    triggerSave();
+  }
 
   // ── Context menu ──────────────────────────────────────────────────────────
   var ctxMenu=null;
@@ -269,6 +338,23 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     menu.appendChild(item('⬅','Allinea a sinistra',false,function(){restoreSelection();document.execCommand('justifyLeft');triggerSave();}));
     menu.appendChild(item('↔','Allinea al centro',false,function(){restoreSelection();document.execCommand('justifyCenter');triggerSave();}));
     menu.appendChild(item('➡','Allinea a destra',false,function(){restoreSelection();document.execCommand('justifyRight');triggerSave();}));
+
+    // ── Table operations (only when inside a table cell) ───────────────────────
+    var tCell=getTableCell();
+    if(tCell){
+      menu.appendChild(sep());
+      var tHdr=document.createElement('div');
+      tHdr.style.cssText='padding:3px 12px 5px;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;';
+      tHdr.textContent='Tabella';
+      menu.appendChild(tHdr);
+      menu.appendChild(item('⬆','Aggiungi riga sopra',false,function(){tableAddRow(tCell,false);}));
+      menu.appendChild(item('⬇','Aggiungi riga sotto',false,function(){tableAddRow(tCell,true);}));
+      menu.appendChild(item('🗑','Elimina riga',true,function(){tableDeleteRow(tCell);}));
+      menu.appendChild(sep());
+      menu.appendChild(item('⬅','Aggiungi colonna a sinistra',false,function(){tableAddCol(tCell,false);}));
+      menu.appendChild(item('➡','Aggiungi colonna a destra',false,function(){tableAddCol(tCell,true);}));
+      menu.appendChild(item('🗑','Elimina colonna',true,function(){tableDeleteCol(tCell);}));
+    }
 
     document.body.appendChild(menu);
     ctxMenu=menu;
@@ -428,13 +514,23 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
   }
 
   // ── Toolbar postMessage bridge ─────────────────────────────────────────────
+  var colorSavedRange=null;
   window.addEventListener('message',function(e){
     if(!e.data||typeof e.data!=='object') return;
+    if(e.data.type==='fact-save-sel'){
+      var csel=window.getSelection();
+      if(csel&&csel.rangeCount>0) colorSavedRange=csel.getRangeAt(0).cloneRange();
+    }
     if(e.data.type==='fact-format'){
       var cmd=e.data.cmd,val=e.data.val||null;
-      // Enable CSS-based styling for fontName so we get <span style="font-family:...">
-      // instead of the deprecated <font face="..."> tag
-      if(cmd==='fontName'){document.execCommand('styleWithCSS',false,'true');}
+      // Restore selection if it was saved before opening a native picker (e.g. color input)
+      if(colorSavedRange){
+        var csel2=window.getSelection();
+        if(csel2){csel2.removeAllRanges();csel2.addRange(colorSavedRange);}
+        colorSavedRange=null;
+      }
+      // Enable CSS-based styling so we get <span style="..."> instead of deprecated tags
+      if(cmd==='fontName'||cmd==='foreColor'){document.execCommand('styleWithCSS',false,'true');}
       document.execCommand(cmd,false,val);
       triggerSave();
     }
@@ -443,6 +539,23 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       saveSelection();
       showLinkDialog(anch?anch.getAttribute('href'):null);
     }
+  });
+
+  // ── Report current block tag to parent for toolbar active state ────────────
+  document.addEventListener('selectionchange',function(){
+    var sel=window.getSelection();
+    if(!sel||!sel.rangeCount) return;
+    var node=sel.getRangeAt(0).startContainer;
+    var el=node.nodeType===3?node.parentElement:node;
+    while(el&&el!==document.body){
+      var tag=el.tagName||'';
+      if(/^H[1-6]$/.test(tag)||tag==='P'||tag==='BLOCKQUOTE'||tag==='LI'){
+        window.parent.postMessage({type:'fact-block',tag:tag},'*');
+        return;
+      }
+      el=el.parentElement;
+    }
+    window.parent.postMessage({type:'fact-block',tag:'P'},'*');
   });
 
 })();`
@@ -806,6 +919,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [blogActiveBlock, setBlogActiveBlock] = useState<string>('')
   const [blogPublishing, setBlogPublishing] = useState(false)
   const [blogGenerating, setBlogGenerating] = useState(false)
   const [blogGenTopic, setBlogGenTopic] = useState('')
@@ -929,6 +1043,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (viewMode !== 'blog' || !selectedPost) return
     const handleBlogMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'fact-block') {
+        setBlogActiveBlock(e.data.tag ?? '')
+        return
+      }
       if (e.data?.type !== 'html-change') return
       const newHtml = e.data.html as string
       blogBaseHtmlRef.current = newHtml
@@ -3838,10 +3956,32 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </optgroup>
                           </select>
                           <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+                          {/* Text color picker */}
+                          <label
+                            title="Colore testo"
+                            style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, height: '26px', gap: '1px', position: 'relative', userSelect: 'none' }}
+                          >
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: C.text, lineHeight: 1, pointerEvents: 'none' }}>A</span>
+                            <div style={{ width: '14px', height: '3px', borderRadius: '1px', background: 'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7)', pointerEvents: 'none' }} />
+                            <input
+                              type="color"
+                              defaultValue="#000000"
+                              onMouseDown={() => {
+                                blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-save-sel' }, '*')
+                              }}
+                              onChange={e => {
+                                const win = blogIframeRef.current?.contentWindow
+                                if (!win) return
+                                win.postMessage({ type: 'fact-format', cmd: 'foreColor', val: e.target.value }, '*')
+                              }}
+                              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }}
+                            />
+                          </label>
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
                           {([
-                            { label: 'H1', cmd: 'formatBlock', val: 'h1', title: 'Titolo 1', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
-                            { label: 'H2', cmd: 'formatBlock', val: 'h2', title: 'Titolo 2', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
-                            { label: 'H3', cmd: 'formatBlock', val: 'h3', title: 'Titolo 3', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700 } },
+                            { label: 'H1', cmd: 'formatBlock', val: 'h1', title: 'Titolo 1', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'H1' ? C.blue : C.white, color: blogActiveBlock === 'H1' ? 'white' : C.text, borderColor: blogActiveBlock === 'H1' ? C.blue : C.border } },
+                            { label: 'H2', cmd: 'formatBlock', val: 'h2', title: 'Titolo 2', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'H2' ? C.blue : C.white, color: blogActiveBlock === 'H2' ? 'white' : C.text, borderColor: blogActiveBlock === 'H2' ? C.blue : C.border } },
+                            { label: 'H3', cmd: 'formatBlock', val: 'h3', title: 'Titolo 3', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'H3' ? C.blue : C.white, color: blogActiveBlock === 'H3' ? 'white' : C.text, borderColor: blogActiveBlock === 'H3' ? C.blue : C.border } },
                             null,
                             { label: 'B', cmd: 'bold', val: undefined, title: 'Grassetto', style: { fontWeight: 800, fontSize: '0.82rem' } },
                             { label: 'I', cmd: 'italic', val: undefined, title: 'Corsivo', style: { fontStyle: 'italic', fontSize: '0.82rem' } },
