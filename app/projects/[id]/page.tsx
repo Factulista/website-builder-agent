@@ -1077,6 +1077,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       else if (config?.html) loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
       // Strip any editor artefacts left over from previous edit sessions before fix
       loadedPages = loadedPages.map(p => ({ ...p, html: stripEditorArtifacts(p.html) }))
+      // Remove any static "blog" page — the blog is served dynamically from blog_posts.
+      // A static page with slug "blog" is always shadowed by the dynamic route and causes confusion.
+      const hasBlogPage = loadedPages.some(p => p.slug === 'blog')
+      loadedPages = loadedPages.filter(p => p.slug !== 'blog')
+      // If it had a blog page, make sure the nav link ./blog is still there
+      if (hasBlogPage && loadedPages.length > 0 && !hasBlogNavLink(loadedPages)) {
+        const lang = (config?.context as { language?: string } | undefined)?.language ?? 'it'
+        loadedPages = addBlogLinkToNav(loadedPages, lang === 'es' ? 'Blog' : 'Blog')
+      }
       setPages(loadedPages)
       if (loadedPages.length > 0) setActiveSlug(loadedPages[0].slug)
       if (config?.messages) setMessages(config.messages)
@@ -1711,6 +1720,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const rawPages = result.input.pages
       if (!Array.isArray(rawPages)) { markFailed('risposta non valida dal server'); return }
       newPages = rawPages as Page[]
+      // Remove any static "blog" page — blog is always served dynamically from blog_posts
+      newPages = newPages.filter(p => p.slug !== 'blog')
       const steps = result.steps ? `\n${(result.steps as string[]).join('\n')}` : ''
       summary = `✨ ${result.input.summary}${steps}`
       // Set active to first NEW page (not existing), fallback to first page
@@ -1720,7 +1731,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
       // Auto-seed blog posts if user requested a blog and none exist yet
       const blogMentioned = /\bblog\b/i.test(effectiveInput) ||
-        newPages.some(p => /blog/i.test(p.slug) || /blog/i.test(p.name))
+        (rawPages as Page[]).some(p => /blog/i.test(p.slug) || /blog/i.test(p.name))
       if (blogMentioned && blogPosts.length === 0) {
         const lang = projectContext.language ?? 'it'
         const blogLabel = lang === 'es' ? 'Blog' : 'Blog'
@@ -1750,9 +1761,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       newActiveSlug = targetSlug
     } else if (result.tool === 'add_page') {
       const newPage: Page = { slug: result.input.slug, name: result.input.name, html: result.input.html }
-      newPages = syncNavigation([...pages, newPage], 'add', newPage.slug)
-      summary = `➕ ${result.input.summary}`
-      newActiveSlug = newPage.slug
+      if (newPage.slug === 'blog') {
+        // Blog is dynamic — never add it as a static page; just ensure nav link exists
+        newPages = hasBlogNavLink(pages) ? pages : addBlogLinkToNav(pages, 'Blog')
+        summary = `📝 Blog collegato (sistema dinamico attivo)`
+        newActiveSlug = activeSlug
+      } else {
+        newPages = syncNavigation([...pages, newPage], 'add', newPage.slug)
+        summary = `➕ ${result.input.summary}`
+        newActiveSlug = newPage.slug
+      }
     } else if (result.tool === 'delete_page') {
       const targetSlug = result.input.pageSlug as string
       if (targetSlug === 'home') {

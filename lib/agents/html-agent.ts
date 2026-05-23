@@ -187,6 +187,7 @@ REGOLE:
 - Link tra pagine con href relativi senza .html (es: ./chi-siamo).
 - Includi Schema.org JSON-LD nel <head> dove fornito.
 - Mobile-first, semantico, accessibile.
+- MAI generare una pagina con slug "blog". Se il piano include blog, aggiungi solo il link <a href="./blog">Blog</a> nella nav — il blog è un sistema dinamico separato.
 ${allPages.length > plan.pages.length ? `- TUTTE LE PAGINE DEL SITO (per i link navbar): ${allPages.map(p => `${p.name} → ./${p.slug === 'home' ? '' : p.slug}`).join(', ')}` : ''}
 SEO URL — REGOLA CRITICA:
 - canonical e og:url usano SEMPRE {{site_url}} come radice (MAI URL inventati come https://miodominio.com).
@@ -444,6 +445,7 @@ REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
+- MAI creare una pagina con slug "blog". Il blog è gestito da un sistema dinamico separato. Se l'utente vuole il blog, aggiungi SOLO il link <a href="./blog">Blog</a> nella nav — non creare la pagina.
 
 TARGETING DELLA PAGINA — IMPORTANTISSIMO:
 - Se l'utente nomina esplicitamente una pagina (es: "nella pagina precios", "sulla pagina contatti", "per la pagina about"), usa edit_page su QUELLA pagina — NON sulla pagina attiva.
