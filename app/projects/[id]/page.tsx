@@ -12,6 +12,8 @@ import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS } from '../../../lib/blog-serve'
+import { LibraryView } from '../../../components/LibraryView'
+import type { Component } from '../../../lib/components/index'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
@@ -778,7 +780,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'library'>('preview')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const dragIndexRef = useRef<number | null>(null)
@@ -1874,6 +1876,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setLoading(false)
   }
 
+  const handleInsertWithAI = (component: Component) => {
+    const msg = `Inserisci il componente "${component.name}" nella pagina attiva. Adattalo al design del sito (colori, font, stile). Usa questo HTML come base e integra il componente nel posto più appropriato della pagina:\n\n${component.html}`
+    setViewMode('preview')
+    const fakeEvent = { preventDefault: () => {} } as React.FormEvent
+    handleSend(fakeEvent, { input: msg, images: [] })
+  }
+
   const handleDuplicatePage = async (slug: string) => {
     const source = pages.find(p => p.slug === slug)
     if (!source) return
@@ -2428,6 +2437,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               title="Blog"
               active={viewMode === 'blog'}
               onClick={() => setViewMode('blog')}
+            />
+            <ToolbarBtn
+              label="🧩"
+              title="Libreria componenti"
+              active={viewMode === 'library'}
+              onClick={() => setViewMode('library')}
             />
           </div>
 
@@ -4046,6 +4061,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
             )
           })()
+        ) : viewMode === 'library' ? (
+          /* ── Component Library ──────────────────────────────────────────────── */
+          <LibraryView
+            onInsertWithAI={handleInsertWithAI}
+            onCopyHtml={(html) => navigator.clipboard.writeText(html).catch(() => {})}
+          />
         ) : (
           /* Preview mode — no sidebar, full width */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>

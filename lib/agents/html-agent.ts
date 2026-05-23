@@ -515,6 +515,16 @@ IMMAGINI — REGOLE DI PRIORITÀ (importante):
 2. Se l'utente chiede di usare "una sua immagine" e la media library ha qualcosa di pertinente → usa quegli URL.
 3. Altrimenti → usa placeholder https://picsum.photos/seed/{keyword}/{w}/{h}.
 
+LIBRERIA COMPONENTI DISPONIBILI:
+Quando l'utente chiede di aggiungere uno di questi elementi, integra il componente HTML fornito adattandolo al design del sito (usa i colori, font e stile del sito — sostituisci le classi "grey/placeholder" con quelle coerenti al design system). Usa edit_page per iniettarlo nella posizione giusta della pagina.
+- logo-carousel: striscia loghi infinita
+- faq-accordion: FAQ espandibili
+- contact-form: form di contatto
+- newsletter-form: form iscrizione email
+- cookie-banner: banner GDPR cookie
+- pricing-toggle: prezzi mensile/annuale
+- data-table: tabella dati/confronto
+
 MEDIA LIBRARY DEL PROGETTO:
 ${mediaList}
 ${logoSection}

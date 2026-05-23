@@ -8,6 +8,7 @@ import { runClarifier } from '../../../lib/agents/clarifier'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
+import { findComponentByKeywords } from '../../../lib/components/index'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -419,7 +420,20 @@ export async function POST(req: NextRequest) {
     return makeStream(async (emit) => {
       emit('✏️ Elaborando la modifica…')
       const contextLogo = context.design?.tokens?.logo
-      const result = await runHtmlAgent(messages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo)
+
+      // Enrich messages with component HTML if user referenced a library component
+      const matchedComponent = findComponentByKeywords(lastUserMessage)
+      const agentMessages = matchedComponent
+        ? messages.map((m, i) => i === messages.length - 1
+            ? {
+                ...m,
+                content: m.content +
+                  `\n\n[COMPONENTE DA LIBRERIA — usa questo HTML come base, adattalo al design del sito]\nNome: ${matchedComponent.name}\n\`\`\`html\n${matchedComponent.html}\n\`\`\``,
+              }
+            : m)
+        : messages
+
+      const result = await runHtmlAgent(agentMessages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo)
 
       // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
       if (result.tool === 'create_site' && result.input?.pages) {
