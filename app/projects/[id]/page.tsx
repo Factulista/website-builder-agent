@@ -792,6 +792,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogHeaderHtml, setBlogHeaderHtml] = useState('')
   const [blogHeaderEditorOpen, setBlogHeaderEditorOpen] = useState(false)
   const [blogHeaderSaving, setBlogHeaderSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [blogSidebarBannerUrl, setBlogSidebarBannerUrl] = useState('')
+  const [blogSidebarBannerLink, setBlogSidebarBannerLink] = useState('')
+  const [blogSidebarBannerOpen, setBlogSidebarBannerOpen] = useState(false)
+  const [blogSidebarBannerSaving, setBlogSidebarBannerSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
   const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
@@ -962,6 +966,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setBlogHeaderSaving('idle'), 2000)
   }
 
+  const saveBlogSidebarBanner = async () => {
+    setBlogSidebarBannerSaving('saving')
+    const { data: { session: sc } } = await supabase.auth.getSession()
+    if (!sc) { setBlogSidebarBannerSaving('idle'); return }
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existingConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: { ...existingConfig, blog_sidebar_banner: { url: blogSidebarBannerUrl, link: blogSidebarBannerLink } },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setBlogSidebarBannerSaving('saved')
+    setTimeout(() => setBlogSidebarBannerSaving('idle'), 2000)
+  }
+
   useEffect(() => {
     if (viewMode === 'code' && activePage) {
       setCodeContent(activePage.html)
@@ -1089,7 +1107,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setCustomDomain(project.custom_domain)
         setCustomDomainStatus(project.custom_domain_status)
       }
-      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta>; context?: { businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }; blog_header_html?: string } | null
+      const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta>; context?: { businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }; blog_header_html?: string; blog_sidebar_banner?: { url: string; link: string } } | null
       if (config?.context) setProjectContext(config.context)
       let loadedPages: Page[] = []
       if (config?.pages?.length) loadedPages = config.pages
@@ -1111,6 +1129,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (config?.versions) setVersions(config.versions)
       if (config?.media) setMediaMeta(config.media)
       setBlogHeaderHtml(config?.blog_header_html ?? '')
+      setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
+      setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
     }
     load()
   }, [id])
@@ -3421,6 +3441,50 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             style={{ background: C.blue, color: 'white', border: 'none', padding: '6px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
                           >{blogHeaderSaving === 'saving' ? '💾 Salvataggio...' : blogHeaderSaving === 'saved' ? '✓ Salvato' : 'Salva'}</button>
                           <span style={{ fontSize: '0.72rem', color: C.textFaint }}>HTML statico mostrato sopra la griglia articoli</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sidebar banner panel */}
+                  <div style={{ borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.white }}>
+                    <button
+                      onClick={() => setBlogSidebarBannerOpen(v => !v)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 24px', fontSize: '0.82rem', fontWeight: 600, color: C.text, fontFamily: 'inherit' }}
+                    >
+                      <span>🖼 Banner laterale articoli</span>
+                      <span style={{ fontSize: '0.65rem', marginLeft: '2px' }}>{blogSidebarBannerOpen ? '▼' : '▶'}</span>
+                    </button>
+                    {blogSidebarBannerOpen && (
+                      <div style={{ padding: '0 24px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: C.textMuted }}>URL immagine PNG/JPG</label>
+                          <input
+                            type="text"
+                            value={blogSidebarBannerUrl}
+                            onChange={e => setBlogSidebarBannerUrl(e.target.value)}
+                            placeholder="https://..."
+                            style={{ width: '100%', padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit', background: '#fafaf8', boxSizing: 'border-box' }}
+                          />
+                          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: C.textMuted }}>Link di destinazione</label>
+                          <input
+                            type="text"
+                            value={blogSidebarBannerLink}
+                            onChange={e => setBlogSidebarBannerLink(e.target.value)}
+                            placeholder="https://..."
+                            style={{ width: '100%', padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit', background: '#fafaf8', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        {blogSidebarBannerUrl && (
+                          <img src={blogSidebarBannerUrl} alt="Banner preview" style={{ width: '100%', maxWidth: '200px', borderRadius: '8px', border: `1px solid ${C.border}` }} />
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <button
+                            onClick={saveBlogSidebarBanner}
+                            disabled={blogSidebarBannerSaving === 'saving'}
+                            style={{ background: C.blue, color: 'white', border: 'none', padding: '6px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                          >{blogSidebarBannerSaving === 'saving' ? '💾 Salvataggio...' : blogSidebarBannerSaving === 'saved' ? '✓ Salvato' : 'Salva'}</button>
+                          <span style={{ fontSize: '0.72rem', color: C.textFaint }}>Appare fisso a destra durante la lettura degli articoli</span>
                         </div>
                       </div>
                     )}

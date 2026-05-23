@@ -1,8 +1,19 @@
 /** CSS for individual blog post content — shared between server render and editor preview */
 export const BLOG_POST_CONTENT_CSS = `
-  .blog-post-wrapper{max-width:760px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
-  .blog-back-link{display:inline-block;font-size:.85rem;font-weight:600;color:var(--color-accent,#2563eb);text-decoration:none;margin-bottom:1.5rem}
-  .blog-back-link:hover{text-decoration:underline}
+  /* ── Layout 3 colonne ───────────────────────────────────────────────── */
+  .blog-post-layout{display:grid;grid-template-columns:220px 1fr 220px;gap:2rem;max-width:1280px;margin:0 auto;padding:2.5rem 1.5rem 5rem;align-items:start}
+  /* ── TOC (sinistra) ─────────────────────────────────────────────────── */
+  .blog-toc{position:sticky;top:5rem}
+  .blog-toc-back{display:inline-flex;align-items:center;gap:4px;font-size:.8rem;font-weight:600;color:var(--color-accent,#2563eb);text-decoration:none;margin-bottom:1.25rem}
+  .blog-toc-back:hover{text-decoration:underline}
+  .blog-toc-title{font-size:.7rem;font-weight:700;color:#9b9896;text-transform:uppercase;letter-spacing:.07em;margin:0 0 .75rem}
+  .blog-toc-list{list-style:none;margin:0;padding:0;border-left:2px solid #e8e4de}
+  .blog-toc-list li{margin-bottom:2px}
+  .blog-toc-list a{display:block;padding:.35rem .75rem;font-size:.8rem;color:#6b6563;text-decoration:none;border-left:2px solid transparent;margin-left:-2px;line-height:1.4;transition:color .15s,border-color .15s}
+  .blog-toc-list a:hover{color:var(--color-accent,#2563eb)}
+  .blog-toc-list a.toc-active{color:var(--color-accent,#2563eb);font-weight:600;border-left-color:var(--color-accent,#2563eb)}
+  /* ── Content (centro) ───────────────────────────────────────────────── */
+  .blog-post-wrapper{min-width:0}
   .blog-post-header{margin-bottom:2rem}
   .blog-post-meta{font-size:.78rem;color:#888;margin-bottom:.7rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .blog-tag{background:#f3f4f6;color:#374151;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}
@@ -10,8 +21,8 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-excerpt{font-size:1.05rem;color:#555;line-height:1.6;margin:0}
   .post-featured-img{width:100%;border-radius:12px;margin:1.5rem 0 2rem;max-height:420px;object-fit:cover}
   .blog-post-content{font-size:1rem;line-height:1.8;color:#1a1a1a}
-  .blog-post-content h2{font-size:1.5rem;font-weight:700;margin:2.5rem 0 .75rem}
-  .blog-post-content h3{font-size:1.2rem;font-weight:600;margin:2rem 0 .6rem}
+  .blog-post-content h2{font-size:1.5rem;font-weight:700;margin:2.5rem 0 .75rem;scroll-margin-top:5.5rem}
+  .blog-post-content h3{font-size:1.2rem;font-weight:600;margin:2rem 0 .6rem;scroll-margin-top:5.5rem}
   .blog-post-content p{margin:0 0 1.25rem}
   .blog-post-content ul,.blog-post-content ol{margin:0 0 1.25rem;padding-left:1.5rem}
   .blog-post-content li{margin-bottom:.4rem}
@@ -22,7 +33,21 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-content code{font-family:'Fira Code',monospace;font-size:.88em;background:#f3f4f6;padding:2px 5px;border-radius:4px}
   .blog-post-content pre code{background:none;padding:0}
   .blog-post-author{font-size:.75rem;color:#666;font-style:italic}
-  @media(max-width:640px){.blog-post-header h1{font-size:1.7rem}.blog-post-wrapper{padding:1.5rem 1rem 3rem}}
+  /* ── Banner (destra) ────────────────────────────────────────────────── */
+  .blog-sidebar-right{position:sticky;top:5rem}
+  .blog-sidebar-banner{display:block;border-radius:12px;overflow:hidden;border:1px solid #e8e4de;transition:box-shadow .2s,transform .2s}
+  .blog-sidebar-banner:hover{box-shadow:0 6px 20px rgba(0,0,0,.1);transform:translateY(-2px)}
+  .blog-sidebar-banner img{width:100%;height:auto;display:block}
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  @media(max-width:1100px){
+    .blog-post-layout{grid-template-columns:200px 1fr;gap:1.5rem}
+    .blog-sidebar-right{display:none}
+  }
+  @media(max-width:768px){
+    .blog-post-layout{grid-template-columns:1fr;padding:1.5rem 1rem 3rem}
+    .blog-toc{position:static;margin-bottom:1.5rem;border:1px solid #e8e4de;border-radius:10px;padding:1rem}
+    .blog-post-header h1{font-size:1.7rem}
+  }
 `
 
 export type Post = {
@@ -40,6 +65,11 @@ export type Post = {
   author?: string
 }
 
+export type BlogSidebarBanner = {
+  url: string
+  link: string
+}
+
 function slugifySimple(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
@@ -52,6 +82,29 @@ export function formatDate(iso: string | null, lang = 'it'): string {
       { year: 'numeric', month: 'long', day: 'numeric' }
     )
   } catch { return '' }
+}
+
+/** Extracts H2 headings, injects unique IDs, returns enriched content + TOC items */
+function buildTocFromContent(contentHtml: string): {
+  contentWithIds: string
+  tocItems: { id: string; text: string }[]
+} {
+  let counter = 0
+  const tocItems: { id: string; text: string }[] = []
+  const contentWithIds = contentHtml.replace(/<h2([^>]*)>([\s\S]*?)<\/h2>/gi, (_, attrs, inner) => {
+    // Don't add duplicate id if one already exists
+    if (/\bid=/.test(attrs)) {
+      const existingId = attrs.match(/\bid=["']([^"']+)["']/)?.[1]
+      if (existingId) {
+        tocItems.push({ id: existingId, text: inner.replace(/<[^>]+>/g, '').trim() })
+        return `<h2${attrs}>${inner}</h2>`
+      }
+    }
+    const id = `s${counter++}`
+    tocItems.push({ id, text: inner.replace(/<[^>]+>/g, '').trim() })
+    return `<h2${attrs} id="${id}">${inner}</h2>`
+  })
+  return { contentWithIds, tocItems }
 }
 
 export function buildBlogListPage(
@@ -182,7 +235,7 @@ export function buildBlogListPage(
   ${siteNav}
   ${headerSection}
   <section class="blog-listing">
-    <div class="blog-listing-header"><h1>${title}</h1><p>${subtitle}</p></div>
+    ${headerHtml ? '' : `<div class="blog-listing-header"><h1>${title}</h1><p>${subtitle}</p></div>`}
     ${emptyState}
     <div class="blog-grid">${cards}</div>
     ${paginationHtml}
@@ -198,7 +251,8 @@ export function buildBlogPostPage(
   siteNav: string,
   siteFooter: string,
   siteStyle: string,
-  lang = 'it'
+  lang = 'it',
+  sidebarBanner?: BlogSidebarBanner | null
 ): string {
   const backLabel = '← Blog'
   const dateStr = formatDate(post.published_at, lang)
@@ -209,6 +263,56 @@ export function buildBlogPostPage(
     : ''
   const seoTitle = post.seo_title || post.title
   const seoDesc = post.seo_description || post.excerpt || ''
+
+  // Extract H2s for TOC and inject IDs
+  const { contentWithIds, tocItems } = buildTocFromContent(post.content_html)
+
+  // Build TOC HTML
+  const tocInner = tocItems.length > 0
+    ? `<p class="blog-toc-title">${lang === 'es' ? 'Contenido' : lang === 'en' ? 'Contents' : 'Contenuto'}</p>
+<ul class="blog-toc-list">
+${tocItems.map(item => `  <li><a href="#${item.id}">${item.text}</a></li>`).join('\n')}
+</ul>`
+    : ''
+
+  // Build right sidebar banner HTML
+  const bannerHtml = sidebarBanner?.url
+    ? `<aside class="blog-sidebar-right" aria-label="Banner">
+  <a class="blog-sidebar-banner" href="${sidebarBanner.link || '#'}" target="_blank" rel="noopener">
+    <img src="${sidebarBanner.url}" alt="Banner" loading="lazy">
+  </a>
+</aside>`
+    : `<aside class="blog-sidebar-right"></aside>`
+
+  // Intersection Observer script for active TOC highlighting + smooth scroll
+  const tocScript = tocItems.length > 0 ? `<script>
+(function(){
+  var links=document.querySelectorAll('.blog-toc-list a');
+  if(!links.length) return;
+  var headings=Array.from(document.querySelectorAll('.blog-post-content h2[id]'));
+  function setActive(id){
+    links.forEach(function(a){
+      a.classList.toggle('toc-active', a.getAttribute('href')==='#'+id);
+    });
+  }
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting) setActive(e.target.id);
+      });
+    },{rootMargin:'-10% 0px -75% 0px'});
+    headings.forEach(function(h){ io.observe(h); });
+  }
+  // Smooth scroll
+  links.forEach(function(a){
+    a.addEventListener('click',function(e){
+      e.preventDefault();
+      var target=document.querySelector(a.getAttribute('href'));
+      if(target) target.scrollIntoView({behavior:'smooth',block:'start'});
+    });
+  });
+})();
+</script>` : ''
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -229,17 +333,29 @@ export function buildBlogPostPage(
 </head>
 <body>
   ${siteNav}
-  <article class="blog-post-wrapper">
-    <a class="blog-back-link" href="${baseUrl}/blog">${backLabel}</a>
-    <header class="blog-post-header">
-      <div class="blog-post-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}${authorLine ? ` &nbsp;${authorLine}` : ''}</div>
-      <h1>${post.title}</h1>
-      ${post.excerpt ? `<p class="blog-post-excerpt">${post.excerpt}</p>` : ''}
-    </header>
-    ${featuredImg}
-    <div class="blog-post-content">${post.content_html}</div>
-  </article>
+  <div class="blog-post-layout">
+    <!-- TOC sinistra -->
+    <nav class="blog-toc" aria-label="Indice">
+      <a class="blog-toc-back" href="${baseUrl}/blog">${backLabel}</a>
+      ${tocInner}
+    </nav>
+
+    <!-- Contenuto centrale -->
+    <article class="blog-post-wrapper">
+      <header class="blog-post-header">
+        <div class="blog-post-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}${authorLine ? ` &nbsp;${authorLine}` : ''}</div>
+        <h1>${post.title}</h1>
+        ${post.excerpt ? `<p class="blog-post-excerpt">${post.excerpt}</p>` : ''}
+      </header>
+      ${featuredImg}
+      <div class="blog-post-content">${contentWithIds}</div>
+    </article>
+
+    <!-- Banner destra -->
+    ${bannerHtml}
+  </div>
   ${siteFooter}
+  ${tocScript}
 </body>
 </html>`
 }
