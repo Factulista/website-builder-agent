@@ -174,6 +174,34 @@ const HTML_TOOLS = [
       required: ['html', 'summary'],
     },
   },
+  {
+    name: 'insert_component',
+    description: 'Inserisce un componente parametrico pre-costruito in UNA O PIÙ pagine in un colpo solo. PREFERISCI QUESTO TOOL rispetto a generare HTML da zero quando il pattern richiesto è uno di quelli supportati — risparmi token e garantisci consistenza visiva. Per modifiche nav (es. mega-menu), passa SEMPRE tutti gli slug delle pagine che hanno la stessa nav. Vedi sezione "COMPONENTI PARAMETRICI" nel system prompt per la lista completa.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pageSlugs: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Lista degli slug delle pagine target. Per modifiche di NAV o FOOTER, passa SEMPRE tutti gli slug del sito così la modifica appare ovunque.',
+        },
+        componentId: { type: 'string', description: 'ID del componente da renderizzare (es. "nav-feature-dropdown", "feature-grid").' },
+        data: {
+          type: 'object',
+          description: 'Dati per il rendering del componente. La forma esatta dipende dal componentId — vedi paramSchema nel system prompt.',
+        },
+        placement: {
+          type: 'string',
+          enum: ['replace-nav-link', 'before-footer', 'end-of-body', 'replace-selector'],
+          description: 'Dove inserire il componente:\n- replace-nav-link: sostituisce un <a> della nav identificato per testo (richiede targetText)\n- before-footer: appena prima del <footer>\n- end-of-body: prima di </body>\n- replace-selector: sostituisce il primo elemento che matcha (richiede selector — es. "#features-grid")',
+        },
+        targetText: { type: 'string', description: 'Solo per placement=replace-nav-link: testo del link nav da sostituire (es. "Funcionalidades").' },
+        selector: { type: 'string', description: 'Solo per placement=replace-selector: selettore CSS dell\'elemento da sostituire.' },
+        summary: { type: 'string' },
+      },
+      required: ['pageSlugs', 'componentId', 'data', 'placement', 'summary'],
+    },
+  },
 ]
 
 export async function runHtmlAgentWithPlan(
@@ -524,6 +552,51 @@ Quando l'utente chiede di aggiungere uno di questi elementi, integra il componen
 - cookie-banner: banner GDPR cookie
 - pricing-toggle: prezzi mensile/annuale
 - data-table: tabella dati/confronto
+
+COMPONENTI PARAMETRICI (usa il tool insert_component invece di generare HTML da zero!):
+Questi componenti sono pre-costruiti e ricevono solo i dati. Risparmiano TANTI token e garantiscono consistenza visiva. Usali appena il pattern combacia.
+
+▸ nav-feature-dropdown — Mega-menu nella nav (trigger + griglia di funzionalità).
+  Caso d'uso tipico: "voglio una dropdown nella nav con le voci Facturación, Contabilidad, …"
+  placement: replace-nav-link, targetText="Funcionalidades" (testo del link nav esistente)
+  data: {
+    triggerLabel: string         // testo che resta visibile nella nav
+    columns?: 1|2|3|4            // colonne nel pannello (default 2)
+    items: Array<{ label, href, icon?, badge? }>
+  }
+  icon = emoji o singolo carattere (es. "📄"); badge = "TOP" | "NUEVO" | ecc.
+
+▸ feature-grid — Sezione full-width con griglia di cards funzionalità.
+  Caso d'uso tipico: pagina /funcionalidades che lista tutti i prodotti.
+  placement: end-of-body o before-footer (per aggiungerla), oppure replace-selector
+  data: {
+    title: string
+    subtitle?: string
+    columns?: 1|2|3|4            // default 3
+    items: Array<{ label, href?, icon?, description?, badge? }>
+  }
+
+ESEMPIO completo (mega-menu): se l'utente dice «nella nav voglio una dropdown "Funcionalidades" con Facturación, Contabilidad, Tesorería, Equipo, Inventario, CRM, Proyectos», passa pageSlugs con TUTTE le pagine che hanno la nav così la modifica appare ovunque in un solo colpo:
+insert_component({
+  pageSlugs: ["home","precios","contacto","blog-page-if-exists", /* tutte le pagine del sito */],
+  componentId: "nav-feature-dropdown",
+  placement: "replace-nav-link",
+  targetText: "Funcionalidades",
+  data: {
+    triggerLabel: "Funcionalidades",
+    columns: 2,
+    items: [
+      {label:"Facturación", href:"/facturacion", icon:"📄", badge:"TOP"},
+      {label:"Contabilidad", href:"/contabilidad", icon:"📊", badge:"TOP"},
+      {label:"Tesorería", href:"/tesoreria", icon:"💰"},
+      {label:"Equipo", href:"/equipo", icon:"👥"},
+      {label:"Inventario", href:"/inventario", icon:"📦"},
+      {label:"CRM", href:"/crm", icon:"❤️"},
+      {label:"Proyectos", href:"/proyectos", icon:"📁"}
+    ]
+  },
+  summary: "Aggiunto mega-menu Funcionalidades su tutte le pagine"
+})
 
 MEDIA LIBRARY DEL PROGETTO:
 ${mediaList}

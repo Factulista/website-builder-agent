@@ -2,12 +2,208 @@ export type Component = {
   id: string
   name: string
   description: string
-  category: 'form' | 'social-proof' | 'content' | 'utility'
+  category: 'form' | 'social-proof' | 'content' | 'utility' | 'navigation'
   tags: string[]
+  /** Static preview HTML shown in the Library UI tab (🧩) */
   html: string
+  /**
+   * Optional parametric renderer. When present, this component can be inserted
+   * by the agent via the `insert_component` tool with custom data — saving
+   * tokens vs. generating the full HTML from scratch.
+   */
+  render?: (data: Record<string, unknown>) => string
+  /** Inline docs for the agent — describes the shape of `data` for `render`. */
+  paramSchema?: string
+}
+
+// ── Smart component renderers ─────────────────────────────────────────────────
+// These are functions used by the `insert_component` agent tool. The agent
+// passes structured data; the renderer produces final HTML server-side
+// (no token cost on output).
+
+function renderNavFeatureDropdown(data: Record<string, unknown>): string {
+  const triggerLabel = String(data.triggerLabel ?? 'Funzionalità')
+  const items = (data.items as Array<Record<string, unknown>> | undefined) ?? []
+  const columnsRaw = Number(data.columns ?? 2)
+  const columns = columnsRaw >= 1 && columnsRaw <= 4 ? columnsRaw : 2
+  const id = `nfd-${Math.random().toString(36).slice(2, 8)}`
+
+  const itemsHtml = items.map(it => {
+    const label = String(it.label ?? '')
+    const href = String(it.href ?? '#')
+    const icon = it.icon ? String(it.icon) : ''
+    const badge = it.badge ? String(it.badge) : ''
+    const badgeClass = badge.toLowerCase() === 'nuevo' || badge.toLowerCase() === 'new' || badge.toLowerCase() === 'nuovo'
+      ? 'comp-nfd-badge-new'
+      : 'comp-nfd-badge-top'
+    return `<a href="${href}" class="comp-nfd-item">
+      ${icon ? `<span class="comp-nfd-icon" aria-hidden="true">${icon}</span>` : '<span class="comp-nfd-icon" aria-hidden="true"></span>'}
+      <span class="comp-nfd-label">${label}</span>
+      ${badge ? `<span class="comp-nfd-badge ${badgeClass}">${badge}</span>` : ''}
+    </a>`
+  }).join('\n      ')
+
+  return `<li class="comp-nfd" data-comp="nav-feature-dropdown">
+  <style>
+    .comp-nfd{position:relative;list-style:none;}
+    .comp-nfd-trigger{background:none;border:none;padding:0.5rem 0.75rem;font:inherit;font-weight:500;color:var(--color-text,#1a1a1a);cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:inherit;}
+    .comp-nfd-trigger::after{content:'';display:inline-block;border:4px solid transparent;border-top-color:currentColor;margin-top:5px;transition:transform .2s;}
+    .comp-nfd[data-open="true"] .comp-nfd-trigger::after{transform:rotate(180deg);margin-top:-2px;}
+    .comp-nfd-panel{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:1.25rem;box-shadow:0 12px 40px rgba(0,0,0,0.12);display:none;min-width:480px;z-index:100;}
+    .comp-nfd[data-open="true"] .comp-nfd-panel{display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:0.4rem 1.25rem;}
+    .comp-nfd-item{display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0.7rem;border-radius:10px;color:var(--color-text,#1a1a1a);text-decoration:none;transition:background .15s;font-size:0.9rem;}
+    .comp-nfd-item:hover{background:#f8fafc;}
+    .comp-nfd-icon{width:32px;height:32px;border-radius:8px;background:#eff6ff;display:inline-flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;color:var(--color-accent,#2563eb);}
+    .comp-nfd-label{flex:1;font-weight:500;}
+    .comp-nfd-badge{font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:0.04em;flex-shrink:0;}
+    .comp-nfd-badge-top{background:#fef3c7;color:#92400e;}
+    .comp-nfd-badge-new{background:#dbeafe;color:#1d4ed8;}
+    @media(max-width:640px){
+      .comp-nfd-panel{position:fixed;top:auto;bottom:0;left:0;right:0;transform:none;min-width:0;border-radius:14px 14px 0 0;max-height:70vh;overflow-y:auto;}
+      .comp-nfd[data-open="true"] .comp-nfd-panel{grid-template-columns:1fr;}
+    }
+  </style>
+  <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${id}">${triggerLabel}</button>
+  <div class="comp-nfd-panel" id="${id}" role="menu">
+      ${itemsHtml}
+  </div>
+  <script>
+    (function(){
+      var li=document.currentScript.parentElement;
+      var btn=li.querySelector('.comp-nfd-trigger');
+      function open(v){li.setAttribute('data-open',v?'true':'false');btn.setAttribute('aria-expanded',v?'true':'false');}
+      btn.addEventListener('click',function(e){e.stopPropagation();open(li.getAttribute('data-open')!=='true');});
+      li.addEventListener('mouseenter',function(){if(window.matchMedia('(min-width:641px)').matches)open(true);});
+      li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches)open(false);});
+      document.addEventListener('click',function(e){if(!li.contains(e.target))open(false);});
+      document.addEventListener('keydown',function(e){if(e.key==='Escape')open(false);});
+    })();
+  </script>
+</li>`
+}
+
+function renderFeatureGrid(data: Record<string, unknown>): string {
+  const title = String(data.title ?? 'Funzionalità')
+  const subtitle = data.subtitle ? String(data.subtitle) : ''
+  const items = (data.items as Array<Record<string, unknown>> | undefined) ?? []
+  const columnsRaw = Number(data.columns ?? 3)
+  const columns = columnsRaw >= 1 && columnsRaw <= 4 ? columnsRaw : 3
+
+  const itemsHtml = items.map(it => {
+    const label = String(it.label ?? '')
+    const href = it.href ? String(it.href) : ''
+    const icon = it.icon ? String(it.icon) : ''
+    const description = it.description ? String(it.description) : ''
+    const badge = it.badge ? String(it.badge) : ''
+    const tag = href ? 'a' : 'div'
+    const hrefAttr = href ? ` href="${href}"` : ''
+    return `<${tag} class="comp-fg-card"${hrefAttr}>
+      ${icon ? `<div class="comp-fg-icon" aria-hidden="true">${icon}</div>` : ''}
+      <div class="comp-fg-body">
+        <div class="comp-fg-head">
+          <h3 class="comp-fg-label">${label}</h3>
+          ${badge ? `<span class="comp-fg-badge">${badge}</span>` : ''}
+        </div>
+        ${description ? `<p class="comp-fg-desc">${description}</p>` : ''}
+      </div>
+    </${tag}>`
+  }).join('\n      ')
+
+  return `<section class="comp-fg-section">
+  <style>
+    .comp-fg-section{padding:4rem 1.5rem;font-family:var(--font-body,system-ui,sans-serif);background:var(--color-bg,#fff);}
+    .comp-fg-inner{max-width:1100px;margin:0 auto;}
+    .comp-fg-header{text-align:center;margin-bottom:2.5rem;}
+    .comp-fg-header h2{font-size:2rem;font-weight:800;color:var(--color-text,#1a1a1a);margin:0 0 .6rem;}
+    .comp-fg-header p{color:#6b7280;font-size:1.05rem;margin:0;}
+    .comp-fg-grid{display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:1rem;}
+    .comp-fg-card{display:flex;align-items:flex-start;gap:0.9rem;padding:1.1rem 1.2rem;border:1px solid #e5e7eb;border-radius:14px;background:#fff;text-decoration:none;color:inherit;transition:box-shadow .2s,transform .2s,border-color .2s;}
+    .comp-fg-card:hover{box-shadow:0 6px 24px rgba(0,0,0,.07);transform:translateY(-2px);border-color:#d1d5db;}
+    .comp-fg-icon{width:42px;height:42px;border-radius:10px;background:#eff6ff;display:flex;align-items:center;justify-content:center;font-size:1.25rem;flex-shrink:0;color:var(--color-accent,#2563eb);}
+    .comp-fg-body{flex:1;min-width:0;}
+    .comp-fg-head{display:flex;align-items:center;gap:8px;}
+    .comp-fg-label{font-size:1rem;font-weight:600;margin:0;color:var(--color-text,#1a1a1a);}
+    .comp-fg-badge{font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:99px;background:#fef3c7;color:#92400e;text-transform:uppercase;letter-spacing:0.04em;}
+    .comp-fg-desc{margin:0.3rem 0 0;font-size:0.85rem;color:#6b7280;line-height:1.45;}
+    @media(max-width:760px){.comp-fg-grid{grid-template-columns:1fr;}}
+  </style>
+  <div class="comp-fg-inner">
+    <div class="comp-fg-header">
+      <h2>${title}</h2>
+      ${subtitle ? `<p>${subtitle}</p>` : ''}
+    </div>
+    <div class="comp-fg-grid">
+      ${itemsHtml}
+    </div>
+  </div>
+</section>`
 }
 
 export const COMPONENT_REGISTRY: Component[] = [
+  {
+    id: 'nav-feature-dropdown',
+    name: 'Mega-menu Funzionalità (nav)',
+    description: 'Dropdown da inserire nella nav: trigger + griglia di funzionalità con icone, badge "TOP"/"NUEVO". Hover su desktop, click su mobile.',
+    category: 'navigation',
+    tags: ['mega menu', 'mega-menu', 'dropdown', 'navigazione', 'funzionalità', 'features', 'funcionalidades', 'productos', 'sottomenu', 'submenu'],
+    paramSchema: `data: {
+  triggerLabel: string  // testo del menu nav, es. "Funcionalidades"
+  columns?: 1|2|3|4     // colonne nel pannello (default 2)
+  items: Array<{
+    label: string       // nome della funzionalità
+    href: string        // URL della pagina, es. "/facturacion"
+    icon?: string       // emoji o singolo carattere, es. "📄"
+    badge?: string      // etichetta opzionale: "TOP", "NUEVO", "BETA", ecc.
+  }>
+}`,
+    render: renderNavFeatureDropdown,
+    // Preview HTML for the Library UI tab (uses default Italian data)
+    html: renderNavFeatureDropdown({
+      triggerLabel: 'Funzionalità',
+      columns: 2,
+      items: [
+        { label: 'Fatturazione', href: '/fatturazione', icon: '📄', badge: 'TOP' },
+        { label: 'Contabilità', href: '/contabilita', icon: '📊', badge: 'TOP' },
+        { label: 'Tesoreria', href: '/tesoreria', icon: '💰' },
+        { label: 'Team', href: '/team', icon: '👥' },
+        { label: 'Magazzino', href: '/magazzino', icon: '📦' },
+        { label: 'CRM', href: '/crm', icon: '❤️' },
+      ],
+    }),
+  },
+  {
+    id: 'feature-grid',
+    name: 'Griglia Funzionalità',
+    description: 'Sezione full-width con griglia di cards funzionalità (icona, nome, descrizione, badge). Perfetta per pagine landing e indici.',
+    category: 'content',
+    tags: ['feature grid', 'griglia funzionalità', 'features', 'cards', 'funcionalidades grid', 'productos grid'],
+    paramSchema: `data: {
+  title: string         // titolo della sezione
+  subtitle?: string     // sottotitolo opzionale
+  columns?: 1|2|3|4     // colonne (default 3)
+  items: Array<{
+    label: string       // nome
+    href?: string       // link opzionale (la card diventa <a>)
+    icon?: string       // emoji o icona
+    description?: string // testo descrittivo breve
+    badge?: string      // "TOP", "NUEVO", ecc.
+  }>
+}`,
+    render: renderFeatureGrid,
+    html: renderFeatureGrid({
+      title: 'Tutte le funzionalità',
+      subtitle: 'Tutto ciò che ti serve per gestire la tua attività.',
+      columns: 3,
+      items: [
+        { label: 'Fatturazione', icon: '📄', description: 'Crea fatture elettroniche conformi in pochi secondi.', badge: 'TOP' },
+        { label: 'Contabilità', icon: '📊', description: 'Bilanci e prima nota automatizzati.' },
+        { label: 'Tesoreria', icon: '💰', description: 'Riconciliazione bancaria e cashflow.' },
+        { label: 'Team', icon: '👥', description: 'Buste paga e gestione del personale.' },
+        { label: 'Magazzino', icon: '📦', description: 'Inventario multi-deposito in tempo reale.' },
+        { label: 'CRM', icon: '❤️', description: 'Lead, clienti e pipeline commerciale.' },
+      ],
+    }),
+  },
   {
     id: 'logo-carousel',
     name: 'Logo Carousel',
@@ -441,4 +637,19 @@ export function findComponentByKeywords(text: string): Component | null {
   return COMPONENT_REGISTRY.find(c =>
     c.tags.some(tag => lower.includes(tag)) || lower.includes(c.id)
   ) ?? null
+}
+
+/** All components that support parametric `render` (and thus the `insert_component` agent tool). */
+export const SMART_COMPONENTS: Component[] = COMPONENT_REGISTRY.filter(c => typeof c.render === 'function')
+
+/**
+ * Render a smart component by id with the given data. Returns the final HTML
+ * (no token cost — pure server-side rendering).
+ * Throws if the component doesn't exist or isn't smart.
+ */
+export function renderComponentById(componentId: string, data: Record<string, unknown>): string {
+  const comp = COMPONENT_REGISTRY.find(c => c.id === componentId)
+  if (!comp) throw new Error(`Component "${componentId}" not found`)
+  if (!comp.render) throw new Error(`Component "${componentId}" doesn't support parametric rendering`)
+  return comp.render(data)
 }

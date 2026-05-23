@@ -14,6 +14,7 @@ import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { LibraryView } from '../../../components/LibraryView'
 import type { Component } from '../../../lib/components/index'
+import { renderComponentById } from '../../../lib/components/index'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
@@ -2011,6 +2012,84 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       summary = `🔍 ${result.input.summary}${skipped ? ` (${skipped} edit non applicate)` : ''}`
     } else if (result.tool === 'generate_sitemap') {
       summary = `🗺️ ${result.input.summary}`
+    } else if (result.tool === 'insert_component') {
+      // Render the component locally (zero tokens) and inject into one or more pages
+      const inp = result.input as {
+        pageSlugs?: string[]
+        pageSlug?: string  // backward compat with single-page calls
+        componentId: string
+        data: Record<string, unknown>
+        placement: 'replace-nav-link' | 'before-footer' | 'end-of-body' | 'replace-selector'
+        targetText?: string
+        selector?: string
+      }
+      const targetSlugs: string[] = Array.isArray(inp.pageSlugs) && inp.pageSlugs.length > 0
+        ? inp.pageSlugs
+        : inp.pageSlug ? [inp.pageSlug] : []
+      const { componentId, data, placement, targetText, selector } = inp
+      let componentHtml = ''
+      try {
+        componentHtml = renderComponentById(componentId, data)
+      } catch (err) {
+        summary = `⚠️ Componente "${componentId}" non disponibile: ${(err as Error).message}`
+        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
+        const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
+        await saveState(finalMessages, pages, versions)
+        setLoading(false)
+        return
+      }
+      let injected = 0
+      let skipped = 0
+      const skippedSlugs: string[] = []
+      newPages = pages.map(p => {
+        if (!targetSlugs.includes(p.slug)) return p
+        let html = p.html
+        let didInject = false
+        if (placement === 'before-footer') {
+          if (/<footer\b/i.test(html)) {
+            html = html.replace(/<footer\b/i, componentHtml + '\n<footer')
+            didInject = true
+          }
+        } else if (placement === 'end-of-body') {
+          if (/<\/body>/i.test(html)) {
+            html = html.replace(/<\/body>/i, componentHtml + '\n</body>')
+            didInject = true
+          }
+        } else if (placement === 'replace-selector' && selector) {
+          // Lightweight selector: only supports #id or .class targeting a single element
+          const idMatch = selector.match(/^#([\w-]+)$/)
+          const classMatch = selector.match(/^\.([\w-]+)$/)
+          if (idMatch) {
+            const re = new RegExp(`<([a-z][\\w-]*)[^>]*id=["']${idMatch[1]}["'][^>]*>[\\s\\S]*?<\\/\\1>`, 'i')
+            if (re.test(html)) { html = html.replace(re, componentHtml); didInject = true }
+          } else if (classMatch) {
+            const re = new RegExp(`<([a-z][\\w-]*)[^>]*class=["'][^"']*\\b${classMatch[1]}\\b[^"']*["'][^>]*>[\\s\\S]*?<\\/\\1>`, 'i')
+            if (re.test(html)) { html = html.replace(re, componentHtml); didInject = true }
+          }
+        } else if (placement === 'replace-nav-link' && targetText) {
+          // Find an <a>...targetText...</a> inside <nav> and replace its surrounding <li> (or the <a> if no li)
+          const navMatch = html.match(/<nav[\s\S]*?<\/nav>/i)
+          if (navMatch) {
+            const navHtml = navMatch[0]
+            const escaped = targetText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const liRe = new RegExp(`<li[^>]*>\\s*<a[^>]*>\\s*${escaped}\\s*<\\/a>\\s*<\\/li>`, 'i')
+            const aRe = new RegExp(`<a[^>]*>\\s*${escaped}\\s*<\\/a>`, 'i')
+            let newNav: string | null = null
+            if (liRe.test(navHtml)) newNav = navHtml.replace(liRe, componentHtml)
+            else if (aRe.test(navHtml)) newNav = navHtml.replace(aRe, componentHtml)
+            if (newNav) {
+              html = html.replace(navHtml, newNav)
+              didInject = true
+            }
+          }
+        }
+        if (didInject) injected++
+        else { skipped++; skippedSlugs.push(p.slug) }
+        return { ...p, html }
+      })
+      summary = injected > 0
+        ? `🧩 ${result.input.summary} (${injected}/${targetSlugs.length} pagine)`
+        : `⚠️ Componente non iniettato — target non trovato in: ${skippedSlugs.join(', ')}`
     } else if (result.tool === 'update_blog_header') {
       const newHeaderHtml = result.input.html as string
       summary = `📝 ${result.input.summary}`
