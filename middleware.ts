@@ -48,7 +48,8 @@ export function middleware(req: NextRequest) {
     if (segments.length === 0 || APP_ROUTES.some(r => path.startsWith(r))) {
       return NextResponse.next()
     }
-    const [slug, page] = segments
+    const [slug, ...rest] = segments
+    const page = rest[0]
     // Serve SEO files directly via API (not as preview pages)
     if (page === 'sitemap.xml' || page === 'robots.txt') {
       url.pathname = '/api/seo-files'
@@ -56,7 +57,8 @@ export function middleware(req: NextRequest) {
       url.searchParams.set('file', page)
       return NextResponse.rewrite(url)
     }
-    url.pathname = page ? `/preview/${slug}/${page}` : `/preview/${slug}`
+    // Preserve ALL path segments after the project slug (handles blog/{post}, blog/{cat}/{post}, etc.)
+    url.pathname = rest.length > 0 ? `/preview/${slug}/${rest.join('/')}` : `/preview/${slug}`
     return NextResponse.rewrite(url)
   }
 
