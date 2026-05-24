@@ -101,6 +101,8 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
         el.removeAttribute('contenteditable');el.removeAttribute('data-fact-edit');
         el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
       });
+      // Remove editor-only elements (base tag, font preloads, UI overlays)
+      clone.querySelectorAll('[data-fact-editor]').forEach(function(el){el.remove();});
       ['#fact-edit-global','#fact-edit-script','#fact-edit-marker','#fact-ctx-menu','#fact-link-overlay'].forEach(function(sel){
         var el=clone.querySelector(sel);if(el)el.remove();
       });
@@ -783,6 +785,9 @@ function stripEditorArtifacts(html: string): string {
   // Style and marker by id
   doc.querySelectorAll('style#fact-edit-global, #fact-edit-marker, meta[data-fact-edit-loaded]').forEach(el => el.remove())
 
+  // Editor-injected elements (base tag, font preloads) — must never be saved to page HTML
+  doc.querySelectorAll('[data-fact-editor]').forEach(el => el.remove())
+
   // Residual attributes from interrupted edit sessions
   doc.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'))
   doc.querySelectorAll('[data-fact-edit]').forEach(el => el.removeAttribute('data-fact-edit'))
@@ -810,11 +815,14 @@ window.addEventListener('message',function(e){
 const EDITOR_GOOGLE_FONTS_URL =
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Roboto:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&display=swap'
 
-const EDITOR_FONTS_INJECT = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
+// These elements are editor-only — they must NEVER be saved back to the page HTML.
+// We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
+const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
 function injectBase(html: string, projectSlug: string): string {
   const clean = stripEditorArtifacts(html)
-  const baseTag = `<base href="/preview/${projectSlug}/">`
+  // data-fact-editor marks the <base> as editor-only so triggerSave() removes it before saving
+  const baseTag = `<base data-fact-editor href="/preview/${projectSlug}/">`
   const inject = `${baseTag}\n${EDITOR_FONTS_INJECT}`
   if (/<\/body>/i.test(clean)) {
     return clean
