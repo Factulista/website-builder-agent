@@ -1499,6 +1499,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, id])
 
+  // Load media when the image picker modal opens
+  useEffect(() => {
+    if (mediaPickerTarget) loadMedia()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaPickerTarget])
+
   const loadBlogPosts = useCallback(async () => {
     setBlogLoading(true)
     try {
