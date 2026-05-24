@@ -1,5 +1,6 @@
 import { SAAS_TEMPLATE } from './saas'
 import { SAAS2_TEMPLATE } from './saas2'
+import { SAAS_FEATURE_TEMPLATE } from './saas-feature'
 
 export type Template = {
   id: string
@@ -13,6 +14,7 @@ export type Template = {
 const TEMPLATES: Record<string, string> = {
   saas: SAAS_TEMPLATE,
   saas2: SAAS2_TEMPLATE,
+  'saas-feature': SAAS_FEATURE_TEMPLATE,
 }
 
 export const TEMPLATE_REGISTRY: Template[] = [
@@ -32,11 +34,25 @@ export const TEMPLATE_REGISTRY: Template[] = [
     html: SAAS2_TEMPLATE,
     keywords: ['invoicing'],
   },
+  {
+    id: 'saas-feature',
+    name: 'Feature Page SaaS — Dark',
+    sector: 'Tech',
+    description: 'Pagina dedicata a una singola funzionalità del prodotto (es. Fatturazione, CRM, Progetti). Hero split, 3 deep-dive alternati, grid AI features, sub-features cards, tabs showcase, testimonial+stats, moduli correlati, FAQ accordion, CTA finale.',
+    html: SAAS_FEATURE_TEMPLATE,
+    keywords: ['feature', 'funzionalita', 'feature page', 'product page', 'pagina funzionalita', 'modulo', 'soluzione'],
+  },
 ]
 
 export const TEMPLATE_MAP: Record<string, string[]> = {
   // saas → startup tech generiche, piattaforme, app, CRM/ERP senza focus fatturazione
   saas: ['saas', 'app', 'applicazione', 'piattaforma', 'platform', 'startup', 'tech', 'tecnologia', 'crm', 'erp'],
+  // saas-feature → pagine dedicate a una singola feature/modulo del prodotto
+  'saas-feature': [
+    'feature page', 'pagina funzionalita', 'pagina feature', 'product page',
+    'funzionalita', 'funzionalità', 'modulo', 'soluzione', 'feature dedicata',
+    'pagina prodotto', 'pagina modulo', 'software feature', 'pagina servizio software',
+  ],
   // saas2 → software di fatturazione/contabilità per business, autonomos, pyme (IT/ES/PT)
   saas2: [
     'billing', 'contabilità', 'accounting', 'fintech', 'enterprise saas', 'b2b saas', 'gestionale cloud', 'erp cloud',
