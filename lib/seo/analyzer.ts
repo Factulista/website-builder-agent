@@ -225,13 +225,13 @@ function checkHeadingHierarchy(html: string): CheckResult {
 }
 
 function checkSemanticHtml(html: string): CheckResult {
-  const tags = ['<header', '<nav', '<main', '<footer', '<article']
-  const tagLabels = ['header', 'nav', 'main', 'footer', 'article']
-  const present = tags.filter((t, i) => new RegExp(t, 'i').test(html)).map((_, i) => tagLabels[i])
-  // main and footer are the most important — they get double weight
-  const weights = { header: 1, nav: 1, main: 2, footer: 2, article: 1 }
+  // <article> is excluded: it's meaningful only for blog/news pages, not landing pages.
+  // Its absence on a landing page is not an SEO issue.
+  const tagLabels = ['header', 'nav', 'main', 'footer'] as const
+  const weights: Record<string, number> = { header: 1, nav: 1, main: 3, footer: 2 }
+  const present = tagLabels.filter(t => new RegExp(`<${t}\\b`, 'i').test(html))
   const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0)
-  const earnedWeight = present.reduce((acc, t) => acc + (weights[t as keyof typeof weights] ?? 1), 0)
+  const earnedWeight = present.reduce((acc, t) => acc + (weights[t] ?? 1), 0)
   const score = Math.round((earnedWeight / totalWeight) * 100)
   const missing = tagLabels.filter(t => !present.includes(t))
   return {
