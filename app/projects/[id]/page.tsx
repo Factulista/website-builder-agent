@@ -922,6 +922,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogListOpen, setBlogListOpen] = useState(false)
   const [blogInsertOpen, setBlogInsertOpen] = useState(false)
   const [blogAlignOpen, setBlogAlignOpen] = useState(false)
+  // ── Inline editor toolbar state ──────────────────────────────────────────
+  const [inlineActiveBlock, setInlineActiveBlock] = useState<string>('')
+  const [inlineListOpen, setInlineListOpen] = useState(false)
+  const [inlineInsertOpen, setInlineInsertOpen] = useState(false)
+  const [inlineAlignOpen, setInlineAlignOpen] = useState(false)
+  const inlineImgInputRef = useRef<HTMLInputElement | null>(null)
   const [blogPublishing, setBlogPublishing] = useState(false)
   const [blogGenerating, setBlogGenerating] = useState(false)
   const [blogGenTopic, setBlogGenTopic] = useState('')
@@ -1100,6 +1106,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (viewMode !== 'edit') return
     const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'fact-block') {
+        setInlineActiveBlock(e.data.tag ?? '')
+        return
+      }
       if (e.data?.type !== 'html-change' || !activePage) return
       const newHtml = e.data.html as string
       // Keep editBaseHtmlRef in sync so AI-change detection doesn't false-positive
@@ -3311,14 +3321,288 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               onBlogSelect={() => setViewMode('blog')}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
-                <span style={{ fontSize: '0.75rem', color: C.textFaint }}>
-                  ✎ Clicca su qualsiasi testo per modificarlo direttamente
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
+                <span style={{ fontSize: '0.72rem', color: C.textFaint }}>
+                  ✎ Clicca sul testo per modificarlo
                 </span>
                 <span style={{ fontSize: '0.72rem', color: editSaving === 'saving' ? '#f59e0b' : editSaving === 'saved' ? '#10b981' : C.textFaint }}>
                   {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
                 </span>
               </div>
+
+              {/* ── Inline editor formatting toolbar ── */}
+              {(() => {
+                const win = () => editIframeRef.current?.contentWindow
+                const fmt = (cmd: string, val?: string) => win()?.postMessage({ type: 'fact-format', cmd, val }, '*')
+                const handleInlineImageUpload = async (file: File) => {
+                  if (!file.type.startsWith('image/')) return
+                  const { data: { session } } = await supabase.auth.getSession()
+                  if (!session) return
+                  const ext = file.name.split('.').pop() || 'png'
+                  const path = `${session.user.id}/${id}/inline-${Date.now()}.${ext}`
+                  const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
+                  if (error) return
+                  const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
+                  const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${publicUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
+                  win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
+                }
+                const dropMenu: React.CSSProperties = {
+                  position: 'absolute', top: '100%', left: 0, zIndex: 9999,
+                  background: '#fff', border: `1px solid ${C.border}`,
+                  borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                  padding: '4px', minWidth: '180px', marginTop: '3px',
+                }
+                return (
+                  <div
+                    style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}
+                    onClick={() => { setInlineListOpen(false); setInlineInsertOpen(false); setInlineAlignOpen(false) }}
+                  >
+                    {/* Font picker */}
+                    <select
+                      title="Scegli font"
+                      defaultValue=""
+                      onMouseDown={e => e.stopPropagation()}
+                      onChange={e => {
+                        const font = e.target.value
+                        if (!font) return
+                        win()?.postMessage({ type: 'fact-format', cmd: 'fontName', val: font }, '*')
+                        e.target.value = ''
+                      }}
+                      style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', maxWidth: '110px' }}
+                    >
+                      <option value="" disabled>Font</option>
+                      <optgroup label="Sistema">
+                        <option value="Georgia">Georgia</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Arial">Arial</option>
+                        <option value="Helvetica">Helvetica</option>
+                        <option value="Verdana">Verdana</option>
+                        <option value="Trebuchet MS">Trebuchet MS</option>
+                        <option value="Courier New">Courier New</option>
+                      </optgroup>
+                      <optgroup label="Google Fonts">
+                        <option value="Inter">Inter</option>
+                        <option value="Lato">Lato</option>
+                        <option value="Roboto">Roboto</option>
+                        <option value="Open Sans">Open Sans</option>
+                        <option value="Montserrat">Montserrat</option>
+                        <option value="Merriweather">Merriweather</option>
+                        <option value="Playfair Display">Playfair Display</option>
+                        <option value="Source Serif 4">Source Serif 4</option>
+                      </optgroup>
+                    </select>
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                    {/* Color picker */}
+                    <label title="Colore testo" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, height: '26px', gap: '1px', position: 'relative', userSelect: 'none' }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: C.text, lineHeight: 1, pointerEvents: 'none' }}>A</span>
+                      <div style={{ width: '14px', height: '3px', borderRadius: '1px', background: 'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7)', pointerEvents: 'none' }} />
+                      <input type="color" defaultValue="#000000"
+                        onMouseDown={() => win()?.postMessage({ type: 'fact-save-sel' }, '*')}
+                        onChange={e => win()?.postMessage({ type: 'fact-format', cmd: 'foreColor', val: e.target.value }, '*')}
+                        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }}
+                      />
+                    </label>
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                    {/* Block type */}
+                    <select
+                      title="Tipo di blocco"
+                      value={inlineActiveBlock || 'P'}
+                      onMouseDown={e => e.stopPropagation()}
+                      onChange={e => {
+                        fmt('formatBlock', e.target.value.toLowerCase())
+                        setInlineListOpen(false); setInlineInsertOpen(false); setInlineAlignOpen(false)
+                      }}
+                      style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'monospace', fontWeight: 700, minWidth: '80px' }}
+                    >
+                      <option value="H1">H1 — Titolo 1</option>
+                      <option value="H2">H2 — Titolo 2</option>
+                      <option value="H3">H3 — Titolo 3</option>
+                      <option value="H4">H4 — Titolo 4</option>
+                      <option value="P">§ — Paragrafo</option>
+                      <option value="BLOCKQUOTE">❝ — Citazione</option>
+                      <option value="PRE">{'<>'} — Codice</option>
+                    </select>
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                    {/* B / I / U / S */}
+                    {([
+                      { label: 'B', cmd: 'bold', title: 'Grassetto (Ctrl+B)', s: { fontWeight: 800 } },
+                      { label: 'I', cmd: 'italic', title: 'Corsivo (Ctrl+I)', s: { fontStyle: 'italic' as const } },
+                      { label: 'U', cmd: 'underline', title: 'Sottolineato (Ctrl+U)', s: { textDecoration: 'underline' } },
+                      { label: 'S', cmd: 'strikeThrough', title: 'Barrato', s: { textDecoration: 'line-through' } },
+                    ]).map(b => (
+                      <button key={b.cmd} title={b.title}
+                        onMouseDown={e => { e.preventDefault(); fmt(b.cmd) }}
+                        style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, fontSize: '0.82rem', lineHeight: 1.4, ...b.s }}
+                      >{b.label}</button>
+                    ))}
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                    {/* Alignment dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        title="Allineamento testo"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={e => { e.stopPropagation(); setInlineAlignOpen(v => !v); setInlineListOpen(false); setInlineInsertOpen(false) }}
+                        style={{ padding: '2px 7px', border: `1px solid ${inlineAlignOpen ? C.blue : C.border}`, borderRadius: 4, background: inlineAlignOpen ? '#eff6ff' : C.white, cursor: 'pointer', color: inlineAlignOpen ? C.blue : C.text, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '3px', height: '26px' }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+                        <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▾</span>
+                      </button>
+                      {inlineAlignOpen && (
+                        <div style={dropMenu} onClick={e => e.stopPropagation()}>
+                          {([
+                            { label: '⬅  Sinistra', cmd: 'justifyLeft' },
+                            { label: '↔  Centro', cmd: 'justifyCenter' },
+                            { label: '➡  Destra', cmd: 'justifyRight' },
+                            { label: '⬛  Giustificato', cmd: 'justifyFull' },
+                          ]).map(a => (
+                            <button key={a.cmd}
+                              onMouseDown={e => { e.preventDefault(); fmt(a.cmd); setInlineAlignOpen(false) }}
+                              style={{ display: 'block', width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.8rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                            >{a.label}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                    {/* Link */}
+                    <button title="Inserisci / modifica link"
+                      onMouseDown={e => { e.preventDefault(); win()?.postMessage({ type: 'fact-link' }, '*') }}
+                      style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    </button>
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                    {/* Liste dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        title="Liste"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={e => { e.stopPropagation(); setInlineListOpen(v => !v); setInlineInsertOpen(false); setInlineAlignOpen(false) }}
+                        style={{ padding: '2px 7px', border: `1px solid ${inlineListOpen ? C.blue : C.border}`, borderRadius: 4, background: inlineListOpen ? '#eff6ff' : C.white, cursor: 'pointer', color: inlineListOpen ? C.blue : C.text, display: 'flex', alignItems: 'center', gap: '3px', height: '26px' }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+                        <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▾</span>
+                      </button>
+                      {inlineListOpen && (
+                        <div style={dropMenu} onClick={e => e.stopPropagation()}>
+                          <button onMouseDown={e => { e.preventDefault(); fmt('insertUnorderedList'); setInlineListOpen(false) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+                            Elenco puntato
+                          </button>
+                          <button onMouseDown={e => { e.preventDefault(); fmt('insertOrderedList'); setInlineListOpen(false) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M3 10h2" strokeWidth="1.5"/><path d="M3 16a1.5 1.5 0 0 1 3 0c0 1.5-3 3-3 3h3" strokeWidth="1.5"/></svg>
+                            Elenco numerato
+                          </button>
+                          <div style={{ height: 1, background: C.border, margin: '3px 0' }} />
+                          <button onMouseDown={e => { e.preventDefault(); fmt('indent'); setInlineListOpen(false) }}
+                            style={{ display: 'block', width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.8rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >→  Aumenta rientro</button>
+                          <button onMouseDown={e => { e.preventDefault(); fmt('outdent'); setInlineListOpen(false) }}
+                            style={{ display: 'block', width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.8rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >←  Diminuisci rientro</button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                    {/* Inserisci dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        title="Inserisci elemento"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={e => { e.stopPropagation(); setInlineInsertOpen(v => !v); setInlineListOpen(false); setInlineAlignOpen(false) }}
+                        style={{ padding: '2px 8px', border: `1px solid ${inlineInsertOpen ? C.blue : C.border}`, borderRadius: 4, background: inlineInsertOpen ? '#eff6ff' : C.white, cursor: 'pointer', color: inlineInsertOpen ? C.blue : C.text, fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', height: '26px', whiteSpace: 'nowrap' }}
+                      >
+                        + Inserisci <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▾</span>
+                      </button>
+                      {inlineInsertOpen && (
+                        <div style={{ ...dropMenu, minWidth: '200px' }} onClick={e => e.stopPropagation()}>
+                          <button onMouseDown={e => {
+                            e.preventDefault()
+                            const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:0.95rem"><thead><tr><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 1</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 2</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 3</th></tr></thead><tbody><tr><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 1</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 2</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 3</td></tr><tr><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 4</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 5</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 6</td></tr></tbody></table>`
+                            win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: tableHtml }, '*')
+                            setInlineInsertOpen(false)
+                          }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
+                            Tabella 3×2
+                          </button>
+                          <button onMouseDown={e => { e.preventDefault(); setInlineInsertOpen(false); setTimeout(() => inlineImgInputRef.current?.click(), 50) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            Immagine
+                          </button>
+                          <div style={{ height: 1, background: C.border, margin: '3px 0' }} />
+                          <button onMouseDown={e => {
+                            e.preventDefault()
+                            win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: '<hr style="border:none;border-top:2px solid #e5e7eb;margin:2rem 0;">' }, '*')
+                            setInlineInsertOpen(false)
+                          }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >
+                            <span style={{ fontSize: '1rem' }}>—</span>
+                            Separatore (HR)
+                          </button>
+                          <button onMouseDown={e => {
+                            e.preventDefault()
+                            win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: '<pre style="background:#1e293b;color:#e2e8f0;padding:1rem 1.25rem;border-radius:8px;overflow-x:auto;font-family:monospace;font-size:0.88rem;margin:1.5rem 0;"><code>// il tuo codice qui</code></pre>' }, '*')
+                            setInlineInsertOpen(false)
+                          }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                          >
+                            <span style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{'{}'}</span>
+                            Blocco codice
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Hidden image input */}
+                    <input
+                      ref={inlineImgInputRef}
+                      type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={e => { const file = e.target.files?.[0]; if (file) handleInlineImageUpload(file); e.target.value = '' }}
+                    />
+                  </div>
+                )
+              })()}
               {editOutdated && (
                 <div
                   onClick={() => {
