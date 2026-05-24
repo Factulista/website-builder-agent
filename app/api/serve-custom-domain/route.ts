@@ -355,7 +355,8 @@ ${items}
 
       const sidebarBanner = (siteConfig.blog_sidebar_banner as BlogSidebarBanner | undefined) ?? null
       const faviconUrl = (siteConfig.favicon_url as string | undefined)
-      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl)
+      const newsletterHtml = (siteConfig.blog_newsletter_html as string | undefined) ?? ''
+      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, newsletterHtml)
       return new Response(html, {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' },

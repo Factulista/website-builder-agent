@@ -374,7 +374,8 @@ export function buildBlogPostPage(
   siteStyle: string,
   lang = 'it',
   sidebarBanner?: BlogSidebarBanner | null,
-  faviconUrl?: string
+  faviconUrl?: string,
+  newsletterHtml?: string
 ): string {
   const backLabel = '← Blog'
   const dateStr = escapeHtml(formatDate(post.published_at, lang))
@@ -473,6 +474,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
       ${featuredImg}
       <div class="blog-post-content">${contentWithIds}</div>
     </article>
+    ${newsletterHtml ? `<div class="blog-newsletter-wrap" style="max-width:700px;margin:3rem auto 0;padding:0 1rem">${newsletterHtml}</div>` : ''}
 
     <!-- Banner destra -->
     ${bannerHtml}

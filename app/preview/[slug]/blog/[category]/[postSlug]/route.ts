@@ -51,7 +51,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   if (!post) return new Response('Post not found', { status: 404 })
 
   const sidebarBanner = (config.blog_sidebar_banner as { url: string; link: string } | undefined) ?? null
+  const newsletterHtml = (config.blog_newsletter_html as string | undefined) ?? ''
   const baseUrl = `/preview/${slug}`
-  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner)
+  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, undefined, newsletterHtml)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
