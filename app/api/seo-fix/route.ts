@@ -80,12 +80,20 @@ function applyHtmlFix(
     case 'h1-unique': {
       const data = checkResult?.data as { count?: number } | undefined
       if (!data || data.count === 0) {
-        // Missing H1 — insert one before first H2 or after opening <main>/<body>
+        // Missing H1 — insert one before first H2
         const h2Match = html.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)
         if (h2Match) {
           return html.replace(h2Match[0], `<h1>${h2Match[1]}</h1>\n${h2Match[0]}`)
         }
-        return html
+        // Fallback: derive H1 from page <title> and insert after <body>/<main>/<header>
+        const rawTitle = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '')
+        const h1Text = rawTitle.split(/[|\-–—·]/)[0].trim() || 'Titolo principale'
+        const h1Tag = `<h1>${h1Text}</h1>`
+        if (/<main\b[^>]*>/i.test(html))
+          return html.replace(/<main\b[^>]*>/i, (m) => `${m}\n${h1Tag}`)
+        if (/<header\b[^>]*>/i.test(html))
+          return html.replace(/<header\b[^>]*>/i, (m) => `${m}\n${h1Tag}`)
+        return html.replace(/<body\b[^>]*>/i, (m) => `${m}\n${h1Tag}`)
       }
       // Multiple H1s — convert all but the first to H2
       let firstH1 = true
@@ -97,15 +105,25 @@ function applyHtmlFix(
     }
 
     case 'heading-hierarchy': {
-      // Best-effort: walk headings in order and fix level skips
-      // e.g. H1 → H3 becomes H1 → H2; H2 → H4 becomes H2 → H3
+      // Walk headings in order, fix level skips, and keep closing tags in sync.
+      // e.g. H1→H3 becomes H1→H2; H2→H4 becomes H2→H3.
+      // headings are never nested in valid HTML, so we only need to track the
+      // last open tag's original level → remapped level.
       let prevLevel = 0
+      let lastOpenOriginal = 0
+      let lastOpenRemapped = 0
       return html.replace(/<(\/?)h([1-6])(\b[^>]*)>/gi, (_m, slash, lvl, rest) => {
         const n = parseInt(lvl, 10)
-        if (slash) { prevLevel = Math.max(0, prevLevel - 1); return `</h${n}${rest}>` }
+        if (slash) {
+          // Use the remapped level for the closing tag so it matches its opener
+          const remapped = n === lastOpenOriginal ? lastOpenRemapped : n
+          return `</h${remapped}${rest}>`
+        }
         const expected = prevLevel === 0 ? 1 : Math.min(n, prevLevel + 1)
         prevLevel = expected
-        return n === expected ? `<h${n}${rest}>` : `<h${expected}${rest}>`
+        lastOpenOriginal = n
+        lastOpenRemapped = expected
+        return `<h${expected}${rest}>`
       })
     }
 
@@ -146,6 +164,14 @@ function applyHtmlFix(
     }
 
     case 'h1-keyword': {
+      // If there's no H1 at all, insert one before the first H2 (or after <body>)
+      if (!/<h1\b/i.test(html)) {
+        const h2Match = html.match(/<h2\b[^>]*>/)
+        if (h2Match) {
+          return html.replace(h2Match[0], `<h1>${generated}</h1>\n${h2Match[0]}`)
+        }
+        return html.replace(/<body\b[^>]*>/i, (m) => `${m}\n<h1>${generated}</h1>`)
+      }
       return html.replace(/(<h1\b[^>]*>)[\s\S]*?(<\/h1>)/i, `$1${generated}$2`)
     }
 
