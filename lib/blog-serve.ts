@@ -18,6 +18,8 @@ export function safeUrl(s: unknown): string {
   if (!str) return '#'
   // Allow relative, absolute http(s), mailto, tel, anchor
   if (/^(https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i.test(str)) return escapeHtml(str)
+  // Auto-prepend https:// for bare domain-style URLs (e.g. factulista.com, www.example.com)
+  if (/^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}/.test(str)) return escapeHtml('https://' + str)
   // Reject everything else (javascript:, data:, vbscript:, etc.)
   return '#'
 }
@@ -151,7 +153,7 @@ export const BLOG_POST_CONTENT_CSS = `
     background:transparent !important;
     border:none !important;
   }
-  .blog-sidebar-banner{display:block !important;border-radius:12px;overflow:hidden;border:1px solid #e8e4de;transition:box-shadow .2s,transform .2s;text-decoration:none !important}
+  .blog-sidebar-banner{display:block !important;border-radius:12px;overflow:hidden;border:1px solid #e8e4de;transition:box-shadow .2s,transform .2s;text-decoration:none !important;pointer-events:auto !important;cursor:pointer !important}
   .blog-sidebar-banner:hover{box-shadow:0 6px 20px rgba(0,0,0,.1);transform:translateY(-2px)}
   .blog-sidebar-banner img{width:100% !important;height:auto !important;display:block !important;margin:0 !important;border-radius:0 !important}
   /* ── Responsive ─────────────────────────────────────────────────── */
