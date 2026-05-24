@@ -1,6 +1,7 @@
 import { SAAS_TEMPLATE } from './saas'
 import { SAAS2_TEMPLATE } from './saas2'
 import { SAAS_FEATURE_TEMPLATE } from './saas-feature'
+import { SAAS2_FEATURE_TEMPLATE } from './saas2-feature'
 
 export type Template = {
   id: string
@@ -15,6 +16,7 @@ const TEMPLATES: Record<string, string> = {
   saas: SAAS_TEMPLATE,
   saas2: SAAS2_TEMPLATE,
   'saas-feature': SAAS_FEATURE_TEMPLATE,
+  'saas2-feature': SAAS2_FEATURE_TEMPLATE,
 }
 
 export const TEMPLATE_REGISTRY: Template[] = [
@@ -42,6 +44,14 @@ export const TEMPLATE_REGISTRY: Template[] = [
     html: SAAS_FEATURE_TEMPLATE,
     keywords: ['feature', 'funzionalita', 'feature page', 'product page', 'pagina funzionalita', 'modulo', 'soluzione'],
   },
+  {
+    id: 'saas2-feature',
+    name: 'Feature Page SaaS — Light (Space Grotesk)',
+    sector: 'Tech',
+    description: 'Pagina dedicata a una singola funzionalità, design light con Space Grotesk, bordi neri, card con ombra offset. Hero centrato con griglia, trust logos, 3 deep-dive alternati, 6 advanced features, 2x2 sub-features, tabs showcase, testimonial+stats (sfondo nero), moduli correlati, FAQ accordion, CTA banner nero, footer completo.',
+    html: SAAS2_FEATURE_TEMPLATE,
+    keywords: ['feature', 'funzionalita', 'feature page', 'product page', 'pagina funzionalita', 'modulo', 'soluzione', 'light', 'saas2'],
+  },
 ]
 
 export const TEMPLATE_MAP: Record<string, string[]> = {
@@ -52,6 +62,11 @@ export const TEMPLATE_MAP: Record<string, string[]> = {
     'feature page', 'pagina funzionalita', 'pagina feature', 'product page',
     'funzionalita', 'funzionalità', 'modulo', 'soluzione', 'feature dedicata',
     'pagina prodotto', 'pagina modulo', 'software feature', 'pagina servizio software',
+  ],
+  // saas2-feature → pagine feature light con design Space Grotesk / bordi neri
+  'saas2-feature': [
+    'feature page light', 'pagina funzionalita light', 'feature light',
+    'saas2 feature', 'saas2-feature',
   ],
   // saas2 → software di fatturazione/contabilità per business, autonomos, pyme (IT/ES/PT)
   saas2: [
