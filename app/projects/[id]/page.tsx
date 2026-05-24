@@ -949,6 +949,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [mediaSort, setMediaSort] = useState<'recent' | 'oldest' | 'name'>('recent')
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null)
   const [mediaMeta, setMediaMeta] = useState<Record<string, MediaMeta>>({})
+  const [faviconUrl, setFaviconUrl] = useState<string>('')
+  const [ogPickerSlug, setOgPickerSlug] = useState<string | null>(null)
   const [mediaUrlCopied, setMediaUrlCopied] = useState(false)
   const [codeContent, setCodeContent] = useState('')
   const [versions, setVersions] = useState<Version[]>([])
@@ -1299,6 +1301,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (config?.messages) setMessages(config.messages)
       if (config?.versions) setVersions(config.versions)
       if (config?.media) setMediaMeta(config.media)
+      if ((config as any)?.favicon_url) setFaviconUrl((config as any).favicon_url as string)
       setBlogHeaderHtml(config?.blog_header_html ?? '')
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
@@ -1457,6 +1460,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode])
+
+  const saveFaviconUrl = async (url: string) => {
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: { ...existing, favicon_url: url },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setFaviconUrl(url)
+  }
+
+  const savePageOgImage = async (slug: string, url: string) => {
+    const next = pages.map(p => p.slug === slug ? { ...p, og_image: url } : p)
+    setPages(next)
+    await saveState(messages, next)
+  }
 
   const updateMediaMeta = (path: string, field: keyof MediaMeta, value: string) => {
     const updated = { ...mediaMeta, [path]: { ...mediaMeta[path], [field]: value } }
@@ -3391,6 +3410,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               alt={mediaMeta[item.path]?.alt || item.name}
                               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                             />
+                            {item.url === faviconUrl && (
+                              <div style={{
+                                position: 'absolute', bottom: '4px', left: '4px',
+                                background: '#2563eb', color: 'white',
+                                fontSize: '0.6rem', fontWeight: 700,
+                                padding: '1px 5px', borderRadius: '3px',
+                              }}>🌐 favicon</div>
+                            )}
                           </button>
                         )
                       })}
@@ -3423,6 +3450,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <div><strong style={{ color: C.text }}>Nome:</strong> {selectedMedia.name}</div>
                     <div><strong style={{ color: C.text }}>Peso:</strong> {formatBytes(selectedMedia.size)}</div>
                     <div><strong style={{ color: C.text }}>Caricato:</strong> {selectedMedia.createdAt ? new Date(selectedMedia.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</div>
+                  </div>
+                  {/* Favicon action */}
+                  <div style={{ marginBottom: '14px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#9b9896', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Usa come</div>
+                    <button
+                      onClick={() => saveFaviconUrl(selectedMedia.url)}
+                      style={{
+                        width: '100%', padding: '7px 10px',
+                        background: selectedMedia.url === faviconUrl ? '#dbeafe' : 'white',
+                        border: `1px solid ${selectedMedia.url === faviconUrl ? '#2563eb' : '#e5e7eb'}`,
+                        borderRadius: '7px', fontSize: '0.78rem', fontWeight: 600,
+                        color: selectedMedia.url === faviconUrl ? '#1d4ed8' : '#374151',
+                        cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const,
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                      }}
+                    >
+                      {selectedMedia.url === faviconUrl ? '✓ ' : ''} 🌐 Favicon del progetto
+                    </button>
                   </div>
                   {(['alt', 'title', 'caption', 'description'] as const).map(field => {
                     const labels = { alt: 'Testo alternativo', title: 'Titolo', caption: 'Didascalia', description: 'Descrizione' }
@@ -4234,8 +4279,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
 
                 {/* Column labels */}
-                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 80px 90px', gap: '0 8px', padding: '8px 20px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-                  {['', 'Pagina', 'Slug / URL', 'Menu', 'Azioni'].map((h, i) => (
+                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 60px 80px 90px', gap: '0 8px', padding: '8px 20px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+                  {['', 'Pagina', 'Slug / URL', 'OG img', 'Menu', 'Azioni'].map((h, i) => (
                     <span key={i} style={{ fontSize: '0.67rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                   ))}
                 </div>
@@ -4264,7 +4309,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         }}
                       >
                         {/* Row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 80px 90px', gap: '0 8px', alignItems: 'center', padding: '10px 12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 60px 80px 90px', gap: '0 8px', alignItems: 'center', padding: '10px 12px' }}>
                           {/* Drag handle */}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab', color: C.textFaint, fontSize: '1rem', userSelect: 'none' }}>
                             ⠿
@@ -4281,6 +4326,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <span style={{ fontSize: '0.72rem', color: C.textFaint, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             /{page.slug === 'home' ? '' : page.slug}
                           </span>
+
+                          {/* OG Image picker */}
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            {(page as any).og_image ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={(page as any).og_image}
+                                alt="OG"
+                                title="Immagine OG — clicca per cambiare"
+                                onClick={() => setOgPickerSlug(ogPickerSlug === page.slug ? null : page.slug)}
+                                style={{ width: '36px', height: '24px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer', border: '1px solid #e5e7eb' }}
+                              />
+                            ) : (
+                              <button
+                                onClick={() => setOgPickerSlug(ogPickerSlug === page.slug ? null : page.slug)}
+                                title="Imposta immagine OG"
+                                style={{ background: 'transparent', border: '1px dashed #d1d5db', borderRadius: '4px', width: '36px', height: '24px', cursor: 'pointer', fontSize: '0.8rem', color: '#9b9896', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              >+</button>
+                            )}
+                          </div>
 
                           {/* In menu toggle */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -4321,6 +4386,35 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             )}
                           </div>
                         </div>
+
+                        {/* OG image picker dropdown */}
+                        {ogPickerSlug === page.slug && (
+                          <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e7eb', background: '#f8fafc' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#9b9896', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Scegli immagine OG per questa pagina</div>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {mediaItems.slice(0, 16).map(item => (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  key={item.path}
+                                  src={item.url}
+                                  alt=""
+                                  onClick={() => { savePageOgImage(page.slug, item.url); setOgPickerSlug(null) }}
+                                  style={{
+                                    width: '48px', height: '32px', objectFit: 'cover',
+                                    borderRadius: '4px', cursor: 'pointer',
+                                    border: (page as any).og_image === item.url ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                                  }}
+                                />
+                              ))}
+                              {(page as any).og_image && (
+                                <button
+                                  onClick={() => { savePageOgImage(page.slug, ''); setOgPickerSlug(null) }}
+                                  style={{ fontSize: '0.68rem', color: '#dc2626', background: 'transparent', border: '1px solid #fecaca', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontFamily: 'inherit' }}
+                                >Rimuovi</button>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Expanded settings panel */}
                         {isExpanded && (

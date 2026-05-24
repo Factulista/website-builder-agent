@@ -16,6 +16,68 @@ export type Component = {
   paramSchema?: string
 }
 
+// ── New smart component renderers ────────────────────────────────────────────
+
+function renderStatsRow(data: Record<string, unknown>): string {
+  const stats = (data.stats as Array<Record<string, unknown>> | undefined) ?? []
+  const items = stats.slice(0, 4)
+
+  const itemsHtml = items.map((s, i) => {
+    const value = String(s.value ?? '')
+    const label = String(s.label ?? '')
+    const divider = i < items.length - 1
+      ? '<div class="sr-divider" aria-hidden="true"></div>'
+      : ''
+    return `<div class="sr-item">
+      <span class="sr-value">${value}</span>
+      <span class="sr-label">${label}</span>
+    </div>${divider}`
+  }).join('\n    ')
+
+  return `<section class="sr-section">
+  <style>
+    .sr-section{padding:3.5rem 1.5rem;font-family:var(--font-body,system-ui,sans-serif);background:var(--color-bg,#ffffff);}
+    .sr-inner{max-width:900px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;}
+    .sr-item{display:flex;flex-direction:column;align-items:center;padding:1.5rem 3rem;gap:0.35rem;flex:1;min-width:160px;}
+    .sr-value{font-size:2.75rem;font-weight:800;color:var(--color-accent,#2563eb);line-height:1;letter-spacing:-0.02em;}
+    .sr-label{font-size:0.9rem;font-weight:500;color:#6b7280;text-align:center;}
+    .sr-divider{width:1px;height:60px;background:#e5e7eb;flex-shrink:0;align-self:center;}
+    @media(max-width:600px){
+      .sr-inner{flex-direction:column;gap:0;}
+      .sr-divider{width:60px;height:1px;}
+      .sr-item{padding:1.25rem 1.5rem;width:100%;}
+    }
+  </style>
+  <div class="sr-inner">
+    ${itemsHtml}
+  </div>
+</section>`
+}
+
+function renderCtaBanner(data: Record<string, unknown>): string {
+  const title = String(data.title ?? 'Pronto a iniziare?')
+  const subtitle = String(data.subtitle ?? '')
+  const buttonText = String(data.buttonText ?? 'Inizia gratis →')
+  const buttonHref = String(data.buttonHref ?? '#')
+
+  return `<section class="cb-section">
+  <style>
+    .cb-section{padding:4rem 1.5rem;background:var(--color-accent,#2563eb);font-family:var(--font-body,system-ui,sans-serif);text-align:center;}
+    .cb-inner{max-width:680px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:1rem;}
+    .cb-title{font-size:2.2rem;font-weight:800;color:#ffffff;line-height:1.2;margin:0;letter-spacing:-0.02em;}
+    .cb-subtitle{font-size:1.05rem;color:rgba(255,255,255,0.85);margin:0;line-height:1.6;}
+    .cb-btn{display:inline-block;margin-top:0.5rem;padding:0.85rem 2rem;background:#ffffff;color:var(--color-accent,#2563eb);font-weight:700;font-size:1rem;border-radius:var(--radius,10px);text-decoration:none;border:none;cursor:pointer;transition:opacity 0.15s,transform 0.15s;font-family:inherit;}
+    .cb-btn:hover{opacity:0.92;transform:translateY(-1px);}
+    @media(max-width:600px){.cb-title{font-size:1.65rem;}}
+  </style>
+  <div class="cb-inner">
+    <h2 class="cb-title">${title}</h2>
+    ${subtitle ? `<p class="cb-subtitle">${subtitle}</p>` : ''}
+    <a href="${buttonHref}" class="cb-btn">${buttonText}</a>
+  </div>
+</section>`
+}
+
 // ── Smart component renderers ─────────────────────────────────────────────────
 // These are functions used by the `insert_component` agent tool. The agent
 // passes structured data; the renderer produces final HTML server-side
@@ -629,6 +691,229 @@ export const COMPONENT_REGISTRY: Component[] = [
     </table>
   </div>
 </section>`,
+  },
+  {
+    id: 'stats-row',
+    name: 'Riga Statistiche',
+    description: 'Una riga di 3-4 stat chiave: numero grande + etichetta. Perfetta sotto l\'hero o in sezioni "social proof" numerica.',
+    category: 'content',
+    tags: ['statistiche', 'stats', 'numeri', 'cifre', 'metriche', 'kpi', 'social proof', 'counter'],
+    paramSchema: `stats: [{value: string, label: string}]  — max 4 items`,
+    render: renderStatsRow,
+    html: renderStatsRow({
+      stats: [
+        { value: '10.000+', label: 'Clienti attivi' },
+        { value: '99.9%',   label: 'Uptime garantito' },
+        { value: '4.8★',    label: 'Valutazione media' },
+      ],
+    }),
+  },
+  {
+    id: 'cta-banner',
+    name: 'CTA Banner',
+    description: 'Sezione full-width con sfondo accent, titolo, sottotitolo e CTA button bianco. Ideale come sezione di chiusura o invito all\'azione.',
+    category: 'content',
+    tags: ['cta', 'call to action', 'banner', 'pulsante', 'button', 'conversione', 'promo', 'invito'],
+    paramSchema: `title: string, subtitle: string, buttonText: string, buttonHref: string`,
+    render: renderCtaBanner,
+    html: renderCtaBanner({
+      title: 'Pronto a iniziare?',
+      subtitle: 'Crea il tuo sito in pochi minuti, senza scrivere codice.',
+      buttonText: 'Inizia gratis →',
+      buttonHref: '#',
+    }),
+  },
+  {
+    id: 'testimonial-grid',
+    name: 'Griglia Testimonianze',
+    description: '3 card testimonianze in griglia responsive (3 col desktop, 1 mobile) con stelle, citazione, avatar con iniziali, nome e ruolo.',
+    category: 'social-proof',
+    tags: ['testimonianze', 'testimonial', 'recensioni', 'reviews', 'social proof', 'clienti', 'feedback', 'stelle'],
+    html: `<section class="tg-section">
+  <style>
+    .tg-section{padding:4rem 1.5rem;font-family:var(--font-body,system-ui,sans-serif);background:var(--color-bg,#ffffff);}
+    .tg-inner{max-width:1100px;margin:0 auto;}
+    .tg-header{text-align:center;margin-bottom:2.5rem;}
+    .tg-header h2{font-size:2rem;font-weight:800;color:var(--color-text,#1a1a1a);margin:0 0 .5rem;}
+    .tg-header p{color:#6b7280;font-size:1rem;margin:0;}
+    .tg-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.25rem;}
+    .tg-card{background:#f8fafc;border:1px solid #e5e7eb;border-radius:16px;padding:1.75rem;display:flex;flex-direction:column;gap:1rem;}
+    .tg-stars{color:#f59e0b;font-size:1rem;letter-spacing:2px;}
+    .tg-quote{font-size:0.95rem;line-height:1.65;color:#374151;flex:1;font-style:italic;}
+    .tg-author{display:flex;align-items:center;gap:0.75rem;}
+    .tg-avatar{width:42px;height:42px;border-radius:50%;background:var(--color-accent,#2563eb);color:#fff;font-weight:700;font-size:0.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .tg-name{font-weight:700;font-size:0.92rem;color:var(--color-text,#1a1a1a);}
+    .tg-role{font-size:0.8rem;color:#9ca3af;}
+    @media(max-width:760px){.tg-grid{grid-template-columns:1fr;}}
+  </style>
+  <div class="tg-inner">
+    <div class="tg-header">
+      <h2>Cosa dicono i nostri clienti</h2>
+      <p>Migliaia di aziende già ci hanno scelto.</p>
+    </div>
+    <div class="tg-grid">
+      <div class="tg-card">
+        <div class="tg-stars">★★★★★</div>
+        <p class="tg-quote">"Abbiamo ridotto i tempi di sviluppo del 60%. Il builder è intuitivo e il supporto è sempre disponibile. Lo consiglio a chiunque."</p>
+        <div class="tg-author">
+          <div class="tg-avatar">ML</div>
+          <div>
+            <div class="tg-name">Marco Lombardi</div>
+            <div class="tg-role">CTO · Nexura S.r.l.</div>
+          </div>
+        </div>
+      </div>
+      <div class="tg-card">
+        <div class="tg-stars">★★★★★</div>
+        <p class="tg-quote">"Finalmente uno strumento che unisce semplicità e potenza. Ho lanciato il sito della mia startup in un pomeriggio, senza toccare codice."</p>
+        <div class="tg-author">
+          <div class="tg-avatar">SF</div>
+          <div>
+            <div class="tg-name">Sofia Ferrari</div>
+            <div class="tg-role">Founder · Bloom Studio</div>
+          </div>
+        </div>
+      </div>
+      <div class="tg-card">
+        <div class="tg-stars">★★★★★</div>
+        <p class="tg-quote">"Il ROI è stato immediato. I nostri clienti ora ricevono siti professionali in tempi record e la qualità è sempre alta. Un game changer."</p>
+        <div class="tg-author">
+          <div class="tg-avatar">AR</div>
+          <div>
+            <div class="tg-name">Andrea Russo</div>
+            <div class="tg-role">Direttore Digitale · Gruppo Helix</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>`,
+  },
+  {
+    id: 'process-steps',
+    name: 'Passi del Processo',
+    description: 'Sezione "Come funziona" con 3 step numerati in riga (desktop) o colonna (mobile), con linea connettrice tra i passi.',
+    category: 'content',
+    tags: ['come funziona', 'how it works', 'step', 'passi', 'processo', 'processo', 'funzionamento', 'guida'],
+    html: `<section class="ps-section">
+  <style>
+    .ps-section{padding:4rem 1.5rem;font-family:var(--font-body,system-ui,sans-serif);background:var(--color-bg,#ffffff);}
+    .ps-inner{max-width:960px;margin:0 auto;}
+    .ps-header{text-align:center;margin-bottom:3rem;}
+    .ps-header h2{font-size:2rem;font-weight:800;color:var(--color-text,#1a1a1a);margin:0 0 .5rem;}
+    .ps-header p{color:#6b7280;font-size:1rem;margin:0;}
+    .ps-row{display:flex;align-items:flex-start;gap:0;position:relative;}
+    .ps-step{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 1.5rem;position:relative;}
+    .ps-connector{flex:1;height:2px;background:linear-gradient(90deg,var(--color-accent,#2563eb),#dbeafe);align-self:flex-start;margin-top:28px;max-width:80px;}
+    .ps-num{width:56px;height:56px;border-radius:50%;background:var(--color-accent,#2563eb);color:#fff;font-size:1.4rem;font-weight:800;display:flex;align-items:center;justify-content:center;margin-bottom:1rem;flex-shrink:0;box-shadow:0 4px 14px rgba(37,99,235,0.25);}
+    .ps-title{font-size:1.05rem;font-weight:700;color:var(--color-text,#1a1a1a);margin-bottom:0.4rem;}
+    .ps-desc{font-size:0.88rem;color:#6b7280;line-height:1.6;}
+    @media(max-width:640px){
+      .ps-row{flex-direction:column;align-items:center;gap:2rem;}
+      .ps-connector{display:none;}
+      .ps-step{padding:0;}
+    }
+  </style>
+  <div class="ps-inner">
+    <div class="ps-header">
+      <h2>Come funziona</h2>
+      <p>Tre semplici passi per andare online.</p>
+    </div>
+    <div class="ps-row">
+      <div class="ps-step">
+        <div class="ps-num">1</div>
+        <div class="ps-title">Scegli un template</div>
+        <p class="ps-desc">Sfoglia la nostra libreria di template professionali e scegli quello più adatto al tuo settore.</p>
+      </div>
+      <div class="ps-connector" aria-hidden="true"></div>
+      <div class="ps-step">
+        <div class="ps-num">2</div>
+        <div class="ps-title">Personalizza i contenuti</div>
+        <p class="ps-desc">Modifica testi, immagini e colori con il nostro editor visuale drag-and-drop, senza scrivere codice.</p>
+      </div>
+      <div class="ps-connector" aria-hidden="true"></div>
+      <div class="ps-step">
+        <div class="ps-num">3</div>
+        <div class="ps-title">Pubblica online</div>
+        <p class="ps-desc">Con un solo click il tuo sito va live su un dominio personalizzato, ottimizzato per mobile e SEO.</p>
+      </div>
+    </div>
+  </div>
+</section>`,
+  },
+  {
+    id: 'hero-split',
+    name: 'Hero Split (due colonne)',
+    description: 'Hero a due colonne: sinistra con titolo grande, sottotitolo e CTA; destra con box gradiente decorativo. Responsive.',
+    category: 'content',
+    tags: ['hero', 'header', 'homepage', 'intestazione', 'split', 'due colonne', 'landing', 'above the fold'],
+    html: `<section class="hs-section">
+  <style>
+    .hs-section{padding:5rem 1.5rem 4rem;font-family:var(--font-body,system-ui,sans-serif);background:var(--color-bg,#ffffff);}
+    .hs-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center;}
+    .hs-content{display:flex;flex-direction:column;gap:1.25rem;}
+    .hs-eyebrow{display:inline-block;font-size:0.8rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-accent,#2563eb);background:#eff6ff;padding:4px 12px;border-radius:99px;}
+    .hs-title{font-size:clamp(2rem,4vw,3.2rem);font-weight:900;line-height:1.1;color:var(--color-text,#1a1a1a);margin:0;letter-spacing:-0.03em;}
+    .hs-title .hs-accent{color:var(--color-accent,#2563eb);}
+    .hs-subtitle{font-size:1.1rem;color:#4b5563;line-height:1.65;margin:0;}
+    .hs-actions{display:flex;gap:0.75rem;flex-wrap:wrap;margin-top:0.25rem;}
+    .hs-btn-primary{padding:0.8rem 1.75rem;background:var(--color-accent,#2563eb);color:#fff;font-weight:700;font-size:1rem;border-radius:var(--radius,10px);text-decoration:none;border:none;cursor:pointer;transition:opacity 0.15s,transform 0.15s;font-family:inherit;}
+    .hs-btn-primary:hover{opacity:0.9;transform:translateY(-1px);}
+    .hs-btn-secondary{padding:0.8rem 1.75rem;background:transparent;color:var(--color-text,#1a1a1a);font-weight:600;font-size:1rem;border-radius:var(--radius,10px);text-decoration:none;border:1.5px solid #d1d5db;cursor:pointer;transition:border-color 0.15s;font-family:inherit;}
+    .hs-btn-secondary:hover{border-color:var(--color-accent,#2563eb);}
+    .hs-visual{aspect-ratio:4/3;border-radius:20px;background:linear-gradient(135deg,var(--color-accent,#2563eb) 0%,#7c3aed 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 24px 60px rgba(37,99,235,0.25);overflow:hidden;position:relative;}
+    .hs-visual::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.06'%3E%3Ccircle cx='30' cy='30' r='20'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;}
+    .hs-visual-label{color:rgba(255,255,255,0.7);font-size:0.85rem;font-weight:500;position:relative;z-index:1;}
+    @media(max-width:768px){
+      .hs-inner{grid-template-columns:1fr;gap:2rem;}
+      .hs-visual{order:-1;max-height:260px;}
+    }
+  </style>
+  <div class="hs-inner">
+    <div class="hs-content">
+      <span class="hs-eyebrow">Nuovo · 2025</span>
+      <h1 class="hs-title">Il modo più <span class="hs-accent">veloce</span> per costruire il tuo sito</h1>
+      <p class="hs-subtitle">Crea siti web professionali con l'intelligenza artificiale. Nessun codice, nessuna complessità — solo risultati.</p>
+      <div class="hs-actions">
+        <a href="#" class="hs-btn-primary">Inizia gratis →</a>
+        <a href="#" class="hs-btn-secondary">Guarda la demo</a>
+      </div>
+    </div>
+    <div class="hs-visual" aria-hidden="true">
+      <span class="hs-visual-label">Anteprima prodotto</span>
+    </div>
+  </div>
+</section>`,
+  },
+  {
+    id: 'announcement-bar',
+    name: 'Barra Annuncio',
+    description: 'Barra slim fissa in cima (44px, z-index 9999) con messaggio centrato e pulsante × per chiudere. Aggiusta il margin-top del body automaticamente.',
+    category: 'utility',
+    tags: ['annuncio', 'announcement', 'banner', 'barra', 'avviso', 'novità', 'promo', 'top bar', 'notifica'],
+    html: `<div class="ab-bar" id="ab-bar" role="banner">
+  <style>
+    .ab-bar{position:fixed;top:0;left:0;right:0;z-index:9999;height:44px;background:var(--color-accent,#2563eb);color:#ffffff;display:flex;align-items:center;justify-content:center;font-family:var(--font-body,system-ui,sans-serif);font-size:0.875rem;font-weight:500;padding:0 3rem;}
+    .ab-msg{text-align:center;line-height:1.2;}
+    .ab-msg a{color:#ffffff;text-decoration:underline;font-weight:700;}
+    .ab-close{position:absolute;right:1rem;top:50%;transform:translateY(-50%);background:none;border:none;color:#ffffff;font-size:1.25rem;line-height:1;cursor:pointer;padding:0 4px;opacity:0.8;font-family:inherit;}
+    .ab-close:hover{opacity:1;}
+  </style>
+  <span class="ab-msg">🎉 Novità: scopri le nuove funzionalità → <a href="#">Leggi di più</a></span>
+  <button class="ab-close" id="ab-close" aria-label="Chiudi annuncio">×</button>
+  <script>
+    (function(){
+      var bar=document.getElementById('ab-bar');
+      var closeBtn=document.getElementById('ab-close');
+      if(!bar||!closeBtn)return;
+      document.body.style.marginTop='44px';
+      closeBtn.addEventListener('click',function(){
+        bar.style.display='none';
+        document.body.style.marginTop='0';
+      });
+    })();
+  </script>
+</div>`,
   },
 ]
 

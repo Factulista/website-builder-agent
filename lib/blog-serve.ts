@@ -209,7 +209,8 @@ export function buildBlogListPage(
   lang = 'it',
   headerHtml = '',
   currentPage = 1,
-  totalPages = 1
+  totalPages = 1,
+  faviconUrl?: string
 ): string {
   const title = 'Blog'
   const subtitle = lang === 'es' ? 'Artículos y novedades' : lang === 'en' ? 'Articles and updates' : 'Articoli e aggiornamenti'
@@ -292,6 +293,7 @@ export function buildBlogListPage(
   <title>${title}</title>
   <meta name="description" content="${subtitle}">
   <link rel="canonical" href="${baseUrl}/blog">
+  ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ''}
   ${siteStyle}
   <style>
     .blog-listing{max-width:1100px;margin:0 auto;padding:3rem 1.5rem 5rem}
@@ -345,7 +347,8 @@ export function buildBlogPostPage(
   siteFooter: string,
   siteStyle: string,
   lang = 'it',
-  sidebarBanner?: BlogSidebarBanner | null
+  sidebarBanner?: BlogSidebarBanner | null,
+  faviconUrl?: string
 ): string {
   const backLabel = '← Blog'
   const dateStr = formatDate(post.published_at, lang)
@@ -415,6 +418,7 @@ ${tocItems.map(item => `  <li><a href="#${item.id}">${item.text}</a></li>`).join
   <title>${seoTitle}</title>
   <meta name="description" content="${seoDesc}">
   <link rel="canonical" href="${baseUrl}/blog/${post.slug}">
+  ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ''}
   <meta property="og:title" content="${seoTitle}">
   <meta property="og:description" content="${seoDesc}">
   ${post.featured_image ? `<meta property="og:image" content="${post.featured_image}">` : ''}

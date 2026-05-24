@@ -11,13 +11,10 @@ const C = {
   textFaint: '#9b9896',
   white: '#ffffff',
   border: '#e8e4de',
-  borderStrong: '#c4bfb8',
   blue: '#2563eb',
   green: '#059669',
   purple: '#7c3aed',
   orange: '#d97706',
-  red: '#dc2626',
-  teal: '#0891b2',
   rowHover: '#f5f3f0',
 }
 
@@ -43,13 +40,113 @@ function categoryColor(cat: string) {
 
 function iframeDoc(html: string): string {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-  body{margin:0;padding:1rem;font-family:system-ui,sans-serif;background:#fff;}
+  body{margin:0;padding:1.5rem;font-family:system-ui,sans-serif;background:#fff;}
   :root{--color-accent:#2563eb;--font-body:system-ui,sans-serif;--color-text:#1a1a1a;--color-bg:#ffffff;--radius:10px;}
 </style></head><body>${html}</body></html>`
 }
 
 type View = 'table' | 'grid'
 
+/* ── Preview Modal ─────────────────────────────────────────────────── */
+function PreviewModal({ comp, onClose }: { comp: Component; onClose: () => void }) {
+  const smartComp = SMART_COMPONENTS.find(c => c.id === comp.id)
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px',
+      }}
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }} />
+
+      {/* Modal */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          background: C.white,
+          borderRadius: '16px',
+          overflow: 'hidden',
+          width: '100%',
+          maxWidth: '900px',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.3)',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: `1px solid ${C.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: C.bg, flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: '1rem', color: C.text }}>{comp.name}</span>
+            <span style={{
+              fontSize: '0.68rem', fontWeight: 700, color: C.white,
+              background: categoryColor(comp.category),
+              padding: '2px 8px', borderRadius: '4px',
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+            }}>
+              {CATEGORY_LABELS[comp.category] ?? comp.category}
+            </span>
+            {smartComp && (
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: C.purple, background: '#f3e8ff', padding: '2px 8px', borderRadius: '4px' }}>
+                ✨ Parametrico
+              </span>
+            )}
+            <code style={{ fontSize: '0.72rem', color: C.textFaint, fontFamily: 'ui-monospace, monospace', background: '#f0f0f0', padding: '2px 7px', borderRadius: '4px' }}>
+              {comp.id}
+            </code>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: '#f3f4f6', border: 'none', borderRadius: '8px',
+              width: '32px', height: '32px', cursor: 'pointer',
+              fontSize: '1rem', color: C.textMuted, display: 'flex',
+              alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}
+          >✕</button>
+        </div>
+
+        {/* Param schema strip */}
+        {smartComp?.paramSchema && (
+          <div style={{
+            padding: '10px 20px', background: '#faf5ff',
+            borderBottom: `1px solid #e9d5ff`,
+            fontSize: '0.78rem', color: C.purple, flexShrink: 0,
+          }}>
+            <strong>Parametri agente:</strong>{' '}
+            <code style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.76rem' }}>{smartComp.paramSchema}</code>
+          </div>
+        )}
+
+        {/* Description */}
+        <div style={{ padding: '8px 20px', borderBottom: `1px solid ${C.border}`, fontSize: '0.78rem', color: C.textMuted, flexShrink: 0 }}>
+          {comp.description}
+        </div>
+
+        {/* iframe — full width, tall */}
+        <div style={{ flex: 1, overflow: 'hidden', background: '#f8fafc', minHeight: '420px' }}>
+          <iframe
+            srcDoc={iframeDoc(comp.html)}
+            style={{ width: '100%', height: '100%', border: 'none', minHeight: '420px' }}
+            title={`Preview: ${comp.name}`}
+            sandbox="allow-scripts"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Main Page ─────────────────────────────────────────────────────── */
 export default function ComponentsPage() {
   const [view, setView] = useState<View>('table')
   const [previewId, setPreviewId] = useState<string | null>(null)
@@ -57,15 +154,16 @@ export default function ComponentsPage() {
 
   const smartIds = new Set(SMART_COMPONENTS.map(c => c.id))
   const categories = ['all', ...Array.from(new Set(COMPONENT_REGISTRY.map(c => c.category)))]
-
-  const filtered = filterCat === 'all'
-    ? COMPONENT_REGISTRY
-    : COMPONENT_REGISTRY.filter(c => c.category === filterCat)
-
+  const filtered = filterCat === 'all' ? COMPONENT_REGISTRY : COMPONENT_REGISTRY.filter(c => c.category === filterCat)
   const previewComponent = previewId ? COMPONENT_REGISTRY.find(c => c.id === previewId) : null
 
   return (
     <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
+
+      {/* Preview Modal */}
+      {previewComponent && (
+        <PreviewModal comp={previewComponent} onClose={() => setPreviewId(null)} />
+      )}
 
       {/* Header */}
       <div style={{ marginBottom: '24px' }}>
@@ -76,65 +174,43 @@ export default function ComponentsPage() {
           <div>
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: C.text }}>🧩 Libreria Componenti</h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: C.textMuted }}>
-              {COMPONENT_REGISTRY.length} componenti · {SMART_COMPONENTS.length} parametrici (chiamabili dall&apos;agente)
+              {COMPONENT_REGISTRY.length} componenti · {SMART_COMPONENTS.length} parametrici · tutti adattabili via agente
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {/* View toggle */}
-            <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-              {(['table', 'grid'] as View[]).map(v => (
-                <button
-                  key={v}
-                  onClick={() => setView(v)}
-                  style={{
-                    padding: '6px 14px',
-                    border: 'none',
-                    background: view === v ? C.text : C.white,
-                    color: view === v ? C.white : C.textMuted,
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  {v === 'table' ? '☰ Lista' : '⊞ Griglia'}
-                </button>
-              ))}
-            </div>
+          {/* View toggle */}
+          <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+            {(['table', 'grid'] as View[]).map(v => (
+              <button key={v} onClick={() => setView(v)} style={{
+                padding: '6px 14px', border: 'none',
+                background: view === v ? C.text : C.white,
+                color: view === v ? C.white : C.textMuted,
+                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                {v === 'table' ? '☰ Lista' : '⊞ Griglia'}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Category filter pills */}
         <div style={{ display: 'flex', gap: '6px', marginTop: '16px', flexWrap: 'wrap' }}>
           {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setFilterCat(cat)}
-              style={{
-                padding: '4px 14px',
-                borderRadius: '99px',
-                border: `1px solid ${filterCat === cat ? C.text : C.border}`,
-                background: filterCat === cat ? C.text : C.white,
-                color: filterCat === cat ? C.white : C.textMuted,
-                fontSize: '0.78rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'all 0.15s',
-              }}
-            >
+            <button key={cat} onClick={() => setFilterCat(cat)} style={{
+              padding: '4px 14px', borderRadius: '99px',
+              border: `1px solid ${filterCat === cat ? C.text : C.border}`,
+              background: filterCat === cat ? C.text : C.white,
+              color: filterCat === cat ? C.white : C.textMuted,
+              fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.15s',
+            }}>
               {cat === 'all' ? 'Tutti' : CATEGORY_LABELS[cat] ?? cat}
-              {cat !== 'all' && (
-                <span style={{ marginLeft: '5px', opacity: 0.6 }}>
-                  {COMPONENT_REGISTRY.filter(c => c.category === cat).length}
-                </span>
-              )}
+              {cat !== 'all' && <span style={{ marginLeft: '5px', opacity: 0.6 }}>{COMPONENT_REGISTRY.filter(c => c.category === cat).length}</span>}
             </button>
           ))}
         </div>
       </div>
 
-      {/* ── TABLE VIEW ────────────────────────────────────────────────────── */}
+      {/* ── TABLE VIEW ──────────────────────────────────────────────────── */}
       {view === 'table' && (
         <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -152,42 +228,27 @@ export default function ComponentsPage() {
               {filtered.map((comp, i) => (
                 <tr
                   key={comp.id}
-                  style={{
-                    borderBottom: i < filtered.length - 1 ? `1px solid ${C.border}` : 'none',
-                    transition: 'background 0.15s',
-                  }}
+                  style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${C.border}` : 'none', transition: 'background 0.15s' }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.rowHover}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                 >
-                  {/* Miniatura preview */}
+                  {/* Miniatura cliccabile → apre modal */}
                   <td style={{ ...tdStyle, padding: '8px 12px', width: '100px' }}>
                     <div
-                      onClick={() => setPreviewId(previewId === comp.id ? null : comp.id)}
-                      style={{
-                        width: '88px',
-                        height: '56px',
-                        borderRadius: '6px',
-                        overflow: 'hidden',
-                        border: `1px solid ${previewId === comp.id ? C.blue : C.border}`,
-                        background: '#fafafa',
-                        cursor: 'pointer',
-                        position: 'relative',
-                        flexShrink: 0,
-                        transition: 'border-color 0.15s, box-shadow 0.15s',
-                        boxShadow: previewId === comp.id ? `0 0 0 2px ${C.blue}33` : 'none',
-                      }}
+                      onClick={() => setPreviewId(comp.id)}
                       title="Clicca per preview"
+                      style={{
+                        width: '88px', height: '56px', borderRadius: '6px',
+                        overflow: 'hidden', border: `1px solid ${C.border}`,
+                        background: '#fafafa', cursor: 'pointer', position: 'relative',
+                        transition: 'border-color 0.15s, box-shadow 0.15s',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = C.blue; (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 2px ${C.blue}33` }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
                     >
                       <iframe
                         srcDoc={iframeDoc(comp.html)}
-                        style={{
-                          width: '352px',
-                          height: '224px',
-                          border: 'none',
-                          transform: 'scale(0.25)',
-                          transformOrigin: 'top left',
-                          pointerEvents: 'none',
-                        }}
+                        style={{ width: '352px', height: '224px', border: 'none', transform: 'scale(0.25)', transformOrigin: 'top left', pointerEvents: 'none' }}
                         title={comp.name}
                         sandbox="allow-scripts"
                       />
@@ -205,16 +266,10 @@ export default function ComponentsPage() {
                   {/* Categoria */}
                   <td style={tdStyle}>
                     <span style={{
-                      display: 'inline-block',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      color: C.white,
-                      background: categoryColor(comp.category),
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                      whiteSpace: 'nowrap',
+                      display: 'inline-block', fontSize: '0.7rem', fontWeight: 600,
+                      color: C.white, background: categoryColor(comp.category),
+                      padding: '3px 8px', borderRadius: '4px',
+                      textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
                     }}>
                       {CATEGORY_LABELS[comp.category] ?? comp.category}
                     </span>
@@ -222,20 +277,12 @@ export default function ComponentsPage() {
 
                   {/* ID */}
                   <td style={tdStyle}>
-                    <code style={{
-                      fontSize: '0.72rem',
-                      background: '#f0f0f0',
-                      color: C.textMuted,
-                      padding: '3px 7px',
-                      borderRadius: '4px',
-                      fontFamily: 'ui-monospace, monospace',
-                      whiteSpace: 'nowrap',
-                    }}>
+                    <code style={{ fontSize: '0.72rem', background: '#f0f0f0', color: C.textMuted, padding: '3px 7px', borderRadius: '4px', fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>
                       {comp.id}
                     </code>
                   </td>
 
-                  {/* Tipo: smart (parametrico) o statico */}
+                  {/* Tipo */}
                   <td style={tdStyle}>
                     {smartIds.has(comp.id) ? (
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: C.purple, whiteSpace: 'nowrap' }}>
@@ -250,25 +297,20 @@ export default function ComponentsPage() {
                     )}
                   </td>
 
-                  {/* Azioni */}
+                  {/* Preview button */}
                   <td style={{ ...tdStyle, textAlign: 'right' }}>
                     <button
-                      onClick={() => setPreviewId(previewId === comp.id ? null : comp.id)}
+                      onClick={() => setPreviewId(comp.id)}
                       style={{
-                        fontSize: '0.75rem',
-                        color: previewId === comp.id ? C.white : C.blue,
-                        background: previewId === comp.id ? C.blue : 'transparent',
-                        textDecoration: 'none',
-                        fontWeight: 500,
-                        padding: '4px 10px',
-                        border: `1px solid ${C.blue}`,
-                        borderRadius: '6px',
-                        whiteSpace: 'nowrap',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
+                        fontSize: '0.75rem', color: C.blue, background: 'transparent',
+                        fontWeight: 500, padding: '4px 10px',
+                        border: `1px solid ${C.blue}`, borderRadius: '6px',
+                        whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit',
                       }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = C.blue; (e.currentTarget as HTMLElement).style.color = C.white }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = C.blue }}
                     >
-                      {previewId === comp.id ? 'Chiudi ✕' : 'Preview →'}
+                      Preview →
                     </button>
                   </td>
                 </tr>
@@ -278,63 +320,50 @@ export default function ComponentsPage() {
         </div>
       )}
 
-      {/* ── GRID VIEW ─────────────────────────────────────────────────────── */}
+      {/* ── GRID VIEW ───────────────────────────────────────────────────── */}
       {view === 'grid' && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: '14px',
-        }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
           {filtered.map(comp => (
-            <div
-              key={comp.id}
-              style={{
-                background: C.white,
-                border: `1px solid ${C.border}`,
-                borderRadius: '10px',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              }}
-            >
-              {/* iframe preview */}
-              <div style={{
-                height: '180px',
-                overflow: 'hidden',
-                borderBottom: `1px solid ${C.border}`,
-                background: '#fafafa',
-                position: 'relative',
-              }}>
+            <div key={comp.id} style={{
+              background: C.white, border: `1px solid ${C.border}`,
+              borderRadius: '10px', overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            }}>
+              {/* iframe preview — cliccabile */}
+              <div
+                onClick={() => setPreviewId(comp.id)}
+                style={{
+                  height: '180px', overflow: 'hidden',
+                  borderBottom: `1px solid ${C.border}`,
+                  background: '#fafafa', position: 'relative', cursor: 'pointer',
+                }}
+                title="Clicca per preview"
+              >
                 <iframe
                   srcDoc={iframeDoc(comp.html)}
-                  style={{
-                    width: '200%',
-                    height: '360px',
-                    border: 'none',
-                    transform: 'scale(0.5)',
-                    transformOrigin: 'top left',
-                    pointerEvents: 'none',
-                  }}
+                  style={{ width: '200%', height: '360px', border: 'none', transform: 'scale(0.5)', transformOrigin: 'top left', pointerEvents: 'none' }}
                   title={comp.name}
                   sandbox="allow-scripts"
                 />
+                {/* Hover overlay */}
+                <div className="preview-hover-overlay" style={{
+                  position: 'absolute', inset: 0,
+                  background: 'rgba(37,99,235,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: 0, transition: 'opacity 0.15s',
+                }}>
+                  <span style={{ background: C.blue, color: 'white', fontSize: '0.75rem', fontWeight: 700, padding: '6px 14px', borderRadius: '20px' }}>
+                    👁 Preview
+                  </span>
+                </div>
                 {smartIds.has(comp.id) && (
                   <span style={{
-                    position: 'absolute',
-                    top: '8px',
-                    right: '8px',
-                    fontSize: '0.65rem',
-                    fontWeight: 700,
-                    color: C.white,
-                    background: C.purple,
-                    padding: '2px 7px',
-                    borderRadius: '4px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}>
-                    Parametrico
-                  </span>
+                    position: 'absolute', top: '8px', right: '8px',
+                    fontSize: '0.65rem', fontWeight: 700, color: C.white,
+                    background: C.purple, padding: '2px 7px', borderRadius: '4px',
+                    textTransform: 'uppercase', letterSpacing: '0.04em',
+                  }}>Parametrico</span>
                 )}
               </div>
 
@@ -343,15 +372,10 @@ export default function ComponentsPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ fontSize: '0.88rem', fontWeight: 700, color: C.text }}>{comp.name}</div>
                   <span style={{
-                    flexShrink: 0,
-                    fontSize: '0.65rem',
-                    fontWeight: 600,
-                    color: C.white,
-                    background: categoryColor(comp.category),
-                    padding: '2px 7px',
-                    borderRadius: '4px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.03em',
+                    flexShrink: 0, fontSize: '0.65rem', fontWeight: 600,
+                    color: C.white, background: categoryColor(comp.category),
+                    padding: '2px 7px', borderRadius: '4px',
+                    textTransform: 'uppercase', letterSpacing: '0.03em',
                   }}>
                     {CATEGORY_LABELS[comp.category] ?? comp.category}
                   </span>
@@ -359,99 +383,57 @@ export default function ComponentsPage() {
                 <div style={{ fontSize: '0.75rem', color: C.textMuted, lineHeight: 1.4 }}>
                   {comp.description}
                 </div>
-                <code style={{ fontSize: '0.7rem', color: C.textFaint, fontFamily: 'ui-monospace, monospace', marginTop: 'auto', paddingTop: '4px' }}>
-                  id: {comp.id}
-                </code>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto', paddingTop: '6px' }}>
+                  <code style={{ fontSize: '0.7rem', color: C.textFaint, fontFamily: 'ui-monospace, monospace' }}>
+                    {comp.id}
+                  </code>
+                  <button
+                    onClick={() => setPreviewId(comp.id)}
+                    style={{
+                      fontSize: '0.72rem', color: C.blue, background: 'transparent',
+                      border: `1px solid ${C.blue}`, borderRadius: '6px',
+                      padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600,
+                    }}
+                  >
+                    Preview →
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── INLINE PREVIEW PANEL ─────────────────────────────────────────── */}
-      {previewComponent && (
-        <div style={{
-          marginTop: '20px',
-          background: C.white,
-          border: `1px solid ${C.blue}`,
-          borderRadius: '12px',
-          overflow: 'hidden',
-          boxShadow: '0 4px 16px rgba(37,99,235,0.1)',
-        }}>
-          <div style={{
-            padding: '12px 16px',
-            borderBottom: `1px solid ${C.border}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: C.bg,
-          }}>
-            <div>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: C.text }}>{previewComponent.name}</span>
-              {smartIds.has(previewComponent.id) && (
-                <span style={{ marginLeft: '8px', fontSize: '0.7rem', fontWeight: 700, color: C.purple, background: '#f3e8ff', padding: '2px 7px', borderRadius: '4px' }}>
-                  ✨ Parametrico
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => setPreviewId(null)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: '1rem', fontFamily: 'inherit' }}
-            >
-              ✕
-            </button>
-          </div>
-          {smartIds.has(previewComponent.id) && (
-            <div style={{ padding: '10px 16px', background: '#faf5ff', borderBottom: `1px solid #e9d5ff`, fontSize: '0.78rem', color: C.purple }}>
-              <strong>Schema parametri:</strong>{' '}
-              {SMART_COMPONENTS.find(c => c.id === previewComponent.id)?.paramSchema ?? '—'}
-            </div>
-          )}
-          <div style={{ height: '400px', overflow: 'hidden', background: '#fafafa' }}>
-            <iframe
-              srcDoc={iframeDoc(previewComponent.html)}
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              title={`Preview: ${previewComponent.name}`}
-              sandbox="allow-scripts"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Footer stats */}
-      <div style={{ marginTop: '20px', display: 'flex', gap: '24px', fontSize: '0.78rem', color: C.textFaint }}>
+      {/* Footer stats + legend */}
+      <div style={{ marginTop: '24px', display: 'flex', gap: '24px', fontSize: '0.78rem', color: C.textFaint, flexWrap: 'wrap' }}>
         <span><strong style={{ color: C.text }}>{COMPONENT_REGISTRY.length}</strong> componenti totali</span>
         <span><strong style={{ color: C.purple }}>{SMART_COMPONENTS.length}</strong> parametrici</span>
         <span><strong style={{ color: C.text }}>{categories.length - 1}</strong> categorie</span>
       </div>
-
-      {/* Legend */}
-      <div style={{ marginTop: '10px', display: 'flex', gap: '16px', fontSize: '0.75rem', color: C.textFaint }}>
+      <div style={{ marginTop: '8px', display: 'flex', gap: '20px', fontSize: '0.75rem', color: C.textFaint, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.purple, display: 'inline-block' }} />
-          Parametrico = chiamabile via agente con <code style={{ fontFamily: 'ui-monospace, monospace' }}>insert_component</code>
+          Parametrico = testo, lingua e campi personalizzabili via agente (<code style={{ fontFamily: 'ui-monospace, monospace' }}>insert_component</code>)
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.border, display: 'inline-block' }} />
-          Statico = HTML fisso
+          Statico = HTML fisso, da convertire in parametrico
         </span>
       </div>
+
+      <style>{`
+        div[title="Clicca per preview"]:hover .preview-hover-overlay { opacity: 1 !important; }
+      `}</style>
     </div>
   )
 }
 
 const thStyle: React.CSSProperties = {
-  padding: '10px 16px',
-  textAlign: 'left',
-  fontSize: '0.72rem',
-  fontWeight: 600,
-  color: '#6b6563',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  whiteSpace: 'nowrap',
+  padding: '10px 16px', textAlign: 'left',
+  fontSize: '0.72rem', fontWeight: 600, color: '#6b6563',
+  textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  verticalAlign: 'middle',
+  padding: '12px 16px', verticalAlign: 'middle',
 }

@@ -32,7 +32,7 @@ function normalizeInternalLinks(html: string, knownSlugs: string[]): string {
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = []): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string): string {
   const baseTag = `<base href="${base}">`
 
   // Step 1: fix root-relative internal links before base href takes effect
@@ -49,6 +49,16 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     const noindex = '<meta name="robots" content="noindex, follow">'
     if (/<head[^>]*>/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${noindex}`)
+    }
+  }
+
+  // Inject favicon and OG image if provided
+  if (/<head[^>]*>/i.test(result)) {
+    if (faviconUrl && !/<link[^>]+rel=["']icon["']/i.test(result)) {
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" href="${faviconUrl}">`)
+    }
+    if (ogImageUrl && !/<meta[^>]+property=["']og:image["']/i.test(result)) {
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<meta property="og:image" content="${ogImageUrl}">`)
     }
   }
 
@@ -102,8 +112,11 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const base = `/preview/${projectSlug}/`
   const siteUrl = `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
   const knownSlugs = ['blog', ...(config?.pages ?? []).map(p => p.slug)]
+  const faviconUrl = (config as any)?.favicon_url as string | undefined
+  const page = config?.pages?.find(p => p.slug === pageSlug)
+  const ogImageUrl = (page as any)?.og_image as string | undefined
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -138,8 +151,10 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const base = `https://${customDomain}/`
   const siteUrl = `https://${customDomain}`
   const knownSlugs = ['blog', ...(config.published_pages).map(p => p.slug)]
+  const faviconUrl = (config as any)?.favicon_url as string | undefined
+  const ogImageUrl = (page as any)?.og_image as string | undefined
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })

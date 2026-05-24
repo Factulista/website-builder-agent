@@ -62,7 +62,8 @@ function buildBlogListPage(
   lang = 'it',
   headerHtml = '',
   currentPage = 1,
-  totalPages = 1
+  totalPages = 1,
+  faviconUrl?: string
 ): string {
   const title = lang === 'es' ? 'Blog' : lang === 'en' ? 'Blog' : 'Blog'
   const subtitle = lang === 'es' ? 'Artículos y novedades' : lang === 'en' ? 'Articles and updates' : 'Articoli e aggiornamenti'
@@ -139,6 +140,7 @@ function buildBlogListPage(
   <title>${title}</title>
   <meta name="description" content="${subtitle}">
   <link rel="canonical" href="${baseUrl}/blog">
+  ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ''}
   ${siteStyle}
   <style>
     .blog-listing { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
@@ -321,7 +323,8 @@ ${items}
         .range(offset, offset + PAGE_SIZE - 1)
 
       const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
-      const html = buildBlogListPage(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages)
+      const faviconUrl = (siteConfig.favicon_url as string | undefined)
+      const html = buildBlogListPage(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, faviconUrl)
       return new Response(html, {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
@@ -347,7 +350,8 @@ ${items}
       }
 
       const sidebarBanner = (siteConfig.blog_sidebar_banner as BlogSidebarBanner | undefined) ?? null
-      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner)
+      const faviconUrl = (siteConfig.favicon_url as string | undefined)
+      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl)
       return new Response(html, {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' },

@@ -7,4 +7,6 @@ export type Page = {
   menuLabel?: string
   /** Whether this page appears in the nav menu (defaults to true) */
   inMenu?: boolean
+  /** OG image URL for this page */
+  og_image?: string
 }
