@@ -101,8 +101,8 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
         el.removeAttribute('contenteditable');el.removeAttribute('data-fact-edit');
         el.style.outline='';el.style.outlineOffset='';el.style.borderRadius='';
       });
-      // Remove editor-only elements (base tag, font preloads, UI overlays)
-      clone.querySelectorAll('[data-fact-editor]').forEach(function(el){el.remove();});
+      // Remove editor-only elements (base tags, font preloads, UI overlays)
+      clone.querySelectorAll('[data-fact-editor],base').forEach(function(el){el.remove();});
       ['#fact-edit-global','#fact-edit-script','#fact-edit-marker','#fact-ctx-menu','#fact-link-overlay'].forEach(function(sel){
         var el=clone.querySelector(sel);if(el)el.remove();
       });
@@ -769,8 +769,8 @@ function reorderNavLinks(pages: Page[]): Page[] {
 
 function stripEditorArtifacts(html: string): string {
   if (typeof window === 'undefined' || !html) return html
-  // Quick exit if no markers present
-  if (!/fact-edit|contenteditable|html-change/i.test(html)) return html
+  // Quick exit if no markers present (also check for <base> which may have accumulated)
+  if (!/fact-edit|contenteditable|html-change|<base/i.test(html)) return html
 
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
@@ -785,8 +785,11 @@ function stripEditorArtifacts(html: string): string {
   // Style and marker by id
   doc.querySelectorAll('style#fact-edit-global, #fact-edit-marker, meta[data-fact-edit-loaded]').forEach(el => el.remove())
 
-  // Editor-injected elements (base tag, font preloads) — must never be saved to page HTML
+  // Editor-injected elements (new: data-fact-editor attribute) — must never be saved to page HTML
   doc.querySelectorAll('[data-fact-editor]').forEach(el => el.remove())
+
+  // Legacy: <base> tags accumulated from old editor sessions (pages should never have <base> tags)
+  doc.querySelectorAll('base').forEach(el => el.remove())
 
   // Residual attributes from interrupted edit sessions
   doc.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'))
@@ -1375,7 +1378,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (config?.pages?.length) loadedPages = config.pages
       else if (config?.html) loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
       // Strip any editor artefacts left over from previous edit sessions before fix
+      const rawPages = loadedPages
       loadedPages = loadedPages.map(p => ({ ...p, html: stripEditorArtifacts(p.html) }))
+      // If any page was dirty (accumulated <base> tags etc.), persist the cleaned version immediately
+      const wasDirty = loadedPages.some((p, i) => p.html !== rawPages[i]?.html)
       // Remove any static "blog" page — the blog is served dynamically from blog_posts.
       // A static page with slug "blog" is always shadowed by the dynamic route and causes confusion.
       const hasBlogPage = loadedPages.some(p => p.slug === 'blog')
@@ -1394,6 +1400,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setBlogHeaderHtml(config?.blog_header_html ?? '')
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
+      // Auto-heal: if pages had accumulated <base> tags, save the cleaned HTML immediately
+      if (wasDirty) {
+        const cleanConfig = { ...(config ?? {}), pages: loadedPages }
+        await supabase.from('projects').update({
+          site_config: cleanConfig,
+          updated_at: new Date().toISOString(),
+        }).eq('id', id)
+      }
     }
     load()
   }, [id])
