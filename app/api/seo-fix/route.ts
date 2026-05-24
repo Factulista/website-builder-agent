@@ -130,17 +130,85 @@ function applyHtmlFix(
     case 'semantic-html': {
       const data = checkResult?.data as { missing?: string[] } | undefined
       const missing = data?.missing ?? []
-      // Wrap <nav> around the first <ul> inside a nav-looking element if nav is missing
-      if (missing.includes('main')) {
-        // Wrap everything between header/nav and footer in <main>
-        if (!/<main\b/i.test(html)) {
-          html = html.replace(/(<\/(?:header|nav)>)([\s\S]*?)(<(?:footer|script)\b)/i,
-            (_m, after, mid, before) => `${after}\n<main>${mid}</main>\n${before}`)
+
+      /**
+       * Renames a block-level tag (div/section) to a semantic tag.
+       * Finds the opening tag by class-name pattern, then walks nesting depth
+       * to locate the matching closing tag and renames both.
+       */
+      function renameToSemantic(
+        src: string,
+        classPattern: RegExp,
+        newTag: string,
+      ): string {
+        const openRe = new RegExp(`<(div|section)\\b([^>]*)>`, 'gi')
+        let m
+        while ((m = openRe.exec(src)) !== null) {
+          if (!classPattern.test(m[2])) continue
+          const origTag = m[1]
+          const attrs = m[2]
+          const start = m.index
+          const afterOpen = start + m[0].length
+          // Walk nesting depth to find matching closing tag
+          let depth = 1
+          let pos = afterOpen
+          const closeRe = new RegExp(`<(\/?)${origTag}\\b`, 'gi')
+          closeRe.lastIndex = pos
+          let cm
+          let closeIdx = -1
+          while ((cm = closeRe.exec(src)) !== null) {
+            if (cm[1]) { depth--; if (depth === 0) { closeIdx = cm.index; break } }
+            else depth++
+          }
+          if (closeIdx < 0) continue
+          const closeTagLen = `</${origTag}>`.length
+          return (
+            src.slice(0, start) +
+            `<${newTag}${attrs}>` +
+            src.slice(afterOpen, closeIdx) +
+            `</${newTag}>` +
+            src.slice(closeIdx + closeTagLen)
+          )
         }
+        return src
       }
+
+      // Fix: <header> — wrap first <nav> if no <header> exists
       if (missing.includes('header') && !/<header\b/i.test(html)) {
         html = html.replace(/(<nav\b[^>]*>[\s\S]*?<\/nav>)/i, `<header>\n$1\n</header>`)
       }
+
+      // Fix: <footer> — rename footer-class div/section to <footer>
+      if (missing.includes('footer') && !/<footer\b/i.test(html)) {
+        const renamed = renameToSemantic(html, /\bfooter\b/i, 'footer')
+        if (renamed !== html) {
+          html = renamed
+        } else {
+          // Fallback: wrap everything between last </section>/</div> group and </body>
+          html = html.replace(/(<\/(?:section|div)>)(\s*<\/body>)/i, '$1\n</footer>$2')
+            .replace(/(<(?:section|div)\b[^>]*>\s*)(?=[\s\S]*<\/footer>)/, (m) =>
+              m.replace(/^<(section|div)/, '<footer'))
+        }
+      }
+
+      // Fix: <main> — wrap content between nav/header end and footer/body end
+      if (missing.includes('main') && !/<main\b/i.test(html)) {
+        // Try wrapping between closing nav/header and opening footer
+        const wrapped = html.replace(
+          /(<\/(?:header|nav)>)([\s\S]*?)(<(?:footer|\/body)\b)/i,
+          (_m, after, mid, before) => `${after}\n<main>${mid}</main>\n${before}`,
+        )
+        if (wrapped !== html) html = wrapped
+      }
+
+      // Fix: <article> — wrap content inside <main> (or first large section) with <article>
+      if (missing.includes('article') && !/<article\b/i.test(html)) {
+        if (/<main\b[^>]*>/i.test(html)) {
+          html = html.replace(/(<main\b[^>]*>)([\s\S]*?)(<\/main>)/i,
+            (_m, open, mid, close) => `${open}\n<article>${mid}</article>\n${close}`)
+        }
+      }
+
       return html
     }
 
