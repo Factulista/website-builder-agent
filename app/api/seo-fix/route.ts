@@ -52,6 +52,16 @@ function applyHtmlFix(
       return html.replace(/<html\b/i, `<html lang="${lang}"`)
     }
 
+    case 'noindex': {
+      // Remove <meta name="robots" content="...noindex..."> (any content with noindex)
+      html = html.replace(/<meta\b[^>]*name=["']robots["'][^>]*\bnoindex\b[^>]*>\n?/gi, '')
+      html = html.replace(/<meta\b[^>]*\bnoindex\b[^>]*name=["']robots["'][^>]*>\n?/gi, '')
+      // Remove <meta name="googlebot" content="...noindex...">
+      html = html.replace(/<meta\b[^>]*name=["']googlebot["'][^>]*\bnoindex\b[^>]*>\n?/gi, '')
+      html = html.replace(/<meta\b[^>]*\bnoindex\b[^>]*name=["']googlebot["'][^>]*>\n?/gi, '')
+      return html
+    }
+
     case 'img-dimensions': {
       return html.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
         if (/\bwidth=/i.test(attrs) && /\bheight=/i.test(attrs)) return match

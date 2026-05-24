@@ -125,6 +125,33 @@ function checkLang(html: string): CheckResult {
   }
 }
 
+function checkNoindex(html: string): CheckResult {
+  // Detect <meta name="robots" content="...noindex...">
+  const metaMatch = html.match(/<meta\b[^>]*name=["']robots["'][^>]*content=["']([^"']*)["']/i)
+                 ?? html.match(/<meta\b[^>]*content=["']([^"']*)["'][^>]*name=["']robots["']/i)
+  const metaContent = metaMatch?.[1] ?? ''
+  const hasNoindexMeta = /\bnoindex\b/i.test(metaContent)
+
+  // Detect <meta name="googlebot" content="...noindex...">
+  const googlebotMatch = html.match(/<meta\b[^>]*name=["']googlebot["'][^>]*content=["']([^"']*)["']/i)
+                      ?? html.match(/<meta\b[^>]*content=["']([^"']*)["'][^>]*name=["']googlebot["']/i)
+  const googlebotContent = googlebotMatch?.[1] ?? ''
+  const hasNoindexGooglebot = /\bnoindex\b/i.test(googlebotContent)
+
+  const hasNoindex = hasNoindexMeta || hasNoindexGooglebot
+  const source = hasNoindexMeta ? 'robots' : hasNoindexGooglebot ? 'googlebot' : ''
+
+  return {
+    checkId: 'noindex',
+    score: hasNoindex ? 0 : 100,
+    status: hasNoindex ? 'fail' : 'pass',
+    detail: hasNoindex
+      ? `Meta tag noindex rilevato (name="${source}") — la pagina non verrà indicizzata`
+      : 'Nessun noindex rilevato ✓',
+    data: { hasNoindex, source },
+  }
+}
+
 /** URLs that are considered placeholder/fake og:images and should be flagged as missing. */
 const OG_IMAGE_PLACEHOLDERS = [
   'placehold.co', 'placeholder.com', 'picsum.photos', 'via.placeholder.com',
@@ -344,6 +371,7 @@ const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
   'meta-description': checkMetaDescription,
   'canonical': checkCanonical,
   'lang': checkLang,
+  'noindex': checkNoindex,
   'open-graph': checkOpenGraph,
   'h1-unique': checkH1Unique,
   'h1-keyword': checkH1Keyword,

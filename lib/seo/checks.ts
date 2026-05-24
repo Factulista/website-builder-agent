@@ -8,6 +8,7 @@ export type CheckId =
   | 'meta-description'
   | 'canonical'
   | 'lang'
+  | 'noindex'
   | 'open-graph'
   | 'h1-unique'
   | 'h1-keyword'
@@ -77,6 +78,16 @@ export const SEO_CHECKS: SeoCheck[] = [
     fixOwner: 'html',
     scoreType: 'binary',
     weight: 3,
+  },
+  {
+    id: 'noindex',
+    label: 'Noindex assente',
+    description: 'Se presente, il meta noindex blocca Google dall\'indicizzare la pagina. Va rimosso dalle pagine pubbliche.',
+    group: 'meta',
+    groupLabel: '📋 Meta & Title',
+    fixOwner: 'html',
+    scoreType: 'binary',
+    weight: 10,
   },
   // ── Structure (29 pts total) ──────────────────────────────────────────────────
   {
