@@ -95,6 +95,7 @@ function SearchBar({
     { label: loaded ? t('sidebar.newSite' as const, language) : 'New site', href: '/projects/new', icon: '✦' },
     { label: 'Agents', href: '/back-office/agents', icon: '⌬' },
     { label: loaded ? t('sidebar.templates' as const, language) : 'Templates', href: '/back-office/templates', icon: '▦' },
+    { label: 'Componenti', href: '/back-office/components', icon: '🧩' },
     { label: loaded ? t('sidebar.settings' as const, language) : 'Settings', href: '/back-office/settings', icon: '⚙' },
   ]
 
@@ -334,6 +335,7 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
               }
             />
             <NavItem icon="▦" label={loaded ? t('sidebar.templates' as const, language) : 'Templates'} href="/back-office/templates" active={pathname.startsWith('/back-office/templates')} />
+            <NavItem icon="🧩" label="Componenti" href="/back-office/components" active={pathname.startsWith('/back-office/components')} />
           </>
         )}
       </nav>
