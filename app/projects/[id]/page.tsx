@@ -919,6 +919,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [blogActiveBlock, setBlogActiveBlock] = useState<string>('')
+  const [blogListOpen, setBlogListOpen] = useState(false)
+  const [blogInsertOpen, setBlogInsertOpen] = useState(false)
+  const [blogAlignOpen, setBlogAlignOpen] = useState(false)
   const [blogPublishing, setBlogPublishing] = useState(false)
   const [blogGenerating, setBlogGenerating] = useState(false)
   const [blogGenTopic, setBlogGenTopic] = useState('')
@@ -4088,6 +4091,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     {/* ── Formatting toolbar ── */}
                     {(() => {
                       const blogImgInputRef = { current: null as HTMLInputElement | null }
+                      const win = () => blogIframeRef.current?.contentWindow
+                      const fmt = (cmd: string, val?: string) => win()?.postMessage({ type: 'fact-format', cmd, val }, '*')
                       const handleBlogImageUpload = async (file: File) => {
                         if (!file.type.startsWith('image/')) return
                         const { data: { session } } = await supabase.auth.getSession()
@@ -4098,29 +4103,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         if (error) return
                         const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
                         const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${publicUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
-                        blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
+                        win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
                       }
+
+                      // Shared dropdown menu styles
+                      const dropMenu: React.CSSProperties = {
+                        position: 'absolute', top: '100%', left: 0, zIndex: 9999,
+                        background: '#fff', border: `1px solid ${C.border}`,
+                        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                        padding: '4px', minWidth: '180px', marginTop: '3px',
+                      }
+                      const dropItem = (onClick: () => void, label: React.ReactNode, active = false): React.CSSProperties => ({})
+                      void dropItem // used inline below
+
+                      const blockLabel: Record<string, string> = { H1: 'H1', H2: 'H2', H3: 'H3', H4: 'H4', P: '§ P' }
+                      const currentBlock = blogActiveBlock && blockLabel[blogActiveBlock] ? blockLabel[blogActiveBlock] : '§ P'
+
                       return (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}>
-                          {/* Font picker */}
+                        <div
+                          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}
+                          // Close all dropdowns when clicking anywhere on the toolbar
+                          onClick={() => { setBlogListOpen(false); setBlogInsertOpen(false); setBlogAlignOpen(false) }}
+                        >
+
+                          {/* ── Font picker ───────────────────────────────── */}
                           <select
                             title="Scegli font"
                             defaultValue=""
                             onMouseDown={e => e.stopPropagation()}
                             onChange={e => {
                               const font = e.target.value
-                              const win = blogIframeRef.current?.contentWindow
-                              if (!win || !font) return
-                              win.postMessage({ type: 'fact-format', cmd: 'fontName', val: font }, '*')
-                              // Reset select to placeholder after applying
+                              if (!font) return
+                              win()?.postMessage({ type: 'fact-format', cmd: 'fontName', val: font }, '*')
                               e.target.value = ''
                             }}
-                            style={{
-                              height: '26px', padding: '0 4px', border: `1px solid ${C.border}`,
-                              borderRadius: 4, background: C.white, cursor: 'pointer',
-                              fontSize: '0.75rem', color: C.text, fontFamily: 'inherit',
-                              maxWidth: '120px',
-                            }}
+                            style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', maxWidth: '110px' }}
                           >
                             <option value="" disabled>Font</option>
                             <optgroup label="Sistema">
@@ -4143,99 +4160,227 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               <option value="Source Serif 4">Source Serif 4</option>
                             </optgroup>
                           </select>
+
                           <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
-                          {/* Text color picker */}
-                          <label
-                            title="Colore testo"
-                            style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, height: '26px', gap: '1px', position: 'relative', userSelect: 'none' }}
-                          >
+
+                          {/* ── Color picker ──────────────────────────────── */}
+                          <label title="Colore testo" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, height: '26px', gap: '1px', position: 'relative', userSelect: 'none' }}>
                             <span style={{ fontSize: '0.82rem', fontWeight: 800, color: C.text, lineHeight: 1, pointerEvents: 'none' }}>A</span>
                             <div style={{ width: '14px', height: '3px', borderRadius: '1px', background: 'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7)', pointerEvents: 'none' }} />
-                            <input
-                              type="color"
-                              defaultValue="#000000"
-                              onMouseDown={() => {
-                                blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-save-sel' }, '*')
-                              }}
-                              onChange={e => {
-                                const win = blogIframeRef.current?.contentWindow
-                                if (!win) return
-                                win.postMessage({ type: 'fact-format', cmd: 'foreColor', val: e.target.value }, '*')
-                              }}
+                            <input type="color" defaultValue="#000000"
+                              onMouseDown={() => win()?.postMessage({ type: 'fact-save-sel' }, '*')}
+                              onChange={e => win()?.postMessage({ type: 'fact-format', cmd: 'foreColor', val: e.target.value }, '*')}
                               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }}
                             />
                           </label>
+
                           <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                          {/* ── Block type dropdown ───────────────────────── */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              title="Tipo di blocco"
+                              onMouseDown={e => { e.preventDefault(); e.stopPropagation() }}
+                              onClick={e => { e.stopPropagation(); setBlogListOpen(false); setBlogInsertOpen(false); setBlogAlignOpen(false) }}
+                            >
+                              {/* Use native select for block type — it shows current value and is accessible */}
+                            </button>
+                            <select
+                              title="Tipo di blocco"
+                              value={blogActiveBlock || 'P'}
+                              onMouseDown={e => e.stopPropagation()}
+                              onChange={e => {
+                                fmt('formatBlock', e.target.value.toLowerCase())
+                                setBlogListOpen(false); setBlogInsertOpen(false); setBlogAlignOpen(false)
+                              }}
+                              style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'monospace', fontWeight: 700, minWidth: '80px' }}
+                            >
+                              <option value="H1">H1 — Titolo 1</option>
+                              <option value="H2">H2 — Titolo 2</option>
+                              <option value="H3">H3 — Titolo 3</option>
+                              <option value="H4">H4 — Titolo 4</option>
+                              <option value="P">§ — Paragrafo</option>
+                              <option value="BLOCKQUOTE">❝ — Citazione</option>
+                              <option value="PRE">{'<>'} — Codice</option>
+                            </select>
+                          </div>
+
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                          {/* ── Bold / Italic / Underline / Strike ────────── */}
                           {([
-                            { label: 'H1', cmd: 'formatBlock', val: 'h1', title: 'Titolo 1', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'H1' ? C.blue : C.white, color: blogActiveBlock === 'H1' ? 'white' : C.text, borderColor: blogActiveBlock === 'H1' ? C.blue : C.border } },
-                            { label: 'H2', cmd: 'formatBlock', val: 'h2', title: 'Titolo 2', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'H2' ? C.blue : C.white, color: blogActiveBlock === 'H2' ? 'white' : C.text, borderColor: blogActiveBlock === 'H2' ? C.blue : C.border } },
-                            { label: 'H3', cmd: 'formatBlock', val: 'h3', title: 'Titolo 3', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'H3' ? C.blue : C.white, color: blogActiveBlock === 'H3' ? 'white' : C.text, borderColor: blogActiveBlock === 'H3' ? C.blue : C.border } },
-                            { label: 'H4', cmd: 'formatBlock', val: 'h4', title: 'Titolo 4', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'H4' ? C.blue : C.white, color: blogActiveBlock === 'H4' ? 'white' : C.text, borderColor: blogActiveBlock === 'H4' ? C.blue : C.border } },
-                            { label: 'P', cmd: 'formatBlock', val: 'p', title: 'Paragrafo', style: { fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 700, background: blogActiveBlock === 'P' ? C.blue : C.white, color: blogActiveBlock === 'P' ? 'white' : C.text, borderColor: blogActiveBlock === 'P' ? C.blue : C.border } },
-                            null,
-                            { label: 'B', cmd: 'bold', val: undefined, title: 'Grassetto', style: { fontWeight: 800, fontSize: '0.82rem' } },
-                            { label: 'I', cmd: 'italic', val: undefined, title: 'Corsivo', style: { fontStyle: 'italic', fontSize: '0.82rem' } },
-                            { label: 'U', cmd: 'underline', val: undefined, title: 'Sottolineato', style: { textDecoration: 'underline', fontSize: '0.82rem' } },
-                            null,
-                            { label: (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>), cmd: 'link', val: undefined, title: 'Inserisci link', style: { display: 'flex', alignItems: 'center' } },
-                            null,
-                            { label: (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>), cmd: 'insertUnorderedList', val: undefined, title: 'Elenco puntato', style: { display: 'flex', alignItems: 'center' } },
-                            { label: (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M3 10h2" strokeWidth="1.5"/><path d="M3 16a1.5 1.5 0 0 1 3 0c0 1.5-3 3-3 3h3" strokeWidth="1.5"/></svg>), cmd: 'insertOrderedList', val: undefined, title: 'Elenco numerato', style: { display: 'flex', alignItems: 'center' } },
-                            { label: (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>), cmd: 'insertTable', val: undefined, title: 'Inserisci tabella', style: { display: 'flex', alignItems: 'center' } },
-                          ] as (null | { label: React.ReactNode; cmd: string; val?: string; title: string; style: React.CSSProperties })[]).map((btn, i) => {
-                            if (!btn) return <div key={`sep-${i}`} style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
-                            return (
-                              <button
-                                key={btn.cmd + (btn.val ?? '')}
-                                title={btn.title}
-                                onMouseDown={(e) => {
-                                  e.preventDefault()
-                                  const win = blogIframeRef.current?.contentWindow
-                                  if (!win) return
-                                  if (btn.cmd === 'link') {
-                                    win.postMessage({ type: 'fact-link' }, '*')
-                                  } else if (btn.cmd === 'insertTable') {
-                                    const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:0.95rem"><thead><tr><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 1</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 2</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 3</th></tr></thead><tbody><tr><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 1</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 2</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 3</td></tr><tr><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 4</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 5</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 6</td></tr></tbody></table>`
-                                    win.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: tableHtml }, '*')
-                                  } else {
-                                    win.postMessage({ type: 'fact-format', cmd: btn.cmd, val: btn.val }, '*')
-                                  }
-                                }}
-                                style={{
-                                  padding: '2px 7px',
-                                  border: `1px solid ${C.border}`,
-                                  borderRadius: 4,
-                                  background: C.white,
-                                  cursor: 'pointer',
-                                  color: C.text,
-                                  lineHeight: 1.4,
-                                  ...btn.style,
-                                }}
-                              >{btn.label}</button>
-                            )
-                          })}
-                          {/* Image upload button */}
-                          <div key="sep-img" style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
-                          <button
-                            title="Inserisci immagine"
-                            onMouseDown={(e) => { e.preventDefault() }}
-                            onClick={() => blogImgInputRef.current?.click()}
-                            style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, lineHeight: 1.4, display: 'flex', alignItems: 'center' }}
+                            { label: 'B', cmd: 'bold', title: 'Grassetto (Ctrl+B)', s: { fontWeight: 800 } },
+                            { label: 'I', cmd: 'italic', title: 'Corsivo (Ctrl+I)', s: { fontStyle: 'italic' as const } },
+                            { label: 'U', cmd: 'underline', title: 'Sottolineato (Ctrl+U)', s: { textDecoration: 'underline' } },
+                            { label: 'S', cmd: 'strikeThrough', title: 'Barrato', s: { textDecoration: 'line-through' } },
+                          ]).map(b => (
+                            <button key={b.cmd} title={b.title}
+                              onMouseDown={e => { e.preventDefault(); fmt(b.cmd) }}
+                              style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, fontSize: '0.82rem', lineHeight: 1.4, ...b.s }}
+                            >{b.label}</button>
+                          ))}
+
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                          {/* ── Alignment dropdown ────────────────────────── */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              title="Allineamento testo"
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={e => { e.stopPropagation(); setBlogAlignOpen(v => !v); setBlogListOpen(false); setBlogInsertOpen(false) }}
+                              style={{ padding: '2px 7px', border: `1px solid ${blogAlignOpen ? C.blue : C.border}`, borderRadius: 4, background: blogAlignOpen ? '#eff6ff' : C.white, cursor: 'pointer', color: blogAlignOpen ? C.blue : C.text, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '3px', height: '26px' }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+                              <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▾</span>
+                            </button>
+                            {blogAlignOpen && (
+                              <div style={dropMenu} onClick={e => e.stopPropagation()}>
+                                {([
+                                  { label: '⬅  Sinistra', cmd: 'justifyLeft' },
+                                  { label: '↔  Centro', cmd: 'justifyCenter' },
+                                  { label: '➡  Destra', cmd: 'justifyRight' },
+                                  { label: '⬛  Giustificato', cmd: 'justifyFull' },
+                                ]).map(a => (
+                                  <button key={a.cmd}
+                                    onMouseDown={e => { e.preventDefault(); fmt(a.cmd); setBlogAlignOpen(false) }}
+                                    style={{ display: 'block', width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.8rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                  >{a.label}</button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                          {/* ── Link ─────────────────────────────────────── */}
+                          <button title="Inserisci / modifica link"
+                            onMouseDown={e => { e.preventDefault(); win()?.postMessage({ type: 'fact-link' }, '*') }}
+                            style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
                           >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                            </svg>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                           </button>
+
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                          {/* ── Liste dropdown ───────────────────────────── */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              title="Liste"
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={e => { e.stopPropagation(); setBlogListOpen(v => !v); setBlogInsertOpen(false); setBlogAlignOpen(false) }}
+                              style={{ padding: '2px 7px', border: `1px solid ${blogListOpen ? C.blue : C.border}`, borderRadius: 4, background: blogListOpen ? '#eff6ff' : C.white, cursor: 'pointer', color: blogListOpen ? C.blue : C.text, display: 'flex', alignItems: 'center', gap: '3px', height: '26px' }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+                              <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▾</span>
+                            </button>
+                            {blogListOpen && (
+                              <div style={dropMenu} onClick={e => e.stopPropagation()}>
+                                <button onMouseDown={e => { e.preventDefault(); fmt('insertUnorderedList'); setBlogListOpen(false) }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+                                  Elenco puntato
+                                </button>
+                                <button onMouseDown={e => { e.preventDefault(); fmt('insertOrderedList'); setBlogListOpen(false) }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M3 10h2" strokeWidth="1.5"/><path d="M3 16a1.5 1.5 0 0 1 3 0c0 1.5-3 3-3 3h3" strokeWidth="1.5"/></svg>
+                                  Elenco numerato
+                                </button>
+                                <div style={{ height: 1, background: C.border, margin: '3px 0' }} />
+                                <button onMouseDown={e => { e.preventDefault(); fmt('indent'); setBlogListOpen(false) }}
+                                  style={{ display: 'block', width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.8rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >→  Aumenta rientro</button>
+                                <button onMouseDown={e => { e.preventDefault(); fmt('outdent'); setBlogListOpen(false) }}
+                                  style={{ display: 'block', width: '100%', padding: '7px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.8rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >←  Diminuisci rientro</button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                          {/* ── Inserisci dropdown ───────────────────────── */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              title="Inserisci elemento"
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={e => { e.stopPropagation(); setBlogInsertOpen(v => !v); setBlogListOpen(false); setBlogAlignOpen(false) }}
+                              style={{ padding: '2px 8px', border: `1px solid ${blogInsertOpen ? C.blue : C.border}`, borderRadius: 4, background: blogInsertOpen ? '#eff6ff' : C.white, cursor: 'pointer', color: blogInsertOpen ? C.blue : C.text, fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', height: '26px', whiteSpace: 'nowrap' }}
+                            >
+                              + Inserisci <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>▾</span>
+                            </button>
+                            {blogInsertOpen && (
+                              <div style={{ ...dropMenu, minWidth: '200px' }} onClick={e => e.stopPropagation()}>
+                                {/* Table */}
+                                <button onMouseDown={e => {
+                                  e.preventDefault()
+                                  const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:0.95rem"><thead><tr><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 1</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 2</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 3</th></tr></thead><tbody><tr><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 1</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 2</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 3</td></tr><tr><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 4</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 5</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 6</td></tr></tbody></table>`
+                                  win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: tableHtml }, '*')
+                                  setBlogInsertOpen(false)
+                                }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
+                                  Tabella 3×2
+                                </button>
+                                {/* Image */}
+                                <button onMouseDown={e => { e.preventDefault(); setBlogInsertOpen(false); setTimeout(() => blogImgInputRef.current?.click(), 50) }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                  Immagine
+                                </button>
+                                <div style={{ height: 1, background: C.border, margin: '3px 0' }} />
+                                {/* Divider */}
+                                <button onMouseDown={e => {
+                                  e.preventDefault()
+                                  win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: '<hr style="border:none;border-top:2px solid #e5e7eb;margin:2rem 0;">' }, '*')
+                                  setBlogInsertOpen(false)
+                                }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >
+                                  <span style={{ fontSize: '1rem' }}>—</span>
+                                  Separatore (HR)
+                                </button>
+                                {/* Code block */}
+                                <button onMouseDown={e => {
+                                  e.preventDefault()
+                                  win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: '<pre style="background:#1e293b;color:#e2e8f0;padding:1rem 1.25rem;border-radius:8px;overflow-x:auto;font-family:monospace;font-size:0.88rem;margin:1.5rem 0;"><code>// il tuo codice qui</code></pre>' }, '*')
+                                  setBlogInsertOpen(false)
+                                }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                                >
+                                  <span style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{'{}'}</span>
+                                  Blocco codice
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Hidden image input */}
                           <input
                             ref={el => { blogImgInputRef.current = el }}
-                            type="file"
-                            accept="image/*"
-                            style={{ display: 'none' }}
-                            onChange={e => {
-                              const file = e.target.files?.[0]
-                              if (file) handleBlogImageUpload(file)
-                              e.target.value = ''
-                            }}
+                            type="file" accept="image/*" style={{ display: 'none' }}
+                            onChange={e => { const file = e.target.files?.[0]; if (file) handleBlogImageUpload(file); e.target.value = '' }}
                           />
                         </div>
                       )
