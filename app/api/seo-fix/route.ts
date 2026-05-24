@@ -420,7 +420,7 @@ export async function POST(req: NextRequest) {
 
   ;(async () => {
     try {
-      const { projectId, pageSlug, checkId, checkResult, pages, customDomain } =
+      const { projectId, pageSlug, checkId, checkResult, pages, customDomain, projectMedia } =
         await req.json() as {
           projectId: string
           pageSlug: string
@@ -428,6 +428,7 @@ export async function POST(req: NextRequest) {
           checkResult: CheckResult
           pages: Page[]
           customDomain?: string | null
+          projectMedia?: Array<{ url: string; name: string }>
         }
 
       const apiKey = process.env.ANTHROPIC_API_KEY
@@ -502,12 +503,35 @@ Rispondi SOLO con il testo dell'H1.`, apiKey, context, tokens)
 
           case 'open-graph': {
             const missing = (data?.missing as string[]) ?? ['og:title', 'og:description', 'og:image', 'og:url']
+
+            // Pick the best og:image: prefer user-uploaded images over anything else.
+            // Filter to likely web-displayable formats and avoid SVG (bad for og:image).
+            const uploadedImages = (projectMedia ?? []).filter(m =>
+              /\.(jpe?g|png|webp|gif)$/i.test(m.name)
+            )
+            // Also extract the first real image src already present in the page HTML
+            const pageImgMatch = targetPage.html.match(/<img\b[^>]*src=["']([^"']+\.(jpe?g|png|webp))[^"']*["']/i)
+            const pageImgUrl = pageImgMatch?.[1] ?? null
+
+            const ogImageUrl =
+              uploadedImages[0]?.url   // 1st priority: user's media library
+              ?? pageImgUrl             // 2nd priority: first real image found in page HTML
+              ?? null                   // 3rd: we'll instruct Claude to leave it out if missing
+
+            const ogImageLine = ogImageUrl
+              ? `og:image="${ogImageUrl}" (URL immagine reale — usa questo esatto)`
+              : `og:image — NON inserire se non hai un URL immagine reale (meglio assente che un placeholder generico)`
+
             generated = await callSeoAgent(
               `Genera i tag Open Graph mancanti per la pagina "${targetPage.name}" di "${resolvedBrand}" (${type}).
 ${pageCtx}
 Tag mancanti: ${missing.join(', ')}
 URL canonico: ${canonicalUrl}
-Requisiti: og:title ≤60 chars (usa la keyword primaria), og:description ≤200 chars (con CTA), og:url="${canonicalUrl}", og:image="https://placehold.co/1200x630" se non disponibile.
+Requisiti:
+- og:title ≤60 chars (usa la keyword primaria)
+- og:description ≤200 chars (con CTA)
+- og:url="${canonicalUrl}"
+- ${ogImageLine}
 Lingua contenuto: ${resolvedLang} — scrivi i testi in questa lingua.
 Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO i tag, nient'altro.`,
               apiKey, context, tokens)

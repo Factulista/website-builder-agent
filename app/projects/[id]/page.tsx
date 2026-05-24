@@ -1662,6 +1662,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         checkResult,
         pages: latestPagesRef.current,
         customDomain: customDomain || null,
+        // Pass uploaded image URLs so the SEO agent can use them for og:image
+        projectMedia: mediaItems.map(m => ({ url: m.url, name: m.name })),
       }),
     })
 

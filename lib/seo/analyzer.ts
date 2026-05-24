@@ -118,20 +118,50 @@ function checkLang(html: string): CheckResult {
   }
 }
 
+/** URLs that are considered placeholder/fake og:images and should be flagged as missing. */
+const OG_IMAGE_PLACEHOLDERS = [
+  'placehold.co', 'placeholder.com', 'picsum.photos', 'via.placeholder.com',
+  'dummyimage.com', 'lorempixel.com', 'fakeimg.pl',
+]
+
+function getOgTagContent(html: string, property: string): string | null {
+  const m =
+    html.match(new RegExp(`<meta\\b[^>]*property=["']${property}["'][^>]*content=["']([^"']+)["']`, 'i'))
+    ?? html.match(new RegExp(`<meta\\b[^>]*content=["']([^"']+)["'][^>]*property=["']${property}["']`, 'i'))
+  return m?.[1] ?? null
+}
+
 function checkOpenGraph(html: string): CheckResult {
   const tags = ['og:title', 'og:description', 'og:image', 'og:url']
-  const present = tags.filter(tag =>
-    new RegExp(`<meta\\b[^>]*property=["']${tag}["'][^>]*content=["'][^"']+["']`, 'i').test(html)
-    || new RegExp(`<meta\\b[^>]*content=["'][^"']+["'][^>]*property=["']${tag}["']`, 'i').test(html)
-  )
-  const score = Math.round((present.length / tags.length) * 100)
+
+  const present: string[] = []
+  const placeholderImage: string[] = []
+
+  for (const tag of tags) {
+    const content = getOgTagContent(html, tag)
+    if (!content) continue
+    if (tag === 'og:image' && OG_IMAGE_PLACEHOLDERS.some(p => content.includes(p))) {
+      // Image exists but is a placeholder — flag separately, don't count as present
+      placeholderImage.push(content)
+      continue
+    }
+    present.push(tag)
+  }
+
   const missing = tags.filter(t => !present.includes(t))
+  const score = Math.round((present.length / tags.length) * 100)
+
+  const isPlaceholderImg = placeholderImage.length > 0
+  const detail = present.length === 4
+    ? 'Tutti i tag og:* presenti ✓'
+    : isPlaceholderImg && missing.includes('og:image')
+      ? `og:image usa un placeholder — carica un'immagine reale. Mancanti: ${missing.filter(t => t !== 'og:image').join(', ') || 'nessuno'}`
+      : `Mancanti: ${missing.join(', ')}`
+
   return {
     checkId: 'open-graph', score, status: statusFromScore(score),
-    detail: present.length === 4
-      ? 'Tutti i tag og:* presenti ✓'
-      : `Mancanti: ${missing.join(', ')}`,
-    data: { present, missing },
+    detail,
+    data: { present, missing, placeholderImage },
   }
 }
 
