@@ -954,6 +954,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [mediaMeta, setMediaMeta] = useState<Record<string, MediaMeta>>({})
   const [faviconUrl, setFaviconUrl] = useState<string>('')
   const [ogPickerSlug, setOgPickerSlug] = useState<string | null>(null)
+  const [creditsBalance, setCreditsBalance] = useState<number | null>(null)
+  const [showPaywall, setShowPaywall] = useState(false)
   const [mediaUrlCopied, setMediaUrlCopied] = useState(false)
   const [codeContent, setCodeContent] = useState('')
   const [versions, setVersions] = useState<Version[]>([])
@@ -977,9 +979,44 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const editIframeRef = useRef<HTMLIFrameElement>(null)
   const editBaseHtmlRef = useRef<string>('')
 
+  // Ref mirrors of "site-wide" state fields. Used by buildSiteConfig to avoid
+  // stale closures when saveState is fired from async callbacks/timers.
+  const faviconUrlRef = useRef<string>('')
+  const blogHeaderHtmlRef = useRef<string>('')
+  const blogSidebarBannerUrlRef = useRef<string>('')
+  const blogSidebarBannerLinkRef = useRef<string>('')
+  const projectContextRef = useRef<{ businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }>({})
+
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
   useEffect(() => { latestPagesRef.current = pages }, [pages])
+  useEffect(() => { faviconUrlRef.current = faviconUrl }, [faviconUrl])
+
+  // Credits balance: load on mount + refresh every 30s + on visibility change
+  useEffect(() => {
+    let cancelled = false
+    const refresh = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const tok = session?.access_token
+        if (!tok) return
+        const r = await fetch('/api/credits', { headers: { Authorization: `Bearer ${tok}` } })
+        if (!r.ok) return
+        const j = await r.json()
+        if (!cancelled) setCreditsBalance(typeof j.balance === 'number' ? j.balance : 0)
+      } catch { /* ignore */ }
+    }
+    refresh()
+    const interval = setInterval(refresh, 30000)
+    const onVis = () => { if (document.visibilityState === 'visible') refresh() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { cancelled = true; clearInterval(interval); document.removeEventListener('visibilitychange', onVis) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => { blogHeaderHtmlRef.current = blogHeaderHtml }, [blogHeaderHtml])
+  useEffect(() => { blogSidebarBannerUrlRef.current = blogSidebarBannerUrl }, [blogSidebarBannerUrl])
+  useEffect(() => { blogSidebarBannerLinkRef.current = blogSidebarBannerLink }, [blogSidebarBannerLink])
+  useEffect(() => { projectContextRef.current = projectContext }, [projectContext])
 
   // Re-analyze SEO whenever pages or blog posts change or the SEO tab is opened.
   // Blog posts are rendered to their published HTML form (same builder used by the
@@ -1238,13 +1275,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       'it'
 
     // Generate SEO metadata for the image in background (non-blocking)
-    fetch('/api/generate-image-meta', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageUrl, context: { ...projectContext, language: detectedLang } }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(meta => {
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+        const r = await fetch('/api/generate-image-meta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ imageUrl, context: { ...projectContext, language: detectedLang } }),
+        })
+        if (!r.ok) return
+        const meta = await r.json()
         if (!meta) return
         const newMeta = {
           ...mediaMeta,
@@ -1256,8 +1298,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
         setMediaMeta(newMeta)
         saveState(messages, latestPagesRef.current, versions, newMeta)
-      })
-      .catch(() => { /* silently ignore */ })
+      } catch { /* silently ignore */ }
+    })()
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1320,18 +1362,37 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return updated
   }
 
-  /** Builds the full site_config object preserving all independent top-level fields. */
-  const buildSiteConfig = (
+  /**
+   * Builds the full site_config by READ-MERGING with the current DB state.
+   * This preserves ANY top-level field we don't explicitly know about
+   * (e.g. published_pages, future fields, fields written by other endpoints).
+   * Critical: prevents data loss when saveState runs after pages are edited.
+   */
+  const buildSiteConfig = async (
     newPages: Page[],
     newMessages: Message[],
     newVersions: Version[],
     newMedia: Record<string, MediaMeta>,
-  ): Record<string, unknown> => {
-    const cfg: Record<string, unknown> = { pages: newPages, messages: newMessages, versions: newVersions, media: newMedia }
-    if (faviconUrl) cfg.favicon_url = faviconUrl
-    if (blogHeaderHtml) cfg.blog_header_html = blogHeaderHtml
-    if (blogSidebarBannerUrl) cfg.blog_sidebar_banner = { url: blogSidebarBannerUrl, link: blogSidebarBannerLink }
-    if (Object.keys(projectContext).length > 0) cfg.context = projectContext
+  ): Promise<Record<string, unknown>> => {
+    const { data: existing } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const base = (existing?.site_config ?? {}) as Record<string, unknown>
+    const cfg: Record<string, unknown> = {
+      ...base,
+      pages: newPages,
+      messages: newMessages,
+      versions: newVersions,
+      media: newMedia,
+    }
+    // Use ref mirrors to avoid stale closures on rapid state updates
+    const fav = faviconUrlRef.current
+    const bhh = blogHeaderHtmlRef.current
+    const bsbUrl = blogSidebarBannerUrlRef.current
+    const bsbLink = blogSidebarBannerLinkRef.current
+    const ctx = projectContextRef.current
+    if (fav) cfg.favicon_url = fav
+    if (bhh) cfg.blog_header_html = bhh
+    if (bsbUrl) cfg.blog_sidebar_banner = { url: bsbUrl, link: bsbLink }
+    if (ctx && Object.keys(ctx).length > 0) cfg.context = ctx
     return cfg
   }
 
@@ -1343,8 +1404,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     const vers = newVersions ?? versions
     const med = newMedia ?? mediaMeta
+    const merged = await buildSiteConfig(newPages, newMessages, vers, med)
     await supabase.from('projects').update({
-      site_config: buildSiteConfig(newPages, newMessages, vers, med),
+      site_config: merged,
       updated_at: new Date().toISOString(),
     }).eq('id', id)
   }
@@ -1557,9 +1619,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return false
     }
 
+    const { data: { session: seoSession } } = await supabase.auth.getSession()
+    const seoToken = seoSession?.access_token
+    if (!seoToken) { setSeoFixError('Sessione scaduta'); return false }
     const resp = await fetch('/api/seo-fix', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${seoToken}` },
       body: JSON.stringify({
         projectId: id,
         pageSlug,
@@ -1843,9 +1908,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ]
       : updatedMessages.map(m => ({ role: m.role, content: toApiContent(m) }))
 
+    const { data: { session: chatSession } } = await supabase.auth.getSession()
+    const chatToken = chatSession?.access_token
+    if (!chatToken) { markFailed('Sessione scaduta — effettua di nuovo il login'); return }
     const res = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chatToken}` },
       body: JSON.stringify({
         projectId: id,
         messages: apiMessages,
@@ -1857,6 +1925,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      if (res.status === 402 || error.code === 'INSUFFICIENT_CREDITS') {
+        setShowPaywall(true)
+        markFailed('Crediti insufficienti — ricarica per continuare')
+        return
+      }
       markFailed(`HTTP ${res.status}: ${error.error || ''}`)
       return
     }
@@ -1930,7 +2003,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: buildSiteConfig(pages, finalMessages, versions, mediaMeta),
+        site_config: await buildSiteConfig(pages, finalMessages, versions, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -1944,7 +2017,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setPendingRequest(buildApiContent(effectiveInput, effectiveImages))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: buildSiteConfig(pages, finalMessages, versions, mediaMeta),
+        site_config: await buildSiteConfig(pages, finalMessages, versions, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -1957,7 +2030,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: buildSiteConfig(pages, finalMessages, versions, mediaMeta),
+        site_config: await buildSiteConfig(pages, finalMessages, versions, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -2339,7 +2412,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <p style={{ margin: 0, fontSize: '0.7rem', color: C.textFaint, lineHeight: 1.2 }}>{t('project.lastSaved' as const, language as any)}</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '2px' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            {creditsBalance !== null && (
+              <button
+                onClick={() => setShowPaywall(true)}
+                title="Crediti residui — clicca per ricaricare"
+                style={{
+                  background: creditsBalance < 5000 ? '#fee2e2' : '#f1f5f9',
+                  border: `1px solid ${creditsBalance < 5000 ? '#fecaca' : C.border}`,
+                  color: creditsBalance < 5000 ? '#b91c1c' : C.text,
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  padding: '3px 9px',
+                  borderRadius: 999,
+                  cursor: 'pointer',
+                  lineHeight: 1.3,
+                }}
+              >
+                ⚡ {creditsBalance.toLocaleString('it-IT')}
+              </button>
+            )}
             <ToolbarBtn
               label="◷"
               title={t('project.versionHistory' as const, language as any)}
@@ -4853,6 +4945,46 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               style={{ width: '100%', padding: '9px', background: C.bgPanel, color: C.text, border: `1px solid ${C.border}`, borderRadius: '8px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.875rem' }}>
               Chiudi
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Paywall Modal — shown when credits run out ── */}
+      {showPaywall && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001, backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowPaywall(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: '16px', padding: '2rem', maxWidth: '440px', width: '90%', boxShadow: '0 24px 60px rgba(0,0,0,0.2)', textAlign: 'center' }}
+          >
+            <div style={{ fontSize: '2.4rem', marginBottom: '0.5rem' }}>⚡</div>
+            <h2 style={{ margin: '0 0 0.6rem', fontSize: '1.25rem', fontWeight: 700, color: '#1c1917' }}>
+              {creditsBalance !== null && creditsBalance < 500 ? 'Crediti esauriti' : 'Ricarica crediti'}
+            </h2>
+            <p style={{ margin: '0 0 1.2rem', fontSize: '0.92rem', color: '#57534e', lineHeight: 1.55 }}>
+              {creditsBalance !== null
+                ? <>Hai <strong>{creditsBalance.toLocaleString('it-IT')}</strong> crediti residui. Ogni interazione con l&apos;AI consuma crediti — ricarica per continuare a usare Factulista.</>
+                : 'Ricarica il tuo wallet per usare l\'AI.'}
+            </p>
+            <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px', marginBottom: '1.2rem', fontSize: '0.82rem', color: '#92400e' }}>
+              💳 Pagamenti via Stripe in arrivo — contattaci a <a href="mailto:support@factulista.com" style={{ color: '#92400e', fontWeight: 600 }}>support@factulista.com</a> per una ricarica manuale nel frattempo.
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setShowPaywall(false)}
+                style={{ flex: 1, padding: '10px', background: '#f5f5f4', color: '#44403c', border: '1px solid #e7e5e4', borderRadius: '10px', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem', fontFamily: 'inherit' }}
+              >
+                Chiudi
+              </button>
+              <a
+                href="mailto:support@factulista.com?subject=Ricarica%20crediti%20Factulista"
+                style={{ flex: 1, padding: '10px', background: '#1c1917', color: '#fff', border: '1px solid #1c1917', borderRadius: '10px', fontWeight: 600, textDecoration: 'none', fontSize: '0.875rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                Contattaci
+              </a>
+            </div>
           </div>
         </div>
       )}

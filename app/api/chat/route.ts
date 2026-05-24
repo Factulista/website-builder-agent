@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
@@ -9,6 +8,13 @@ import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-conf
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
 import { findComponentByKeywords } from '../../../lib/components/index'
+import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-auth'
+import { precheckCredits, consumeCredits, CreditsError } from '../../../lib/credits'
+
+type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
+function totalTokens(u: Usage): number {
+  return (u?.input_tokens ?? 0) + (u?.output_tokens ?? 0)
+}
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -143,6 +149,22 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
 
+    // Auth + ownership + credits pre-check
+    const { user, supabase, project } = await requireUserAndProject(req, projectId)
+    await precheckCredits(user.id, supabase)
+
+    /** Fire-and-forget credit consumption from an LLM usage object. */
+    const consumeUsage = (usage: Usage, model?: string) => {
+      const t = totalTokens(usage)
+      if (t <= 0) return
+      consumeCredits(user.id, t, 'chat', projectId, {
+        input: usage?.input_tokens ?? 0,
+        output: usage?.output_tokens ?? 0,
+        cache_read: usage?.cache_read_input_tokens ?? 0,
+        model,
+      }, supabase).catch((e: unknown) => console.error('[credits] consume failed:', e))
+    }
+
     // Load DB agent configs and apply overrides (non-blocking fallback)
     let dbConfigs: DbAgentConfig[] = []
     try {
@@ -151,17 +173,6 @@ export async function POST(req: NextRequest) {
     } catch {
       // Fall back to hardcoded configs if DB is unavailable
     }
-
-    // Load project context from DB
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-    const { data: project } = await supabase
-      .from('projects')
-      .select('site_config, user_id')
-      .eq('id', projectId)
-      .single()
 
     const siteConfig = (project?.site_config ?? {}) as Record<string, unknown>
     const context: ProjectContext = (siteConfig.context as ProjectContext) ?? {}
@@ -286,15 +297,16 @@ export async function POST(req: NextRequest) {
               else console.log('[template-save] saved:', t.name)
             })
           }
-          // Log completion
+          // Log completion + consume credits
+          const pipelineUsage = result.usage as Usage
+          consumeUsage(pipelineUsage)
           if (runId) {
-            const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
             const pageCount = (result.input?.pages?.length ?? 0)
             completeRun(runId, {
               output_summary: `pipeline: ${pageCount} pagine`,
-              input_tokens: usage?.input_tokens ?? 0,
-              output_tokens: usage?.output_tokens ?? 0,
-              cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+              input_tokens: pipelineUsage?.input_tokens ?? 0,
+              output_tokens: pipelineUsage?.output_tokens ?? 0,
+              cache_read_tokens: pipelineUsage?.cache_read_input_tokens ?? 0,
               duration_ms: Date.now() - runStartTime,
             }).catch(() => null)
           }
@@ -332,13 +344,14 @@ export async function POST(req: NextRequest) {
             site_config: { ...siteConfig, context: result.updatedContext },
           }).eq('id', projectId)
         }
+        const duUsage = result.usage as Usage
+        consumeUsage(duUsage)
         if (runId) {
-          const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
           completeRun(runId, {
             output_summary: `design-update: ${result.input?.pages?.length ?? 0} pagine`,
-            input_tokens: usage?.input_tokens ?? 0,
-            output_tokens: usage?.output_tokens ?? 0,
-            cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+            input_tokens: duUsage?.input_tokens ?? 0,
+            output_tokens: duUsage?.output_tokens ?? 0,
+            cache_read_tokens: duUsage?.cache_read_input_tokens ?? 0,
             duration_ms: Date.now() - runStartTime,
           }).catch(() => null)
         }
@@ -351,13 +364,14 @@ export async function POST(req: NextRequest) {
         emit('✍️ Riscrivendo i testi su tutte le pagine…')
         const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
         if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
+        const cuUsage = result.usage as Usage
+        consumeUsage(cuUsage)
         if (runId) {
-          const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
           completeRun(runId, {
             output_summary: `content-update: ${result.input?.pages?.length ?? 0} pagine`,
-            input_tokens: usage?.input_tokens ?? 0,
-            output_tokens: usage?.output_tokens ?? 0,
-            cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+            input_tokens: cuUsage?.input_tokens ?? 0,
+            output_tokens: cuUsage?.output_tokens ?? 0,
+            cache_read_tokens: cuUsage?.cache_read_input_tokens ?? 0,
             duration_ms: Date.now() - runStartTime,
           }).catch(() => null)
         }
@@ -398,13 +412,16 @@ export async function POST(req: NextRequest) {
           ))
         }
 
+        const seoUsage = result.usage as Usage
+        const blogSeoUsage = blogResult?.usage as Usage
+        consumeUsage(seoUsage)
+        if (blogSeoUsage) consumeUsage(blogSeoUsage)
         if (runId) {
-          const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
           completeRun(runId, {
             output_summary: `seo: ${pages?.length ?? 0} pagine, ${blogPosts.length} post blog`,
-            input_tokens: usage?.input_tokens ?? 0,
-            output_tokens: usage?.output_tokens ?? 0,
-            cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+            input_tokens: (seoUsage?.input_tokens ?? 0) + (blogSeoUsage?.input_tokens ?? 0),
+            output_tokens: (seoUsage?.output_tokens ?? 0) + (blogSeoUsage?.output_tokens ?? 0),
+            cache_read_tokens: (seoUsage?.cache_read_input_tokens ?? 0) + (blogSeoUsage?.cache_read_input_tokens ?? 0),
             duration_ms: Date.now() - runStartTime,
           }).catch(() => null)
         }
@@ -444,13 +461,14 @@ export async function POST(req: NextRequest) {
         result.input.html = normalized[0].html
       }
 
+      const htmlUsage = result.usage as Usage
+      consumeUsage(htmlUsage)
       if (runId) {
-        const usage = result.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
         completeRun(runId, {
           output_summary: `html: ${pages?.length ?? 0} pagine`,
-          input_tokens: usage?.input_tokens ?? 0,
-          output_tokens: usage?.output_tokens ?? 0,
-          cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+          input_tokens: htmlUsage?.input_tokens ?? 0,
+          output_tokens: htmlUsage?.output_tokens ?? 0,
+          cache_read_tokens: htmlUsage?.cache_read_input_tokens ?? 0,
           duration_ms: Date.now() - runStartTime,
         }).catch(() => null)
       }
@@ -469,12 +487,17 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     console.error('Chat API error:', err)
-    // Log the error run if a run was started
     if (runId) {
       failRun(runId, {
-        error_message: String(err).slice(0, 500),
+        error_message: String(err instanceof Error ? err.message : err).slice(0, 500),
         duration_ms: Date.now() - runStartTime,
       }).catch(() => null)
+    }
+    if (err instanceof CreditsError) {
+      return Response.json({ error: err.message, code: 'INSUFFICIENT_CREDITS', balance: err.balance }, { status: 402 })
+    }
+    if (err instanceof ApiError) {
+      return Response.json({ error: err.message }, { status: err.status })
     }
     return Response.json({ error: String(err) }, { status: 500 })
   }

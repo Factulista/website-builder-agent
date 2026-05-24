@@ -1,3 +1,27 @@
+/**
+ * HTML-escape a string for safe interpolation into element text or attribute values.
+ * Use for ALL user-controlled values that end up in href/src/alt/content/title etc.
+ * Do NOT use on intentionally-rendered HTML (e.g. post.content_html).
+ */
+export function escapeHtml(s: unknown): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/** Safe URL for href/src — rejects javascript:, data:, vbscript: schemes */
+export function safeUrl(s: unknown): string {
+  const str = String(s ?? '').trim()
+  if (!str) return '#'
+  // Allow relative, absolute http(s), mailto, tel, anchor
+  if (/^(https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i.test(str)) return escapeHtml(str)
+  // Reject everything else (javascript:, data:, vbscript:, etc.)
+  return '#'
+}
+
 /** CSS for individual blog post content — shared between server render and editor preview */
 export const BLOG_POST_CONTENT_CSS = `
   /* ── Layout 3 colonne ─────────────────────────────────────────────────
@@ -218,23 +242,23 @@ export function buildBlogListPage(
 
   const cards = posts.map(post => {
     const img = post.featured_image
-      ? `<img class="blog-card-img" src="${post.featured_image}" alt="${post.title}" loading="lazy">`
+      ? `<img class="blog-card-img" src="${safeUrl(post.featured_image)}" alt="${escapeHtml(post.title)}" loading="lazy">`
       : ''
     const firstCat = (post.categories ?? [])[0]
     const catSlug = firstCat ? slugifySimple(firstCat) : null
     const postHref = catSlug ? `${baseUrl}/blog/${catSlug}/${post.slug}` : `${baseUrl}/blog/${post.slug}`
-    const catTag = firstCat ? `<span class="blog-tag blog-tag-cat">${firstCat}</span>` : ''
-    const dateStr = formatDate(post.published_at, lang)
-    const authorStr = post.author ? `<span class="blog-card-author">${post.author}</span>` : ''
+    const catTag = firstCat ? `<span class="blog-tag blog-tag-cat">${escapeHtml(firstCat)}</span>` : ''
+    const dateStr = escapeHtml(formatDate(post.published_at, lang))
+    const authorStr = post.author ? `<span class="blog-card-author">${escapeHtml(post.author)}</span>` : ''
     return `<article class="blog-card">
   ${img}
   <div class="blog-card-body">
     ${catTag ? `<div class="blog-card-cats">${catTag}</div>` : ''}
     <div class="blog-card-meta">${dateStr}</div>
-    <h2 class="blog-card-title"><a href="${postHref}">${post.title}</a></h2>
-    ${post.excerpt ? `<p class="blog-card-excerpt">${post.excerpt}</p>` : ''}
+    <h2 class="blog-card-title"><a href="${escapeHtml(postHref)}">${escapeHtml(post.title)}</a></h2>
+    ${post.excerpt ? `<p class="blog-card-excerpt">${escapeHtml(post.excerpt)}</p>` : ''}
     <div class="blog-card-footer">
-      <a class="blog-read-more" href="${postHref}">${readMoreLabel}</a>
+      <a class="blog-read-more" href="${escapeHtml(postHref)}">${readMoreLabel}</a>
       ${authorStr}
     </div>
   </div>
@@ -286,14 +310,14 @@ export function buildBlogListPage(
   }
 
   return `<!DOCTYPE html>
-<html lang="${lang}">
+<html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <meta name="description" content="${subtitle}">
-  <link rel="canonical" href="${baseUrl}/blog">
-  ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ''}
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(subtitle)}">
+  <link rel="canonical" href="${escapeHtml(baseUrl)}/blog">
+  ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
   ${siteStyle}
   <style>
     .blog-listing{max-width:1100px;margin:0 auto;padding:3rem 1.5rem 5rem}
@@ -351,11 +375,11 @@ export function buildBlogPostPage(
   faviconUrl?: string
 ): string {
   const backLabel = '← Blog'
-  const dateStr = formatDate(post.published_at, lang)
-  const tags = (post.categories ?? []).map(c => `<span class="blog-tag">${c}</span>`).join('')
-  const authorLine = post.author ? `<span class="blog-post-author">${post.author}</span>` : ''
+  const dateStr = escapeHtml(formatDate(post.published_at, lang))
+  const tags = (post.categories ?? []).map(c => `<span class="blog-tag">${escapeHtml(c)}</span>`).join('')
+  const authorLine = post.author ? `<span class="blog-post-author">${escapeHtml(post.author)}</span>` : ''
   const featuredImg = post.featured_image
-    ? `<img class="post-featured-img" src="${post.featured_image}" alt="${post.title}" loading="lazy">`
+    ? `<img class="post-featured-img" src="${safeUrl(post.featured_image)}" alt="${escapeHtml(post.title)}" loading="lazy">`
     : ''
   const seoTitle = post.seo_title || post.title
   const seoDesc = post.seo_description || post.excerpt || ''
@@ -367,15 +391,15 @@ export function buildBlogPostPage(
   const tocInner = tocItems.length > 0
     ? `<p class="blog-toc-title">${lang === 'es' ? 'Contenido' : lang === 'en' ? 'Contents' : 'Contenuto'}</p>
 <ul class="blog-toc-list">
-${tocItems.map(item => `  <li><a href="#${item.id}">${item.text}</a></li>`).join('\n')}
+${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(item.text)}</a></li>`).join('\n')}
 </ul>`
     : ''
 
   // Build right sidebar banner HTML
   const bannerHtml = sidebarBanner?.url
     ? `<aside class="blog-sidebar-right" aria-label="Banner">
-  <a class="blog-sidebar-banner" href="${sidebarBanner.link || '#'}" target="_blank" rel="noopener">
-    <img src="${sidebarBanner.url}" alt="Banner" loading="lazy">
+  <a class="blog-sidebar-banner" href="${safeUrl(sidebarBanner.link || '#')}" target="_blank" rel="noopener">
+    <img src="${safeUrl(sidebarBanner.url)}" alt="Banner" loading="lazy">
   </a>
 </aside>`
     : `<aside class="blog-sidebar-right"></aside>`
@@ -411,20 +435,20 @@ ${tocItems.map(item => `  <li><a href="#${item.id}">${item.text}</a></li>`).join
 </script>` : ''
 
   return `<!DOCTYPE html>
-<html lang="${lang}">
+<html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${seoTitle}</title>
-  <meta name="description" content="${seoDesc}">
-  <link rel="canonical" href="${baseUrl}/blog/${post.slug}">
-  ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ''}
-  <meta property="og:title" content="${seoTitle}">
-  <meta property="og:description" content="${seoDesc}">
-  ${post.featured_image ? `<meta property="og:image" content="${post.featured_image}">` : ''}
-  <meta property="og:url" content="${baseUrl}/blog/${post.slug}">
+  <title>${escapeHtml(seoTitle)}</title>
+  <meta name="description" content="${escapeHtml(seoDesc)}">
+  <link rel="canonical" href="${escapeHtml(baseUrl)}/blog/${escapeHtml(post.slug)}">
+  ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
+  <meta property="og:title" content="${escapeHtml(seoTitle)}">
+  <meta property="og:description" content="${escapeHtml(seoDesc)}">
+  ${post.featured_image ? `<meta property="og:image" content="${safeUrl(post.featured_image)}">` : ''}
+  <meta property="og:url" content="${escapeHtml(baseUrl)}/blog/${escapeHtml(post.slug)}">
   <meta property="og:type" content="article">
-  ${post.published_at ? `<meta property="article:published_time" content="${post.published_at}">` : ''}
+  ${post.published_at ? `<meta property="article:published_time" content="${escapeHtml(post.published_at)}">` : ''}
   ${siteStyle}
   <style>${BLOG_POST_CONTENT_CSS}</style>
 </head>
@@ -433,7 +457,7 @@ ${tocItems.map(item => `  <li><a href="#${item.id}">${item.text}</a></li>`).join
   <div class="blog-post-layout">
     <!-- TOC sinistra -->
     <aside class="blog-toc" aria-label="Indice">
-      <a class="blog-toc-back" href="${baseUrl}/blog">${backLabel}</a>
+      <a class="blog-toc-back" href="${escapeHtml(baseUrl)}/blog">${backLabel}</a>
       ${tocInner}
     </aside>
 
@@ -441,8 +465,8 @@ ${tocItems.map(item => `  <li><a href="#${item.id}">${item.text}</a></li>`).join
     <article class="blog-post-wrapper">
       <header class="blog-post-header">
         <div class="blog-post-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}${authorLine ? ` &nbsp;${authorLine}` : ''}</div>
-        <h1>${post.title}</h1>
-        ${post.excerpt ? `<p class="blog-post-excerpt">${post.excerpt}</p>` : ''}
+        <h1>${escapeHtml(post.title)}</h1>
+        ${post.excerpt ? `<p class="blog-post-excerpt">${escapeHtml(post.excerpt)}</p>` : ''}
       </header>
       ${featuredImg}
       <div class="blog-post-content">${contentWithIds}</div>

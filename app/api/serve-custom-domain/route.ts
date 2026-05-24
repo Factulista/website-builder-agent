@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { servePublished } from '../../../lib/preview'
 import { generateSitemap, generateRobots } from '../../../lib/seo-files'
-import { buildBlogPostPage as buildBlogPostPageFromLib, type Post as LibPost, type BlogSidebarBanner } from '../../../lib/blog-serve'
+import { buildBlogPostPage as buildBlogPostPageFromLib, type Post as LibPost, type BlogSidebarBanner, escapeHtml, safeUrl } from '../../../lib/blog-serve'
 
 export const runtime = 'nodejs'
 
@@ -71,20 +71,21 @@ function buildBlogListPage(
 
   const cards = posts.map(post => {
     const img = post.featured_image
-      ? `<img class="blog-card-img" src="${post.featured_image}" alt="${post.title}" loading="lazy">`
+      ? `<img class="blog-card-img" src="${safeUrl(post.featured_image)}" alt="${escapeHtml(post.title)}" loading="lazy">`
       : ''
     const tags = (post.categories ?? []).slice(0, 3).map(c =>
-      `<span class="blog-tag">${c}</span>`
+      `<span class="blog-tag">${escapeHtml(c)}</span>`
     ).join('')
-    const dateStr = formatDate(post.published_at, lang)
+    const dateStr = escapeHtml(formatDate(post.published_at, lang))
+    const postHref = `${escapeHtml(baseUrl)}/blog/${escapeHtml(post.slug)}`
 
     return `<article class="blog-card">
   ${img}
   <div class="blog-card-body">
     <div class="blog-card-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}</div>
-    <h2 class="blog-card-title"><a href="${baseUrl}/blog/${post.slug}">${post.title}</a></h2>
-    ${post.excerpt ? `<p class="blog-card-excerpt">${post.excerpt}</p>` : ''}
-    <a class="blog-read-more" href="${baseUrl}/blog/${post.slug}">${readMoreLabel}</a>
+    <h2 class="blog-card-title"><a href="${postHref}">${escapeHtml(post.title)}</a></h2>
+    ${post.excerpt ? `<p class="blog-card-excerpt">${escapeHtml(post.excerpt)}</p>` : ''}
+    <a class="blog-read-more" href="${postHref}">${readMoreLabel}</a>
   </div>
 </article>`
   }).join('\n')
@@ -133,14 +134,14 @@ function buildBlogListPage(
   }
 
   return `<!DOCTYPE html>
-<html lang="${lang}">
+<html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <meta name="description" content="${subtitle}">
-  <link rel="canonical" href="${baseUrl}/blog">
-  ${faviconUrl ? `<link rel="icon" href="${faviconUrl}">` : ''}
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(subtitle)}">
+  <link rel="canonical" href="${escapeHtml(baseUrl)}/blog">
+  ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
   ${siteStyle}
   <style>
     .blog-listing { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
@@ -174,8 +175,8 @@ function buildBlogListPage(
   ${headerSection}
   <section class="blog-listing">
     <div class="blog-listing-header">
-      <h1>${title}</h1>
-      <p>${subtitle}</p>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(subtitle)}</p>
     </div>
     ${emptyState}
     <div class="blog-grid">
@@ -260,23 +261,26 @@ export async function GET(req: NextRequest) {
       .order('published_at', { ascending: false })
       .limit(50)
 
+    // XML-safe: CDATA can't contain "]]>"; replace it. Element content needs escape.
+    const cdata = (s: string) => `<![CDATA[${String(s ?? '').replace(/]]>/g, ']]]]><![CDATA[>')}]]>`
+    const xmlEsc = (s: string) => escapeHtml(s)
     const items = (blogPosts ?? []).map(p => `  <item>
-    <title><![CDATA[${p.title}]]></title>
-    <link>${baseUrl}/blog/${p.slug}</link>
-    <guid isPermaLink="true">${baseUrl}/blog/${p.slug}</guid>
+    <title>${cdata(p.title)}</title>
+    <link>${xmlEsc(baseUrl)}/blog/${xmlEsc(p.slug)}</link>
+    <guid isPermaLink="true">${xmlEsc(baseUrl)}/blog/${xmlEsc(p.slug)}</guid>
     <pubDate>${p.published_at ? new Date(p.published_at).toUTCString() : ''}</pubDate>
-    <description><![CDATA[${p.excerpt ?? ''}]]></description>
-    ${(p.categories ?? []).map((c: string) => `<category>${c}</category>`).join('\n    ')}
+    <description>${cdata(p.excerpt ?? '')}</description>
+    ${(p.categories ?? []).map((c: string) => `<category>${xmlEsc(c)}</category>`).join('\n    ')}
   </item>`).join('\n')
 
     const rss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Blog — ${host}</title>
-    <link>${baseUrl}/blog</link>
-    <atom:link href="${baseUrl}/blog/feed.xml" rel="self" type="application/rss+xml"/>
+    <title>Blog — ${xmlEsc(host)}</title>
+    <link>${xmlEsc(baseUrl)}/blog</link>
+    <atom:link href="${xmlEsc(baseUrl)}/blog/feed.xml" rel="self" type="application/rss+xml"/>
     <description>Blog feed</description>
-    <language>${lang}</language>
+    <language>${xmlEsc(lang)}</language>
 ${items}
   </channel>
 </rss>`

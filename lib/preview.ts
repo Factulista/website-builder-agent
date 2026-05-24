@@ -1,7 +1,25 @@
 import { createClient } from '@supabase/supabase-js'
 
-type Page = { slug: string; name: string; html: string }
-type SiteConfig = { html?: string; pages?: Page[]; published_pages?: Page[] } | null
+type Page = {
+  slug: string
+  name: string
+  html: string
+  menuLabel?: string
+  inMenu?: boolean
+  og_image?: string
+}
+type SiteConfig = {
+  html?: string
+  pages?: Page[]
+  published_pages?: Page[]
+  favicon_url?: string
+  blog_header_html?: string
+  blog_sidebar_banner?: { url: string; link?: string }
+  context?: Record<string, unknown>
+  messages?: unknown[]
+  versions?: unknown[]
+  media?: Record<string, unknown>
+} | null
 
 /**
  * Converts root-relative internal page links to path-relative ones so they
@@ -112,9 +130,9 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const base = `/preview/${projectSlug}/`
   const siteUrl = `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
   const knownSlugs = ['blog', ...(config?.pages ?? []).map(p => p.slug)]
-  const faviconUrl = (config as any)?.favicon_url as string | undefined
+  const faviconUrl = config?.favicon_url
   const page = config?.pages?.find(p => p.slug === pageSlug)
-  const ogImageUrl = (page as any)?.og_image as string | undefined
+  const ogImageUrl = page?.og_image
 
   return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl), {
     status: 200,
@@ -151,8 +169,8 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const base = `https://${customDomain}/`
   const siteUrl = `https://${customDomain}`
   const knownSlugs = ['blog', ...(config.published_pages).map(p => p.slug)]
-  const faviconUrl = (config as any)?.favicon_url as string | undefined
-  const ogImageUrl = (page as any)?.og_image as string | undefined
+  const faviconUrl = config.favicon_url
+  const ogImageUrl = page.og_image
 
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl), {
     status: 200,

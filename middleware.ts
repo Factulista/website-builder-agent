@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const ROOT_DOMAIN = 'factulista.com'
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
 const PREVIEW_SUBDOMAIN = 'myweb'
 
 export function middleware(req: NextRequest) {

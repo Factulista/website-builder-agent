@@ -1,11 +1,15 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { callClaude } from '../../../lib/agents/config'
 import { SEO_KNOWLEDGE } from '../../../lib/agents/knowledge/seo'
 import { buildContextPrompt, type ProjectContext } from '../../../lib/agents/memory-agent'
 import { getCheck } from '../../../lib/seo/checks'
 import type { CheckId } from '../../../lib/seo/checks'
 import type { CheckResult } from '../../../lib/seo/analyzer'
+import { requireUserAndProject, ApiError } from '../../../lib/api-auth'
+import { precheckCredits, consumeCredits, CreditsError } from '../../../lib/credits'
+
+/** Shared per-request token counter, mutated by callSeoAgent. */
+type TokenBag = { input: number; output: number }
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -258,7 +262,8 @@ function detectBrand(html: string, contextBrand?: string): string {
 async function callSeoAgent(
   userPrompt: string,
   apiKey: string,
-  context: ProjectContext
+  context: ProjectContext,
+  tokens?: TokenBag,
 ): Promise<string> {
   const system = `Sei un SEO copywriter esperto. Generi testi ottimizzati per i motori di ricerca.
 
@@ -272,13 +277,17 @@ REGOLA ASSOLUTA: rispondi con SOLO il testo richiesto — zero spiegazioni, zero
 
   if (!res.ok) throw new Error(`SEO content API error: ${await res.text()}`)
   const data = await res.json()
+  if (tokens && data.usage) {
+    tokens.input += Number(data.usage.input_tokens ?? 0)
+    tokens.output += Number(data.usage.output_tokens ?? 0)
+  }
   const textBlock = data.content?.find((b: { type: string }) => b.type === 'text')
   return textBlock?.text?.trim() ?? ''
 }
 
 // Generates title with strict 50–60 char validation + up to 3 retries
 async function generateTitle(
-  pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext
+  pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext, tokens?: TokenBag
 ): Promise<string> {
   const pageCtx = extractPageContext(html)
 
@@ -301,7 +310,7 @@ Riscrivilo: formato "${brand} | [keyword descrittiva]", tra 50 e 60 caratteri, l
 ${pageCtx}
 Contali uno per uno. Rispondi SOLO con il testo del title.`
 
-    const result = await callSeoAgent(prompt, apiKey, context)
+    const result = await callSeoAgent(prompt, apiKey, context, tokens)
     const clean = result.replace(/^["']|["']$/g, '').trim()
     if (clean.length >= 50 && clean.length <= 60) return clean
 
@@ -330,7 +339,7 @@ function truncateDescription(text: string, max = 160): string {
 
 // Generates meta-description with strict 150–160 char validation + up to 3 retries
 async function generateMetaDescription(
-  pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext
+  pageName: string, html: string, brand: string, type: string, lang: string, apiKey: string, context: ProjectContext, tokens?: TokenBag
 ): Promise<string> {
   const pageCtx = extractPageContext(html)
   const cta = lang === 'es' ? 'Descúbrelo ahora.' : lang === 'en' ? 'Discover more today.' : 'Scopri di più ora.'
@@ -357,7 +366,7 @@ ${pageCtx}
 CTA finale obbligatorio: "${cta}"
 Conta i caratteri uno per uno prima di rispondere. Rispondi SOLO con il testo.`
 
-    const result = await callSeoAgent(prompt, apiKey, context)
+    const result = await callSeoAgent(prompt, apiKey, context, tokens)
     const clean = result.replace(/^["']|["']$/g, '').trim()
     if (clean.length >= 150 && clean.length <= 160) return clean
 
@@ -424,19 +433,30 @@ export async function POST(req: NextRequest) {
       const apiKey = process.env.ANTHROPIC_API_KEY
       if (!apiKey) { emitError('ANTHROPIC_API_KEY non configurata'); return }
 
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
-      const { data: project } = await supabase
-        .from('projects')
-        .select('site_config, slug')
-        .eq('id', projectId)
-        .single()
+      // Auth + ownership + credits pre-check
+      let authCtx: Awaited<ReturnType<typeof requireUserAndProject>>
+      try {
+        authCtx = await requireUserAndProject(req, projectId)
+        await precheckCredits(authCtx.user.id, authCtx.supabase)
+      } catch (authErr) {
+        if (authErr instanceof CreditsError) {
+          emitError(authErr.message)
+          return
+        }
+        if (authErr instanceof ApiError) {
+          emitError(authErr.message)
+          return
+        }
+        throw authErr
+      }
+      const user = authCtx.user
+      const supabase = authCtx.supabase
+      const project = authCtx.project
 
       const siteConfig = (project?.site_config ?? {}) as Record<string, unknown>
       const context: ProjectContext = (siteConfig.context as ProjectContext) ?? {}
       const projectSlug = project?.slug ?? ''
+      const tokens: TokenBag = { input: 0, output: 0 }
 
       const check = getCheck(checkId)
       const targetPage = pages.find(p => p.slug === pageSlug)
@@ -464,11 +484,11 @@ export async function POST(req: NextRequest) {
 
         switch (checkId) {
           case 'title':
-            generated = await generateTitle(targetPage.name, targetPage.html, resolvedBrand, type, resolvedLang, apiKey, context)
+            generated = await generateTitle(targetPage.name, targetPage.html, resolvedBrand, type, resolvedLang, apiKey, context, tokens)
             break
 
           case 'meta-description':
-            generated = await generateMetaDescription(targetPage.name, targetPage.html, resolvedBrand, type, resolvedLang, apiKey, context)
+            generated = await generateMetaDescription(targetPage.name, targetPage.html, resolvedBrand, type, resolvedLang, apiKey, context, tokens)
             break
 
           case 'h1-keyword':
@@ -477,7 +497,7 @@ export async function POST(req: NextRequest) {
 H1 attuale: "${(data?.text as string) ?? '(non trovato)'}". Business: ${type}, brand: "${resolvedBrand}".
 ${pageCtx}
 Requisiti: naturale, 4–10 parole, contiene la keyword primaria, lingua: ${resolvedLang}.
-Rispondi SOLO con il testo dell'H1.`, apiKey, context)
+Rispondi SOLO con il testo dell'H1.`, apiKey, context, tokens)
             break
 
           case 'open-graph': {
@@ -490,7 +510,7 @@ URL canonico: ${canonicalUrl}
 Requisiti: og:title ≤60 chars (usa la keyword primaria), og:description ≤200 chars (con CTA), og:url="${canonicalUrl}", og:image="https://placehold.co/1200x630" se non disponibile.
 Lingua contenuto: ${resolvedLang} — scrivi i testi in questa lingua.
 Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO i tag, nient'altro.`,
-              apiKey, context)
+              apiKey, context, tokens)
             break
           }
 
@@ -501,7 +521,7 @@ ${pageCtx}
 HTML PAGINA (per identificare le immagini e il contesto):\n${targetPage.html.slice(0, 5000)}
 Regole: alt conciso (max 125 chars), descrittivo, nella lingua ${resolvedLang}, niente "immagine di", usa keyword rilevanti.
 Rispondi SOLO con JSON array: [{"src_fragment": "parte univoca e breve dell'URL src", "alt": "testo alt"}]`,
-              apiKey, context)
+              apiKey, context, tokens)
             break
 
           case 'schema-organization':
@@ -511,7 +531,7 @@ ${pageCtx}
 URL sito: ${baseUrl}
 Genera schema.org JSON-LD completo con: @context, @type, name, url, description (2-3 frasi in ${resolvedLang}).
 Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
-              apiKey, context)
+              apiKey, context, tokens)
             break
 
           case 'schema-faq':
@@ -520,7 +540,7 @@ Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
 HTML PAGINA:\n${targetPage.html.slice(0, 6000)}
 Genera schema.org FAQPage valido con tutte le domande/risposte trovate nella pagina.
 Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza backtick.`,
-              apiKey, context)
+              apiKey, context, tokens)
             break
         }
 
@@ -552,6 +572,13 @@ Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza b
         site_config: { ...currentConfig, pages: updatedPages },
         updated_at: new Date().toISOString(),
       }).eq('id', projectId)
+
+      // Consume credits (fire-and-forget; LLM call already happened)
+      const totalT = tokens.input + tokens.output
+      if (totalT > 0) {
+        consumeCredits(user.id, totalT, 'seo-fix', projectId, { input: tokens.input, output: tokens.output, checkId }, supabase)
+          .catch((e: unknown) => console.error('[credits] seo-fix consume failed:', e))
+      }
 
       emitDone({ tool: 'seo_fix', checkId, updatedPages, summary: `✅ ${check.label} ottimizzato` })
 

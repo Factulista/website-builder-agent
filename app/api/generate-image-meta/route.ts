@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireUser, jsonError } from '../../../lib/api-auth'
+import { precheckCredits, consumeCredits } from '../../../lib/credits'
 
 export const runtime = 'nodejs'
 
@@ -11,6 +13,10 @@ type ImageMeta = {
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth + credits pre-check
+    const { user, supabase } = await requireUser(req)
+    await precheckCredits(user.id, supabase)
+
     const { imageUrl, context } = await req.json() as {
       imageUrl: string
       context?: {
@@ -139,6 +145,15 @@ export async function POST(req: NextRequest) {
     const data = await res.json()
     const text = data.content?.[0]?.text ?? ''
 
+    // Consume credits (fire-and-forget)
+    const inputT = Number(data.usage?.input_tokens ?? 0)
+    const outputT = Number(data.usage?.output_tokens ?? 0)
+    const totalT = inputT + outputT
+    if (totalT > 0) {
+      consumeCredits(user.id, totalT, 'image-meta', null, { input: inputT, output: outputT }, supabase)
+        .catch((e: unknown) => console.error('[credits] image-meta consume failed:', e))
+    }
+
     // Extract JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
@@ -149,7 +164,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(meta)
   } catch (error) {
-    console.error('generate-image-meta error:', error)
-    return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
+    return jsonError(error)
   }
 }
