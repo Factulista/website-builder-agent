@@ -1677,10 +1677,10 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
     <div class="footer-col">
       <h5>{{footer_col3_title}}</h5>
       <ul class="footer-links">
-        <li><a href="#">Privacy Policy</a></li>
+        <li><a href="#">{{footer_privacy_link}}</a></li>
         <li><a href="#">{{footer_terms_link}}</a></li>
-        <li><a href="#">Cookie Policy</a></li>
-        <li><a href="#">GDPR</a></li>
+        <li><a href="#">{{footer_cookie_link}}</a></li>
+        <li><a href="#">{{footer_gdpr_link}}</a></li>
         <li><a href="#">{{footer_security_link}}</a></li>
       </ul>
     </div>
@@ -1689,9 +1689,9 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
   <div class="footer-bottom">
     <p>&copy; 2025 {{company_name}}. {{footer_rights}}</p>
     <div class="footer-bottom-links">
-      <a href="#">Privacy</a>
+      <a href="#">{{footer_privacy_short}}</a>
       <a href="#">{{footer_terms_short}}</a>
-      <a href="#">Cookie</a>
+      <a href="#">{{footer_cookie_short}}</a>
     </div>
   </div>
 </footer>
