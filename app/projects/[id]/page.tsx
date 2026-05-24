@@ -1638,8 +1638,98 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   // ── SEO Fix ───────────────────────────────────────────────────────────────────
 
+  /** Checks that can be auto-fixed for blog posts (maps to seo_title / seo_description). */
+  const BLOG_FIXABLE_CHECKS: CheckId[] = ['title', 'meta-description', 'open-graph']
+
+  /** Fixes a SEO check on a blog post by updating seo_title / seo_description via API. */
+  const fixBlogPostCheck = async (checkId: CheckId, blogPageSlug: string): Promise<boolean> => {
+    if (!BLOG_FIXABLE_CHECKS.includes(checkId)) {
+      setSeoFixError('Questo check non è correggibile automaticamente per gli articoli blog — modifica i campi SEO nel tab Blog.')
+      return false
+    }
+    const postSlug = blogPageSlug.replace(/^blog\//, '')
+    const post = blogPosts.find(p => p.slug === postSlug)
+    if (!post) { setSeoFixError(`Articolo non trovato: ${postSlug}`); return false }
+
+    // Build the rendered HTML so the SEO agent sees exactly what the live page looks like
+    const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
+    const siteNav = homeHtml.match(/<nav[\s\S]*?<\/nav>/i)?.[0] ?? ''
+    const footerMatches = [...homeHtml.matchAll(/<footer[\s\S]*?<\/footer>/gi)]
+    const siteFooter = footerMatches.length > 0 ? footerMatches[footerMatches.length - 1][0] : ''
+    const siteStyle = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
+    const lang = (projectContext?.language as string | undefined) || 'it'
+    const baseUrl = customDomain ? `https://${customDomain}` : `/preview/${projectSlug}`
+    const blogServePost: BlogServePost = {
+      id: post.id, title: post.title, slug: post.slug,
+      excerpt: post.excerpt ?? '', featured_image: post.featured_image,
+      published_at: post.published_at, categories: post.categories ?? [],
+      tags: post.tags ?? [], content_html: post.content_html ?? '',
+      seo_title: post.seo_title, seo_description: post.seo_description, author: post.author,
+    }
+    const renderedHtml = buildBlogPostPage(blogServePost, baseUrl, siteNav, siteFooter, siteStyle, lang, null)
+
+    // Find the checkResult from the rendered HTML
+    const analyses = analyzeAllPages([{ slug: blogPageSlug, name: post.title, html: renderedHtml }])
+    const checkResult = analyses[0]?.results.find(r => r.checkId === checkId)
+    if (!checkResult) { setSeoFixError('Check non trovato nella pagina renderizzata.'); return false }
+    if (checkResult.status === 'pass') return true
+
+    const { data: { session: seoSession } } = await supabase.auth.getSession()
+    const seoToken = seoSession?.access_token
+    if (!seoToken) { setSeoFixError('Sessione scaduta'); return false }
+
+    const resp = await fetch('/api/seo-fix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${seoToken}` },
+      body: JSON.stringify({
+        projectId: id,
+        pageSlug: blogPageSlug,
+        checkId,
+        checkResult,
+        pages: [{ slug: blogPageSlug, name: post.title, html: renderedHtml }],
+        customDomain: customDomain || null,
+        projectMedia: mediaItems.map(m => ({ url: m.url, name: m.name })),
+        blogPost: { id: post.id, slug: post.slug },
+      }),
+    })
+    if (!resp.ok) {
+      const errText = await resp.text()
+      setSeoFixError(`Errore ${resp.status}: ${errText.slice(0, 120)}`)
+      return false
+    }
+    if (!resp.body) { setSeoFixError('Risposta vuota dal server'); return false }
+
+    const reader = resp.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const msg = JSON.parse(line)
+          if (msg.type === 'error') { setSeoFixError(msg.error); return false }
+          if (msg.type === 'done' && msg.result?.updatedBlogPost) {
+            const upd = msg.result.updatedBlogPost as { id: string; seo_title?: string; seo_description?: string }
+            // Update local state — the SEO useEffect will re-analyze automatically
+            setBlogPosts(prev => prev.map(p => p.id === upd.id ? { ...p, ...upd } : p))
+            return true
+          }
+        } catch { /* skip malformed */ }
+      }
+    }
+    return false
+  }
+
   /** Fixes a single check on a single page. Returns true on success. */
   const fixOnePage = async (checkId: CheckId, pageSlug: string): Promise<boolean> => {
+    // Blog posts have a different fix flow
+    if (pageSlug.startsWith('blog/')) return fixBlogPostCheck(checkId, pageSlug)
+
     const analyses = analyzeAllPages(latestPagesRef.current)
     const pageAnalysis = analyses.find(a => a.pageSlug === pageSlug)
     const checkResult = pageAnalysis?.results.find(r => r.checkId === checkId)
@@ -3254,7 +3344,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             const result = avgResult(check.id)
                             if (!result) return null
                             const isFixing = seoFixing === check.id
-                            const canFix = result.status !== 'pass'
+                            // Blog posts: only title-tag, meta-description, open-graph are auto-fixable
+                            const canFix = result.status !== 'pass' &&
+                              (!isBlogPostSelected || BLOG_FIXABLE_CHECKS.includes(check.id))
                             return (
                               <div
                                 key={check.id}

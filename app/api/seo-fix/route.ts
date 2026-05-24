@@ -420,7 +420,7 @@ export async function POST(req: NextRequest) {
 
   ;(async () => {
     try {
-      const { projectId, pageSlug, checkId, checkResult, pages, customDomain, projectMedia } =
+      const { projectId, pageSlug, checkId, checkResult, pages, customDomain, projectMedia, blogPost } =
         await req.json() as {
           projectId: string
           pageSlug: string
@@ -429,7 +429,9 @@ export async function POST(req: NextRequest) {
           pages: Page[]
           customDomain?: string | null
           projectMedia?: Array<{ url: string; name: string }>
+          blogPost?: { id: string; slug: string }
         }
+      const isBlogFix = !!blogPost && pageSlug.startsWith('blog/')
 
       const apiKey = process.env.ANTHROPIC_API_KEY
       if (!apiKey) { emitError('ANTHROPIC_API_KEY non configurata'); return }
@@ -584,19 +586,6 @@ Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza b
         return { ...p, html: patched }
       })
 
-      // ── Persist to DB ──────────────────────────────────────────────────────
-      const { data: currentProject } = await supabase
-        .from('projects')
-        .select('site_config')
-        .eq('id', projectId)
-        .single()
-
-      const currentConfig = (currentProject?.site_config ?? {}) as Record<string, unknown>
-      await supabase.from('projects').update({
-        site_config: { ...currentConfig, pages: updatedPages },
-        updated_at: new Date().toISOString(),
-      }).eq('id', projectId)
-
       // Consume credits (fire-and-forget; LLM call already happened)
       const totalT = tokens.input + tokens.output
       if (totalT > 0) {
@@ -604,7 +593,56 @@ Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza b
           .catch((e: unknown) => console.error('[credits] seo-fix consume failed:', e))
       }
 
-      emitDone({ tool: 'seo_fix', checkId, updatedPages, summary: `✅ ${check.label} ottimizzato` })
+      // ── Persist to DB ──────────────────────────────────────────────────────
+      if (isBlogFix && blogPost) {
+        // For blog posts: extract the updated SEO fields and save to blog_posts table.
+        // The fields stored in blog_posts (seo_title, seo_description) override the
+        // defaults in buildBlogPostPage — no need to touch site_config.
+        const patchedHtml = updatedPages.find(p => p.slug === pageSlug)?.html ?? ''
+        const updates: Record<string, string | null> = {}
+
+        if (checkId === 'title' || checkId === 'open-graph') {
+          const titleMatch = patchedHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+          const ogTitleMatch = patchedHtml.match(/<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+            ?? patchedHtml.match(/<meta\b[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i)
+          const raw = ogTitleMatch?.[1] ?? titleMatch?.[1] ?? null
+          if (raw) updates.seo_title = raw.trim()
+        }
+        if (checkId === 'meta-description' || checkId === 'open-graph') {
+          const metaMatch = patchedHtml.match(/<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)
+            ?? patchedHtml.match(/<meta\b[^>]*content=["']([^"']+)["'][^>]*name=["']description["']/i)
+          const ogDescMatch = patchedHtml.match(/<meta\b[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
+            ?? patchedHtml.match(/<meta\b[^>]*content=["']([^"']+)["'][^>]*property=["']og:description["']/i)
+          const raw = ogDescMatch?.[1] ?? metaMatch?.[1] ?? null
+          if (raw) updates.seo_description = raw.trim()
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('blog_posts').update(updates).eq('id', blogPost.id)
+        }
+
+        emitDone({
+          tool: 'seo_fix',
+          checkId,
+          updatedBlogPost: { id: blogPost.id, ...updates },
+          summary: `✅ ${check.label} ottimizzato`,
+        })
+      } else {
+        // Regular page: persist updated HTML to site_config
+        const { data: currentProject } = await supabase
+          .from('projects')
+          .select('site_config')
+          .eq('id', projectId)
+          .single()
+
+        const currentConfig = (currentProject?.site_config ?? {}) as Record<string, unknown>
+        await supabase.from('projects').update({
+          site_config: { ...currentConfig, pages: updatedPages },
+          updated_at: new Date().toISOString(),
+        }).eq('id', projectId)
+
+        emitDone({ tool: 'seo_fix', checkId, updatedPages, summary: `✅ ${check.label} ottimizzato` })
+      }
 
     } catch (err) {
       emitError(String(err))
