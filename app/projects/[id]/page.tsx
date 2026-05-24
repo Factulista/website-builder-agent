@@ -807,18 +807,24 @@ window.addEventListener('message',function(e){
 });
 </script>`
 
+const EDITOR_GOOGLE_FONTS_URL =
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Roboto:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&display=swap'
+
+const EDITOR_FONTS_INJECT = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
+
 function injectBase(html: string, projectSlug: string): string {
   const clean = stripEditorArtifacts(html)
   const baseTag = `<base href="/preview/${projectSlug}/">`
+  const inject = `${baseTag}\n${EDITOR_FONTS_INJECT}`
   if (/<\/body>/i.test(clean)) {
     return clean
-      .replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
+      .replace(/<head[^>]*>/i, (m) => `${m}\n${inject}`)
       .replace(/<\/body>/i, `${SCROLL_LISTENER}</body>`)
   }
   if (/<head[^>]*>/i.test(clean)) {
-    return clean.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
+    return clean.replace(/<head[^>]*>/i, (m) => `${m}\n${inject}`)
   }
-  return baseTag + clean
+  return inject + clean
 }
 
 // ---- Design Tokens ----
@@ -3496,6 +3502,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </optgroup>
                       <optgroup label="Google Fonts">
                         <option value="Inter">Inter</option>
+                        <option value="Space Grotesk">Space Grotesk</option>
                         <option value="Lato">Lato</option>
                         <option value="Roboto">Roboto</option>
                         <option value="Open Sans">Open Sans</option>
@@ -4072,8 +4079,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               // Extract siteStyle from home page so CSS variables (--color-accent etc.) are inherited
               const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
               const siteStyleBlocks = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
-              const googleFontsUrl = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lato:ital,wght@0,400;0,700;1,400&family=Roboto:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Source+Serif+4:ital,wght@0,400;0,700;1,400&display=swap'
-              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="${googleFontsUrl}" rel="stylesheet">${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
+              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
               setBlogEditorSrcDoc(editorHtml)
               blogBaseHtmlRef.current = editorHtml
             }
@@ -4642,6 +4648,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </optgroup>
                             <optgroup label="Google Fonts">
                               <option value="Inter">Inter</option>
+                              <option value="Space Grotesk">Space Grotesk</option>
                               <option value="Lato">Lato</option>
                               <option value="Roboto">Roboto</option>
                               <option value="Open Sans">Open Sans</option>
