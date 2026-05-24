@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, use, useRef, useEffect, useCallback } from 'react'
+import React, { useState, use, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
@@ -838,6 +838,73 @@ function injectBase(html: string, projectSlug: string): string {
   return inject + clean
 }
 
+// ── Design System Types ────────────────────────────────────────────────────
+type TypoConfig = {
+  fontFamily: string
+  fontSize: string
+  fontWeight: string
+  color: string
+  lineHeight: string
+  letterSpacing: string
+}
+type DesignSystem = {
+  h1: TypoConfig; h2: TypoConfig; h3: TypoConfig; h4: TypoConfig
+  h5: TypoConfig; h6: TypoConfig; p: TypoConfig; a: TypoConfig
+}
+const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
+  h1: { fontFamily: 'inherit', fontSize: '2.5rem',  fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2',  letterSpacing: '-0.02em' },
+  h2: { fontFamily: 'inherit', fontSize: '2rem',    fontWeight: '700', color: '#1a1a1a', lineHeight: '1.25', letterSpacing: '-0.01em' },
+  h3: { fontFamily: 'inherit', fontSize: '1.5rem',  fontWeight: '600', color: '#1a1a1a', lineHeight: '1.3',  letterSpacing: '0' },
+  h4: { fontFamily: 'inherit', fontSize: '1.25rem', fontWeight: '600', color: '#1a1a1a', lineHeight: '1.35', letterSpacing: '0' },
+  h5: { fontFamily: 'inherit', fontSize: '1.1rem',  fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
+  h6: { fontFamily: 'inherit', fontSize: '1rem',    fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
+  p:  { fontFamily: 'inherit', fontSize: '1rem',    fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
+  a:  { fontFamily: 'inherit', fontSize: 'inherit', fontWeight: '500', color: '#2563eb', lineHeight: 'inherit', letterSpacing: '0' },
+}
+
+function generateDesignSystemCSS(ds: DesignSystem): string {
+  const googleFonts = new Set<string>()
+  const rule = (tag: string, c: TypoConfig) => {
+    const props: string[] = []
+    if (c.fontFamily && c.fontFamily !== 'inherit') {
+      const systemFonts = new Set(['Georgia','Times New Roman','Arial','Helvetica','Verdana','Trebuchet MS','Courier New'])
+      if (!systemFonts.has(c.fontFamily)) googleFonts.add(c.fontFamily)
+      props.push(`font-family:'${c.fontFamily}',sans-serif`)
+    }
+    if (c.fontSize   && c.fontSize   !== 'inherit') props.push(`font-size:${c.fontSize}`)
+    if (c.fontWeight && c.fontWeight !== 'inherit') props.push(`font-weight:${c.fontWeight}`)
+    if (c.color      && c.color      !== 'inherit') props.push(`color:${c.color}`)
+    if (c.lineHeight && c.lineHeight !== 'inherit') props.push(`line-height:${c.lineHeight}`)
+    if (c.letterSpacing && c.letterSpacing !== '0' && c.letterSpacing !== 'inherit') props.push(`letter-spacing:${c.letterSpacing}`)
+    return props.length ? `${tag}{${props.join(';')}}` : ''
+  }
+  const tags = ['h1','h2','h3','h4','h5','h6','p','a'] as const
+  const cssRules = tags.map(t => rule(t, ds[t])).filter(Boolean).join('\n')
+  let imports = ''
+  if (googleFonts.size > 0) {
+    const families = [...googleFonts].map(f => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800`).join('&')
+    imports = `@import url('https://fonts.googleapis.com/css2?${families}&display=swap');\n`
+  }
+  return imports + cssRules
+}
+
+function applyDesignSystemToPages(ds: DesignSystem, currentPages: Page[]): Page[] {
+  const css = generateDesignSystemCSS(ds)
+  if (!css.trim()) return currentPages
+  const styleTag = `<style id="fact-design-system">\n/* Factulista Design System - auto-generated */\n${css}\n</style>`
+  return currentPages.map(p => {
+    let html = p.html
+    if (/<style[^>]*id="fact-design-system"[^>]*>/i.test(html)) {
+      html = html.replace(/<style[^>]*id="fact-design-system"[^>]*>[\s\S]*?<\/style>/i, styleTag)
+    } else if (/<\/head>/i.test(html)) {
+      html = html.replace(/<\/head>/i, `${styleTag}\n</head>`)
+    } else {
+      html = styleTag + '\n' + html
+    }
+    return { ...p, html }
+  })
+}
+
 // ---- Design Tokens ----
 const C = {
   bg: '#faf9f7',
@@ -912,7 +979,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design'>('preview')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const dragIndexRef = useRef<number | null>(null)
@@ -939,6 +1006,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogListOpen, setBlogListOpen] = useState(false)
   const [blogInsertOpen, setBlogInsertOpen] = useState(false)
   const [blogAlignOpen, setBlogAlignOpen] = useState(false)
+  // ── Design System state ──────────────────────────────────────────────────
+  const [designSystem, setDesignSystem] = useState<DesignSystem>(DEFAULT_DESIGN_SYSTEM)
+  const [designSaving, setDesignSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   // ── Inline editor toolbar state ──────────────────────────────────────────
   const [inlineActiveBlock, setInlineActiveBlock] = useState<string>('')
   const [inlineListOpen, setInlineListOpen] = useState(false)
@@ -1402,6 +1472,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setBlogHeaderHtml(config?.blog_header_html ?? '')
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
+      if ((config as any)?.designSystem) {
+        const ds = (config as any).designSystem as DesignSystem
+        setDesignSystem(ds)
+        // Re-inject design system CSS into loaded pages (ensures freshness)
+        loadedPages = applyDesignSystemToPages(ds, loadedPages)
+        setPages(loadedPages)
+      }
       // Auto-heal: if pages had accumulated <base> tags, save the cleaned HTML immediately
       if (wasDirty) {
         const cleanConfig = { ...(config ?? {}), pages: loadedPages }
@@ -1615,6 +1692,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       updated_at: new Date().toISOString(),
     }).eq('id', id)
     setFaviconUrl(url)
+  }
+
+  const saveDesignSystem = async (ds: DesignSystem) => {
+    setDesignSaving('saving')
+    const updatedPages = applyDesignSystemToPages(ds, latestPagesRef.current)
+    setPages(updatedPages)
+    latestPagesRef.current = updatedPages
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: { ...currentConfig, pages: updatedPages, designSystem: ds },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setDesignSaving('saved')
+    setTimeout(() => setDesignSaving('idle'), 2500)
   }
 
   const savePageOgImage = async (slug: string, url: string) => {
@@ -2375,6 +2467,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return
     }
 
+    // Auto-inject design system into AI-updated pages
+    if (designSystem && generateDesignSystemCSS(designSystem).trim()) {
+      newPages = applyDesignSystemToPages(designSystem, newPages)
+    }
     setPages(newPages)
     setActiveSlug(newActiveSlug)
     // Auto-switch to preview so the user sees the result immediately
@@ -2989,6 +3085,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               title="Blog"
               active={viewMode === 'blog'}
               onClick={() => setViewMode('blog')}
+            />
+            <ToolbarBtn
+              label={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>}
+              title="Design System"
+              active={viewMode === 'design'}
+              onClick={() => setViewMode('design')}
             />
           </div>
 
@@ -4953,6 +5055,111 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
             )
           })()
+        ) : viewMode === 'design' ? (
+          /* ── Design System ─────────────────────────────────────────────────── */
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', background: C.bg }}>
+            <div style={{ maxWidth: '880px', margin: '0 auto' }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: C.text }}>Design System — Tipografia</h2>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Font, dimensioni e colori vengono iniettati in tutte le pagine del progetto.</p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {designSaving === 'saving' && <span style={{ fontSize: '0.75rem', color: C.textMuted }}>Salvataggio…</span>}
+                  {designSaving === 'saved'  && <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>✓ Applicato a tutte le pagine</span>}
+                  <button
+                    onClick={() => setDesignSystem(DEFAULT_DESIGN_SYSTEM)}
+                    style={{ padding: '6px 12px', border: `1px solid ${C.border}`, borderRadius: 7, background: C.white, cursor: 'pointer', fontSize: '0.78rem', color: C.textMuted, fontFamily: 'inherit' }}
+                  >Ripristina default</button>
+                  <button
+                    onClick={() => saveDesignSystem(designSystem)}
+                    style={{ padding: '6px 16px', border: 'none', borderRadius: 7, background: C.blue, color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, fontFamily: 'inherit' }}
+                  >⚡ Applica a tutte le pagine</button>
+                </div>
+              </div>
+
+              {/* Column headers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 76px 100px 110px 70px 90px', gap: '6px', padding: '6px 14px', marginBottom: '2px' }}>
+                {['Elemento', 'Font', 'Dimens.', 'Peso', 'Colore', 'Line-H', 'Spaziatura'].map(h => (
+                  <span key={h} style={{ fontSize: '0.64rem', color: C.textFaint, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
+                ))}
+              </div>
+
+              {/* Rows */}
+              {(['h1','h2','h3','h4','h5','h6','p','a'] as const).map(tag => {
+                const cfg = designSystem[tag]
+                const update = (key: keyof TypoConfig, val: string) =>
+                  setDesignSystem(prev => ({ ...prev, [tag]: { ...prev[tag], [key]: val } }))
+                const labelMap: Record<string, string> = {
+                  h1: 'H1 — Titolo principale', h2: 'H2 — Secondario', h3: 'H3 — Terziario',
+                  h4: 'H4', h5: 'H5', h6: 'H6', p: 'P — Paragrafo', a: 'A — Link',
+                }
+                const previewText: Record<string, string> = {
+                  h1: 'Titolo principale', h2: 'Titolo secondario', h3: 'Titolo terziario',
+                  h4: 'Titolo 4', h5: 'Titolo 5', h6: 'Titolo 6',
+                  p: 'Testo del paragrafo: questo è un esempio di corpo del testo con le impostazioni scelte.',
+                  a: 'Questo è un link di esempio',
+                }
+                const controlStyle: React.CSSProperties = { height: '28px', padding: '0 6px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: '0.75rem', fontFamily: 'inherit', background: C.white, color: C.text, width: '100%' }
+                return (
+                  <div key={tag} style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: '10px', overflow: 'hidden' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 76px 100px 110px 70px 90px', gap: '6px', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.76rem', color: C.text }}>{labelMap[tag]}</span>
+                      {/* Font */}
+                      <select value={cfg.fontFamily} onChange={e => update('fontFamily', e.target.value)} style={controlStyle}>
+                        <option value="inherit">Eredita</option>
+                        <optgroup label="Sistema">
+                          <option>Georgia</option><option>Arial</option><option>Helvetica</option><option>Verdana</option><option>Trebuchet MS</option><option>Courier New</option>
+                        </optgroup>
+                        <optgroup label="Google Fonts">
+                          <option>Inter</option><option>Space Grotesk</option><option>Lato</option><option>Roboto</option><option>Open Sans</option><option>Montserrat</option><option>Merriweather</option><option>Playfair Display</option><option>Source Serif 4</option>
+                        </optgroup>
+                      </select>
+                      {/* Size */}
+                      <input value={cfg.fontSize} onChange={e => update('fontSize', e.target.value)} placeholder="1rem" title="Dimensione (es. 2rem, 24px)" style={controlStyle} />
+                      {/* Weight */}
+                      <select value={cfg.fontWeight} onChange={e => update('fontWeight', e.target.value)} style={controlStyle}>
+                        <option value="300">300 Light</option><option value="400">400 Regular</option><option value="500">500 Medium</option><option value="600">600 SemiBold</option><option value="700">700 Bold</option><option value="800">800 ExtraBold</option><option value="900">900 Black</option>
+                      </select>
+                      {/* Color */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input type="color" value={cfg.color.startsWith('#') ? cfg.color : '#374151'} onChange={e => update('color', e.target.value)} style={{ width: '26px', height: '26px', border: `1px solid ${C.border}`, borderRadius: 4, padding: '1px', cursor: 'pointer', flexShrink: 0 }} />
+                        <input value={cfg.color} onChange={e => update('color', e.target.value)} placeholder="#000" style={{ ...controlStyle, width: '68px', fontFamily: 'monospace', fontSize: '0.7rem' }} />
+                      </div>
+                      {/* Line height */}
+                      <input value={cfg.lineHeight} onChange={e => update('lineHeight', e.target.value)} placeholder="1.5" title="Line height" style={controlStyle} />
+                      {/* Letter spacing */}
+                      <input value={cfg.letterSpacing} onChange={e => update('letterSpacing', e.target.value)} placeholder="0" title="Letter spacing" style={controlStyle} />
+                    </div>
+                    {/* Preview */}
+                    <div style={{ padding: '8px 14px 10px', background: '#fafaf9' }}>
+                      {tag === 'a' ? (
+                        <a href="#" onClick={e => e.preventDefault()} style={{
+                          fontFamily: cfg.fontFamily === 'inherit' ? undefined : `'${cfg.fontFamily}',sans-serif`,
+                          fontSize: cfg.fontSize === 'inherit' ? undefined : cfg.fontSize,
+                          fontWeight: cfg.fontWeight as React.CSSProperties['fontWeight'],
+                          color: cfg.color,
+                          lineHeight: cfg.lineHeight === 'inherit' ? undefined : cfg.lineHeight,
+                          letterSpacing: (cfg.letterSpacing === '0' || cfg.letterSpacing === 'inherit') ? undefined : cfg.letterSpacing,
+                        }}>{previewText[tag]}</a>
+                      ) : React.createElement(tag, {
+                        style: {
+                          margin: 0, padding: 0,
+                          fontFamily: cfg.fontFamily === 'inherit' ? undefined : `'${cfg.fontFamily}',sans-serif`,
+                          fontSize: cfg.fontSize === 'inherit' ? undefined : cfg.fontSize,
+                          fontWeight: cfg.fontWeight,
+                          color: cfg.color,
+                          lineHeight: cfg.lineHeight === 'inherit' ? undefined : cfg.lineHeight,
+                          letterSpacing: (cfg.letterSpacing === '0' || cfg.letterSpacing === 'inherit') ? undefined : cfg.letterSpacing,
+                        }
+                      }, previewText[tag])}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         ) : viewMode === 'pages' ? (
           /* ── Page Manager (tree list) ──────────────────────────────────────── */
           (() => {
