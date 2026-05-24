@@ -140,6 +140,7 @@ export default function ComponentsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+                <th style={{ ...thStyle, width: '100px' }}>Preview</th>
                 <th style={thStyle}>Componente</th>
                 <th style={thStyle}>Categoria</th>
                 <th style={thStyle}>ID agente</th>
@@ -158,6 +159,41 @@ export default function ComponentsPage() {
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = C.rowHover}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                 >
+                  {/* Miniatura preview */}
+                  <td style={{ ...tdStyle, padding: '8px 12px', width: '100px' }}>
+                    <div
+                      onClick={() => setPreviewId(previewId === comp.id ? null : comp.id)}
+                      style={{
+                        width: '88px',
+                        height: '56px',
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                        border: `1px solid ${previewId === comp.id ? C.blue : C.border}`,
+                        background: '#fafafa',
+                        cursor: 'pointer',
+                        position: 'relative',
+                        flexShrink: 0,
+                        transition: 'border-color 0.15s, box-shadow 0.15s',
+                        boxShadow: previewId === comp.id ? `0 0 0 2px ${C.blue}33` : 'none',
+                      }}
+                      title="Clicca per preview"
+                    >
+                      <iframe
+                        srcDoc={iframeDoc(comp.html)}
+                        style={{
+                          width: '352px',
+                          height: '224px',
+                          border: 'none',
+                          transform: 'scale(0.25)',
+                          transformOrigin: 'top left',
+                          pointerEvents: 'none',
+                        }}
+                        title={comp.name}
+                        sandbox="allow-scripts"
+                      />
+                    </div>
+                  </td>
+
                   {/* Nome + descrizione */}
                   <td style={tdStyle}>
                     <span style={{ fontWeight: 600, color: C.text }}>{comp.name}</span>
