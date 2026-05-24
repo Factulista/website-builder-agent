@@ -1317,6 +1317,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return updated
   }
 
+  /** Builds the full site_config object preserving all independent top-level fields. */
+  const buildSiteConfig = (
+    newPages: Page[],
+    newMessages: Message[],
+    newVersions: Version[],
+    newMedia: Record<string, MediaMeta>,
+  ): Record<string, unknown> => {
+    const cfg: Record<string, unknown> = { pages: newPages, messages: newMessages, versions: newVersions, media: newMedia }
+    if (faviconUrl) cfg.favicon_url = faviconUrl
+    if (blogHeaderHtml) cfg.blog_header_html = blogHeaderHtml
+    if (blogSidebarBannerUrl) cfg.blog_sidebar_banner = { url: blogSidebarBannerUrl, link: blogSidebarBannerLink }
+    if (Object.keys(projectContext).length > 0) cfg.context = projectContext
+    return cfg
+  }
+
   const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[], newMedia?: Record<string, MediaMeta>) => {
     // Safety guard: never overwrite existing pages with an empty array
     if (!Array.isArray(newPages) || (newPages.length === 0 && latestPagesRef.current.length > 0)) {
@@ -1326,7 +1341,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const vers = newVersions ?? versions
     const med = newMedia ?? mediaMeta
     await supabase.from('projects').update({
-      site_config: { pages: newPages, messages: newMessages, versions: vers, media: med },
+      site_config: buildSiteConfig(newPages, newMessages, vers, med),
       updated_at: new Date().toISOString(),
     }).eq('id', id)
   }
@@ -1912,7 +1927,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
+        site_config: buildSiteConfig(pages, finalMessages, versions, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -1926,7 +1941,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setPendingRequest(buildApiContent(effectiveInput, effectiveImages))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
+        site_config: buildSiteConfig(pages, finalMessages, versions, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -1939,7 +1954,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: { pages, messages: finalMessages, versions, media: mediaMeta },
+        site_config: buildSiteConfig(pages, finalMessages, versions, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
