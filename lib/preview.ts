@@ -72,7 +72,9 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
 
   // Inject favicon and OG image if provided
   if (/<head[^>]*>/i.test(result)) {
-    if (faviconUrl && !/<link[^>]+rel=["']icon["']/i.test(result)) {
+    if (faviconUrl) {
+      // Always use the user's favicon — remove any existing <link rel="icon|shortcut icon"> first
+      result = result.replace(/<link[^>]+rel=["'](?:shortcut icon|icon)["'][^>]*\/?>/gi, '')
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" href="${faviconUrl}">`)
     }
     if (ogImageUrl && !/<meta[^>]+property=["']og:image["']/i.test(result)) {
