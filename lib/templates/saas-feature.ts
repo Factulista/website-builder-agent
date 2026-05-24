@@ -705,7 +705,7 @@ export const SAAS_FEATURE_TEMPLATE = `<!DOCTYPE html>
           <li>{{sub1_bullet2}}</li>
           <li>{{sub1_bullet3}}</li>
         </ul>
-        <a href="#" class="sub-link">{{sub1_link}} →</a>
+        <a href="{{sub1_url}}" class="sub-link">{{sub1_link}} →</a>
       </div>
       <div class="sub-card">
         <div class="sub-card-icon">{{sub2_icon}}</div>
@@ -715,7 +715,7 @@ export const SAAS_FEATURE_TEMPLATE = `<!DOCTYPE html>
           <li>{{sub2_bullet2}}</li>
           <li>{{sub2_bullet3}}</li>
         </ul>
-        <a href="#" class="sub-link">{{sub2_link}} →</a>
+        <a href="{{sub2_url}}" class="sub-link">{{sub2_link}} →</a>
       </div>
       <div class="sub-card">
         <div class="sub-card-icon">{{sub3_icon}}</div>
@@ -725,7 +725,7 @@ export const SAAS_FEATURE_TEMPLATE = `<!DOCTYPE html>
           <li>{{sub3_bullet2}}</li>
           <li>{{sub3_bullet3}}</li>
         </ul>
-        <a href="#" class="sub-link">{{sub3_link}} →</a>
+        <a href="{{sub3_url}}" class="sub-link">{{sub3_link}} →</a>
       </div>
       <div class="sub-card">
         <div class="sub-card-icon">{{sub4_icon}}</div>
@@ -735,7 +735,7 @@ export const SAAS_FEATURE_TEMPLATE = `<!DOCTYPE html>
           <li>{{sub4_bullet2}}</li>
           <li>{{sub4_bullet3}}</li>
         </ul>
-        <a href="#" class="sub-link">{{sub4_link}} →</a>
+        <a href="{{sub4_url}}" class="sub-link">{{sub4_link}} →</a>
       </div>
     </div>
   </section>
@@ -982,25 +982,25 @@ export const SAAS_FEATURE_TEMPLATE = `<!DOCTYPE html>
       <div class="footer-col">
         <h4>{{footer_col1_title}}</h4>
         <ul>
-          <li><a href="#">{{footer_col1_link1}}</a></li>
-          <li><a href="#">{{footer_col1_link2}}</a></li>
-          <li><a href="#">{{footer_col1_link3}}</a></li>
+          <li><a href="{{footer_col1_url1}}">{{footer_col1_link1}}</a></li>
+          <li><a href="{{footer_col1_url2}}">{{footer_col1_link2}}</a></li>
+          <li><a href="{{footer_col1_url3}}">{{footer_col1_link3}}</a></li>
         </ul>
       </div>
       <div class="footer-col">
         <h4>{{footer_col2_title}}</h4>
         <ul>
-          <li><a href="#">{{footer_col2_link1}}</a></li>
-          <li><a href="#">{{footer_col2_link2}}</a></li>
-          <li><a href="#">{{footer_col2_link3}}</a></li>
+          <li><a href="{{footer_col2_url1}}">{{footer_col2_link1}}</a></li>
+          <li><a href="{{footer_col2_url2}}">{{footer_col2_link2}}</a></li>
+          <li><a href="{{footer_col2_url3}}">{{footer_col2_link3}}</a></li>
         </ul>
       </div>
       <div class="footer-col">
         <h4>{{footer_col3_title}}</h4>
         <ul>
-          <li><a href="#">{{footer_col3_link1}}</a></li>
-          <li><a href="#">{{footer_col3_link2}}</a></li>
-          <li><a href="#">{{footer_col3_link3}}</a></li>
+          <li><a href="{{footer_col3_url1}}">{{footer_col3_link1}}</a></li>
+          <li><a href="{{footer_col3_url2}}">{{footer_col3_link2}}</a></li>
+          <li><a href="{{footer_col3_url3}}">{{footer_col3_link3}}</a></li>
         </ul>
       </div>
     </div>
