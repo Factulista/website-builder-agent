@@ -194,20 +194,31 @@ function checkH1Keyword(html: string): CheckResult {
   }
 }
 
+const MAX_HEADING_DEPTH = 3
+
 function checkHeadingHierarchy(html: string): CheckResult {
   const headings = [...html.matchAll(/<(h[1-6])\b[^>]*>/gi)].map(m => parseInt(m[1][1]))
   if (headings.length === 0) return { checkId: 'heading-hierarchy', score: 50, status: 'warn', detail: 'Nessun heading trovato', data: { issues: [] } }
   const issues: string[] = []
+
+  // Check 1: level skips going downward (e.g. H2→H4)
   for (let i = 1; i < headings.length; i++) {
     if (headings[i] > headings[i - 1] + 1) {
       issues.push(`H${headings[i - 1]}→H${headings[i]} (salto di livello)`)
     }
   }
+
+  // Check 2: excessive depth (any heading deeper than MAX_HEADING_DEPTH)
+  const deepHeadings = [...new Set(headings.filter(h => h > MAX_HEADING_DEPTH))].sort()
+  if (deepHeadings.length > 0) {
+    issues.push(`${deepHeadings.map(h => `H${h}`).join(', ')} troppo profondi (max H${MAX_HEADING_DEPTH})`)
+  }
+
   const score = issues.length === 0 ? 100 : Math.max(0, 100 - issues.length * 25)
   return {
     checkId: 'heading-hierarchy', score, status: statusFromScore(score),
     detail: issues.length === 0
-      ? `Gerarchia corretta: ${headings.map(h => `H${h}`).join('→')} ✓`
+      ? `Gerarchia corretta (max H${MAX_HEADING_DEPTH}) ✓`
       : `Problemi: ${issues.slice(0, 2).join(', ')}`,
     data: { headings, issues },
   }

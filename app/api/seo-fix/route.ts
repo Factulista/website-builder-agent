@@ -105,21 +105,22 @@ function applyHtmlFix(
     }
 
     case 'heading-hierarchy': {
-      // Walk headings in order, fix level skips, and keep closing tags in sync.
-      // e.g. H1→H3 becomes H1→H2; H2→H4 becomes H2→H3.
-      // headings are never nested in valid HTML, so we only need to track the
-      // last open tag's original level → remapped level.
+      // Pass 1: fix level skips (e.g. H2→H4 becomes H2→H3).
+      // Pass 2: cap depth at H3 (H4/H5/H6 → H3).
+      // Closing tags are kept in sync with their remapped openers.
+      const MAX_DEPTH = 3
       let prevLevel = 0
       let lastOpenOriginal = 0
       let lastOpenRemapped = 0
       return html.replace(/<(\/?)h([1-6])(\b[^>]*)>/gi, (_m, slash, lvl, rest) => {
         const n = parseInt(lvl, 10)
         if (slash) {
-          // Use the remapped level for the closing tag so it matches its opener
           const remapped = n === lastOpenOriginal ? lastOpenRemapped : n
           return `</h${remapped}${rest}>`
         }
-        const expected = prevLevel === 0 ? 1 : Math.min(n, prevLevel + 1)
+        // Fix level skip first, then cap at MAX_DEPTH
+        const noSkip = prevLevel === 0 ? 1 : Math.min(n, prevLevel + 1)
+        const expected = Math.min(noSkip, MAX_DEPTH)
         prevLevel = expected
         lastOpenOriginal = n
         lastOpenRemapped = expected
