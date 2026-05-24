@@ -3555,6 +3555,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             const isFixing = seoFixing === check.id
                             // Blog posts: only title-tag, meta-description, open-graph are auto-fixable
                             const canFix = result.score < 100 &&
+                              check.fixable !== false &&
                               (!isBlogPostSelected || BLOG_FIXABLE_CHECKS.includes(check.id))
                             return (
                               <div

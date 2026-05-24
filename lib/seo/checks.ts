@@ -20,6 +20,7 @@ export type CheckId =
   | 'font-preconnect'
   | 'schema-organization'
   | 'schema-faq'
+  | 'broken-links'
 
 export type CheckGroup = 'meta' | 'structure' | 'images' | 'performance' | 'schema'
 export type FixOwner = 'html' | 'seo'
@@ -35,6 +36,8 @@ export type SeoCheck = {
   scoreType: 'binary' | 'scored'
   /** Weight for weighted overall score (sum = 100) */
   weight: number
+  /** If false, no Fix button is shown even when score < 100 (user must fix manually) */
+  fixable?: boolean
 }
 
 export const SEO_CHECKS: SeoCheck[] = [
@@ -181,6 +184,17 @@ export const SEO_CHECKS: SeoCheck[] = [
     fixOwner: 'html',
     scoreType: 'binary',
     weight: 5,
+  },
+  {
+    id: 'broken-links',
+    label: 'Link interni funzionanti',
+    description: 'I link interni rotti (che puntano a pagine inesistenti) danneggiano UX e crawlability.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'html',
+    scoreType: 'binary',
+    weight: 5,
+    fixable: false,
   },
   // ── Schema.org (10 pts total) ─────────────────────────────────────────────────
   {

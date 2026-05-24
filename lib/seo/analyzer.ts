@@ -364,6 +364,39 @@ function checkSchemaFaq(html: string): CheckResult {
   }
 }
 
+function checkBrokenLinks(html: string, allSlugs: Set<string>): CheckResult {
+  const broken: string[] = []
+  const re = /<a\b[^>]*href=["']([^"']*)["']/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1].trim()
+    // Skip: external, anchor-only, mailto, tel, javascript, empty
+    if (!href || /^(https?:|mailto:|tel:|javascript:|\/\/|#)/i.test(href)) continue
+    // Normalize: remove leading slash, trailing slash, query, hash
+    let path = href.replace(/^\//, '').replace(/\/$/, '').split('?')[0].split('#')[0]
+    // "/" → home (always valid)
+    if (path === '') continue
+    // Skip blog paths (we'd need blog post slugs to verify)
+    if (path.startsWith('blog')) continue
+    // Check against known slugs
+    if (!allSlugs.has(path)) broken.push(`/${path}`)
+  }
+  const unique = [...new Set(broken)]
+  if (unique.length === 0) {
+    return {
+      checkId: 'broken-links', score: 100, status: 'pass',
+      detail: 'Nessun link interno rotto ✓',
+      data: { broken: [] },
+    }
+  }
+  const preview = unique.slice(0, 3).join(', ') + (unique.length > 3 ? ` +${unique.length - 3}` : '')
+  return {
+    checkId: 'broken-links', score: 0, status: 'fail',
+    detail: `${unique.length} link intern${unique.length > 1 ? 'i' : 'o'} rott${unique.length > 1 ? 'i' : 'o'}: ${preview}`,
+    data: { broken: unique },
+  }
+}
+
 // ── Main analyzer ──────────────────────────────────────────────────────────────
 
 const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
@@ -383,10 +416,16 @@ const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
   'font-preconnect': checkFontPreconnect,
   'schema-organization': checkSchemaOrganization,
   'schema-faq': checkSchemaFaq,
+  // broken-links needs allSlugs context — handled specially in analyzePage
+  'broken-links': (html) => checkBrokenLinks(html, new Set()),
 }
 
-export function analyzePage(pageSlug: string, pageName: string, html: string): PageAnalysis {
-  const results: CheckResult[] = SEO_CHECKS.map(check => ANALYZERS[check.id](html))
+export function analyzePage(pageSlug: string, pageName: string, html: string, allSlugs?: Set<string>): PageAnalysis {
+  const slugs = allSlugs ?? new Set<string>()
+  const results: CheckResult[] = SEO_CHECKS.map(check => {
+    if (check.id === 'broken-links') return checkBrokenLinks(html, slugs)
+    return ANALYZERS[check.id](html)
+  })
 
   // Weighted overall score
   const totalWeight = SEO_CHECKS.reduce((acc, c) => acc + c.weight, 0)
@@ -401,7 +440,9 @@ export function analyzePage(pageSlug: string, pageName: string, html: string): P
 }
 
 export function analyzeAllPages(pages: { slug: string; name: string; html: string }[]): PageAnalysis[] {
-  return pages.map(p => analyzePage(p.slug, p.name, p.html))
+  // Build slug set from non-blog pages for broken-link detection
+  const allSlugs = new Set(pages.map(p => p.slug).filter(s => !s.startsWith('blog/')))
+  return pages.map(p => analyzePage(p.slug, p.name, p.html, allSlugs))
 }
 
 export function getAggregateScore(analyses: PageAnalysis[]): number {
