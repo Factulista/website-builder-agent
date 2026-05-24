@@ -67,7 +67,7 @@ function renderLogoHtml(logo: LogoDefinition, href = './'): string {
 
 /**
  * Builds a compact HTML skeleton for the LLM context:
- * - Removes <style> blocks (CSS is irrelevant for structural/text edits)
+ * - Optionally keeps or omits <style> blocks
  * - Removes HTML comments
  * - Collapses whitespace
  * - Truncates long text nodes to 80 chars so the agent can still identify elements
@@ -76,10 +76,14 @@ function renderLogoHtml(logo: LogoDefinition, href = './'): string {
  * The find/replace strings produced by the agent are then applied against the
  * ORIGINAL full HTML — not the skeleton — so edits always work on the real content.
  */
-function buildHtmlSkeleton(html: string): string {
+function buildHtmlSkeleton(html: string, includeStyles = false): string {
   return html
-    // Remove <style>...</style> blocks (not needed for structural/text edits)
-    .replace(/<style[\s\S]*?<\/style>/gi, '<style>/* CSS omitted */</style>')
+    // Keep or remove <style> blocks depending on the request type
+    .replace(/<style[\s\S]*?<\/style>/gi,
+      includeStyles
+        ? (m: string) => m  // keep the full style block
+        : () => '<style>/* CSS omitted — se l\'agente ha bisogno dei colori, sono nel blocco PALETTE */</style>'
+    )
     // Remove HTML comments
     .replace(/<!--[\s\S]*?-->/g, '')
     // Collapse whitespace
@@ -87,6 +91,64 @@ function buildHtmlSkeleton(html: string): string {
     // Truncate long text nodes (keep first 80 chars + ellipsis)
     .replace(/>([^<]{80,})</g, (_, text) => `>${text.slice(0, 80).trimEnd()}…<`)
     .trim()
+}
+
+/**
+ * Returns true when the user's request is about colors, backgrounds or visual styles.
+ * Used to decide whether to include the full CSS in the agent context.
+ */
+function isColorOrStyleRequest(msg: string): boolean {
+  const m = msg.toLowerCase()
+  return /sfondo|background|colore|color|grigio|gray|grey|bianco|white|nero|black|rosso|red|blu|blue|verde|green|rgba?|#[0-9a-f]{3,6}|palette|stesso stile|stesso colore|uguale.*sfond|sfond.*uguale|cambia.*color|color.*cambia|traspar|opaci|gradien/i.test(m)
+}
+
+/**
+ * Extracts the color palette from a page's CSS:
+ * - :root CSS custom properties (--color-*)
+ * - background-color / background: #... / background: rgb rules
+ * - color: rules
+ * Returns a compact summary string.
+ */
+function extractColorPalette(html: string): string {
+  const styleMatch = html.match(/<style[\s\S]*?<\/style>/gi)
+  if (!styleMatch) return ''
+  const css = styleMatch.join('\n')
+
+  const lines: string[] = []
+
+  // CSS custom properties (:root)
+  const rootMatch = css.match(/:root\s*\{([^}]+)\}/i)
+  if (rootMatch) {
+    const props = rootMatch[1]
+      .split(';')
+      .map(l => l.trim())
+      .filter(l => l && /--/.test(l))
+    if (props.length) lines.push('CSS variables:\n  ' + props.join('\n  '))
+  }
+
+  // background-color / background: <value> rules (exclude background-image)
+  const bgRules = [...css.matchAll(/([.#\w][^{]*)\{[^}]*background(?:-color)?:\s*([^;}\n]+)/gi)]
+  const bgSeen = new Set<string>()
+  for (const m of bgRules) {
+    const selector = m[1].trim().replace(/\s+/g, ' ').slice(0, 60)
+    const value = m[2].trim().replace(/\s+/g, ' ')
+    if (/url\(/.test(value)) continue // skip background-image
+    const key = `${selector} → ${value}`
+    if (!bgSeen.has(key)) { bgSeen.add(key); lines.push(`bg  ${key}`) }
+    if (bgSeen.size > 30) break
+  }
+
+  // Inline style background colors on elements
+  const inlineBg = [...html.matchAll(/style="[^"]*background(?:-color)?:\s*([^;}"]+)/gi)]
+  const inlineSeen = new Set<string>()
+  for (const m of inlineBg) {
+    const v = m[1].trim()
+    if (/url\(/.test(v)) continue
+    if (!inlineSeen.has(v)) { inlineSeen.add(v); lines.push(`inline bg: ${v}`) }
+    if (inlineSeen.size > 10) break
+  }
+
+  return lines.length ? lines.join('\n') : '(nessuna palette rilevata)'
 }
 
 const HTML_TOOLS = [
@@ -438,6 +500,9 @@ export async function runHtmlAgent(
   // When user asks to copy styles FROM another page, we include that page's <style> block too.
   const userMsg = messages[messages.length - 1]?.content?.toLowerCase() ?? ''
 
+  // Detect if the request is about colors/backgrounds → include CSS in active page context
+  const colorRequest = isColorOrStyleRequest(userMsg)
+
   // Detect pages mentioned in the user's message (by slug or name) so we can provide their CSS
   const mentionedPages = pages.filter(p => {
     const slug = p.slug.toLowerCase()
@@ -457,6 +522,18 @@ export async function runHtmlAgent(
     const isMentioned = mentionedPages.some(mp => mp.slug === p.slug)
 
     if (isActive) {
+      if (colorRequest) {
+        // Color/style request: provide palette summary + full skeleton with CSS
+        const palette = extractColorPalette(p.html)
+        return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
+PALETTE COLORI RILEVATA (usa questi valori esatti per trovare e replicare i colori):
+${palette}
+
+HTML COMPLETO (struttura + CSS incluso — la richiesta riguarda colori/sfondi):
+\`\`\`html
+${buildHtmlSkeleton(p.html, true)}
+\`\`\``
+      }
       return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
 HTML ATTUALE (struttura — CSS omesso per brevità, il find/replace si applica sull'HTML completo):
 \`\`\`html
@@ -500,6 +577,15 @@ LOGO — REGOLE FONDAMENTALI:
 - Se l'utente carica un'immagine logo (URL in media library), sostituisci l'elemento logo con <img src="URL" alt="logo" style="height:36px;width:auto;">.
 - Quando crei un sito nuovo senza logo definito, crea un logo testuale semplice: <a href="./" class="nav-logo" style="font-size:1.4rem;font-weight:800;color:[colore_coerente];text-decoration:none;">[nome brand]</a>. Puoi colorare un carattere con l'accent color.
 - Il logo DEVE essere identico su tutte le pagine del sito.
+
+COLORI E SFONDI — REGOLE CRITICHE:
+- Quando l'utente dice "metti lo stesso sfondo/colore che c'è in X" o "uguale al grigio attorno" o simili:
+  1. Leggi la sezione PALETTE COLORI (o il blocco <style>) per trovare il valore esatto del colore di sfondo della pagina/sezione circostante.
+  2. Controlla prima le CSS custom properties (:root), poi le regole background-color per selettori come body, .section, .container, ecc.
+  3. Usa il valore ESATTO trovato (es: #f8f7f4, #f5f5f5, var(--color-bg), ecc.) — non inventare valori.
+  4. Per cambiare sfondo via CSS (regola nella <style>): usa find/replace sulla regola CSS, es: find 'background: #ffffff' replace 'background: #f8f7f4'.
+  5. Se il background è inline (style="background:#fff"): trova l'elemento corretto nell'HTML e sostituisci solo l'attributo background nella stringa style.
+  6. Se non riesci a trovare il colore esatto, segnalalo nella summary e usa il colore più simile che vedi nella palette.
 
 FIND/REPLACE — REGOLE CRITICHE:
 - Le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
