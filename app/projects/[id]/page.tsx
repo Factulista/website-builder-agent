@@ -1164,7 +1164,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       })
 
     setSeoAnalyses(analyzeAllPages([...pages, ...blogPagesForSeo]))
-  }, [pages, viewMode, blogPosts, projectSlug, projectContext, blogSidebarBannerUrl, blogSidebarBannerLink])
+  }, [pages, viewMode, blogPosts, projectSlug, projectContext, blogSidebarBannerUrl, blogSidebarBannerLink, activeSlug])
 
   // Elapsed-seconds timer — ticks every second while an agent is running
   useEffect(() => {
@@ -3554,7 +3554,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             if (!result) return null
                             const isFixing = seoFixing === check.id
                             // Blog posts: only title-tag, meta-description, open-graph are auto-fixable
-                            const canFix = result.status !== 'pass' &&
+                            const canFix = result.score < 100 &&
                               (!isBlogPostSelected || BLOG_FIXABLE_CHECKS.includes(check.id))
                             return (
                               <div
