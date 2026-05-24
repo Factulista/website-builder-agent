@@ -128,8 +128,10 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
 
   if (!pageHtml) return errorPage(200, data.name, 'Il sito non è ancora stato generato.')
 
-  // Staging: base = /preview/{slug}/, siteUrl = https://myweb.{ROOT_DOMAIN}/{slug}
-  const base = `/preview/${projectSlug}/`
+  // Staging: base uses the public-facing URL so that relative links (./blog, ./page)
+  // resolve to https://myweb.{domain}/{slug}/... — which the middleware rewrites
+  // internally to /preview/{slug}/... without ever leaking "preview" in the browser URL.
+  const base = `https://myweb.${ROOT_DOMAIN}/${projectSlug}/`
   const siteUrl = `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
   const knownSlugs = ['blog', ...(config?.pages ?? []).map(p => p.slug)]
   const faviconUrl = config?.favicon_url

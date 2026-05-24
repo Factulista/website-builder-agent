@@ -32,9 +32,19 @@ export function middleware(req: NextRequest) {
 
   // Handle myweb.factulista.com/{slug}/{page?} → /preview/{slug}/{page?}
   // But let app routes pass through (login, projects, preview, api)
-  const APP_ROUTES = ['/login', '/projects', '/preview', '/api', '/_next', '/back-office']
+  const APP_ROUTES = ['/login', '/projects', '/api', '/_next', '/back-office']
   if (host === `${PREVIEW_SUBDOMAIN}.${ROOT_DOMAIN}`) {
     const segments = path.split('/').filter(Boolean)
+
+    // Redirect any leaked /preview/{slug}/... to the clean /{slug}/... URL.
+    // This can happen from cached pages or old bookmarks that used the old base href.
+    if (path.startsWith('/preview/') && segments.length >= 2) {
+      const cleanPath = '/' + segments.slice(1).join('/')
+      const cleanUrl = url.clone()
+      cleanUrl.pathname = cleanPath
+      return NextResponse.redirect(cleanUrl, 301)
+    }
+
     if (segments.length === 0 || APP_ROUTES.some(r => path.startsWith(r))) {
       return NextResponse.next()
     }
