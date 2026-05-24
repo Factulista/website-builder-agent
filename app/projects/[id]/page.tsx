@@ -945,6 +945,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [inlineInsertOpen, setInlineInsertOpen] = useState(false)
   const [inlineAlignOpen, setInlineAlignOpen] = useState(false)
   const inlineImgInputRef = useRef<HTMLInputElement | null>(null)
+  const [mediaPickerTarget, setMediaPickerTarget] = useState<'inline' | 'blog' | null>(null)
+  const mediaPickerUploadRef = useRef<HTMLInputElement | null>(null)
   const [blogPublishing, setBlogPublishing] = useState(false)
   const [blogGenerating, setBlogGenerating] = useState(false)
   const [blogGenTopic, setBlogGenTopic] = useState('')
@@ -2545,6 +2547,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customDomainStatus === 'pending'])
 
+  // Insert image URL into the correct editor iframe
+  const insertMediaImageUrl = (url: string) => {
+    const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${url}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
+    if (mediaPickerTarget === 'blog') {
+      blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
+    } else if (mediaPickerTarget === 'inline') {
+      editIframeRef.current?.contentWindow?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
+    }
+    setMediaPickerTarget(null)
+  }
+
+  // Upload a new file and insert it
+  const handleMediaPickerUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    const ext = file.name.split('.').pop() || 'png'
+    const path = `${session.user.id}/${id}/media-${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
+    if (error) return
+    const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
+    await loadMedia()
+    insertMediaImageUrl(publicUrl)
+  }
+
   return (
     <main style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: C.bg }}>
 
@@ -3700,14 +3727,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
                             Tabella 3×2
                           </button>
-                          <label htmlFor="inline-img-file-input" onClick={() => setInlineInsertOpen(false)}
+                          <button onClick={() => { setInlineInsertOpen(false); setMediaPickerTarget('inline') }}
                             style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
                             onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
                             onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             Immagine
-                          </label>
+                          </button>
                           <div style={{ height: 1, background: C.border, margin: '3px 0' }} />
                           <button onMouseDown={e => {
                             e.preventDefault()
@@ -4857,14 +4884,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   Tabella 3×2
                                 </button>
                                 {/* Image */}
-                                <label htmlFor="blog-img-file-input" onClick={() => setBlogInsertOpen(false)}
+                                <button onClick={() => { setBlogInsertOpen(false); setMediaPickerTarget('blog') }}
                                   style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
                                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                                 >
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                   Immagine
-                                </label>
+                                </button>
                                 <div style={{ height: 1, background: C.border, margin: '3px 0' }} />
                                 {/* Divider */}
                                 <button onMouseDown={e => {
@@ -5379,6 +5406,57 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       )}
 
       {/* ── Paywall Modal — shown when credits run out ── */}
+      {/* ── Media picker modal (Inserisci immagine from editors) ── */}
+      {mediaPickerTarget && (
+        <div
+          onClick={() => setMediaPickerTarget(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.22)', width: '560px', maxWidth: '95vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontWeight: 700, fontSize: '0.95rem', color: C.text }}>Seleziona immagine</span>
+              <button onClick={() => setMediaPickerTarget(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: C.textMuted, lineHeight: 1 }}>✕</button>
+            </div>
+            {/* Upload button */}
+            <div style={{ padding: '12px 20px', borderBottom: `1px solid ${C.border}` }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: C.blue, color: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, fontFamily: 'inherit' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Carica nuova immagine
+                <input ref={mediaPickerUploadRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleMediaPickerUpload(f); e.target.value = '' }}
+                />
+              </label>
+            </div>
+            {/* Grid */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+              {mediaItems.length === 0 ? (
+                <p style={{ color: C.textFaint, fontSize: '0.85rem', textAlign: 'center', marginTop: '24px' }}>Nessuna immagine caricata. Usa il pulsante sopra per caricare.</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '10px' }}>
+                  {mediaItems.map(item => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={item.path}
+                      src={item.url}
+                      alt={item.name}
+                      title={item.name}
+                      onClick={() => insertMediaImageUrl(item.url)}
+                      style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: `1px solid ${C.border}`, transition: 'transform 0.1s, box-shadow 0.1s' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.04)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '' }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPaywall && (
         <div
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001, backdropFilter: 'blur(4px)' }}
