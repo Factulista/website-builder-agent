@@ -99,11 +99,18 @@ function checkMetaDescription(html: string): CheckResult {
 function checkCanonical(html: string): CheckResult {
   const has = /<link\b[^>]*rel=["']canonical["'][^>]*>/i.test(html)
   const url = html.match(/<link\b[^>]*rel=["']canonical["'][^>]*href=["']([^"']*)["']/i)?.[1] ?? ''
+  // A canonical tag is only valid if it has an absolute URL (http/https)
+  const isValid = has && /^https?:\/\//i.test(url)
+  const score = isValid ? 100 : 0
+  const status: CheckResult['status'] = isValid ? 'pass' : 'fail'
+  let detail: string
+  if (!has) detail = 'Tag canonical mancante'
+  else if (!isValid) detail = `canonical non valido: "${url}" (deve essere URL assoluto)`
+  else detail = `canonical: ${url}`
   return {
-    checkId: 'canonical', score: has ? 100 : 0,
-    status: has ? 'pass' : 'fail',
-    detail: has ? `canonical: ${url || '(presente)'}` : 'Tag canonical mancante',
-    data: { has, url },
+    checkId: 'canonical', score, status,
+    detail,
+    data: { has, url, isValid },
   }
 }
 
