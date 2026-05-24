@@ -1183,19 +1183,39 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setBlogHeaderSaving('idle'), 2000)
   }
 
-  const saveBlogSidebarBanner = async () => {
+  const saveBlogSidebarBanner = async (url = blogSidebarBannerUrl, link = blogSidebarBannerLink) => {
     setBlogSidebarBannerSaving('saving')
     const { data: { session: sc } } = await supabase.auth.getSession()
     if (!sc) { setBlogSidebarBannerSaving('idle'); return }
     const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
     const existingConfig = (proj?.site_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: { ...existingConfig, blog_sidebar_banner: { url: blogSidebarBannerUrl, link: blogSidebarBannerLink } },
+    const { error } = await supabase.from('projects').update({
+      site_config: { ...existingConfig, blog_sidebar_banner: { url, link } },
       updated_at: new Date().toISOString(),
     }).eq('id', id)
+    if (error) {
+      console.error('[banner] save failed:', error)
+      setBlogSidebarBannerSaving('idle')
+      return
+    }
     setBlogSidebarBannerSaving('saved')
     setTimeout(() => setBlogSidebarBannerSaving('idle'), 2000)
   }
+
+  // Auto-save banner 1.5s after the user stops typing (prevents data loss if they don't click Salva)
+  const bannerAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!projectSlug) return // not mounted yet
+    if (bannerAutoSaveTimer.current) clearTimeout(bannerAutoSaveTimer.current)
+    bannerAutoSaveTimer.current = setTimeout(() => {
+      // Only auto-save if at least one field is set
+      if (blogSidebarBannerUrl || blogSidebarBannerLink) {
+        saveBlogSidebarBanner(blogSidebarBannerUrl, blogSidebarBannerLink)
+      }
+    }, 1500)
+    return () => { if (bannerAutoSaveTimer.current) clearTimeout(bannerAutoSaveTimer.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blogSidebarBannerUrl, blogSidebarBannerLink])
 
   useEffect(() => {
     if (viewMode === 'code' && activePage) {
@@ -4190,7 +4210,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <button
-                            onClick={saveBlogSidebarBanner}
+                            onClick={() => saveBlogSidebarBanner()}
                             disabled={blogSidebarBannerSaving === 'saving'}
                             style={{ background: C.blue, color: 'white', border: 'none', padding: '6px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
                           >{blogSidebarBannerSaving === 'saving' ? '💾 Salvataggio...' : blogSidebarBannerSaving === 'saved' ? '✓ Salvato' : 'Salva'}</button>
