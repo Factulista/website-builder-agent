@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildBlogListPage, type Post } from '../../../../lib/blog-serve'
+import { buildBlogListPage, type Post, type InjectPoints } from '../../../../lib/blog-serve'
 
 export const runtime = 'nodejs'
 
@@ -48,6 +48,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const siteFooter = homePage ? extractFooter(homePage.html) : ''
   const siteStyle = homePage ? extractStyles(homePage.html) : ''
   const headerHtml = (config.blog_header_html as string) ?? ''
+  const injectPoints = (config.inject_points as InjectPoints | undefined)
 
   const { data: posts, count } = await supabase
     .from('blog_posts')
@@ -59,6 +60,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
   const baseUrl = `/preview/${slug}`
-  const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages)
+  const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, undefined, injectPoints)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }

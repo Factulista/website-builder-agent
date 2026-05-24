@@ -237,6 +237,26 @@ const HTML_TOOLS = [
     },
   },
   {
+    name: 'set_inject_point',
+    description: 'Imposta HTML personalizzato in un punto di iniezione del sito (script, iframe, widget, form newsletter, analytics, cookie banner, ecc.). Usalo quando l\'utente vuole aggiungere un embed o codice esterno senza toccare le pagine HTML. Passare html="" rimuove il contenuto dal punto.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slot: {
+          type: 'string',
+          enum: ['head', 'body_end', 'blog_post_bottom', 'blog_list_bottom'],
+          description: 'head = dentro <head> di ogni pagina (per script, meta, link CSS). body_end = prima di </body> (per pixel, chat widget, tag manager). blog_post_bottom = dopo ogni articolo del blog (newsletter, CTA, embed). blog_list_bottom = dopo la griglia articoli nel blog.',
+        },
+        html: {
+          type: 'string',
+          description: 'HTML da iniettare. Può essere <iframe>, <script>, <div> o qualsiasi HTML valido. Passare stringa vuota per rimuovere il punto.',
+        },
+        summary: { type: 'string' },
+      },
+      required: ['slot', 'html', 'summary'],
+    },
+  },
+  {
     name: 'insert_component',
     description: 'Inserisce un componente parametrico pre-costruito in UNA O PIÙ pagine in un colpo solo. PREFERISCI QUESTO TOOL rispetto a generare HTML da zero quando il pattern richiesto è uno di quelli supportati — risparmi token e garantisci consistenza visiva. Per modifiche nav (es. mega-menu), passa SEMPRE tutti gli slug delle pagine che hanno la stessa nav. Vedi sezione "COMPONENTI PARAMETRICI" nel system prompt per la lista completa.',
     input_schema: {
@@ -473,7 +493,8 @@ export async function runHtmlAgent(
   activePageSlug: string | null,
   apiKey: string,
   projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = [],
-  contextLogo?: LogoDefinition
+  contextLogo?: LogoDefinition,
+  injectPoints?: Record<string, string>
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -564,6 +585,7 @@ REGOLE CRITICHE:
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
 - MAI creare una pagina con slug "blog". Il blog è gestito da un sistema dinamico separato. Se l'utente vuole il blog, aggiungi SOLO il link <a href="./blog">Blog</a> nella nav — non creare la pagina.
 - Per modificare l'intestazione/hero/testo della PAGINA BLOG (la sezione sopra gli articoli), usa update_blog_header — NON edit_page.
+- Per inserire embed/iframe/script/widget (newsletter, analytics, pixel, cookie banner, ecc.) usa set_inject_point — NON edit_page. Scegli lo slot corretto: head per CSS/script globali, body_end per pixel/widget, blog_post_bottom per CTA post-articolo, blog_list_bottom per embed dopo la lista articoli.
 
 TARGETING DELLA PAGINA — IMPORTANTISSIMO:
 - Se l'utente nomina esplicitamente una pagina (es: "nella pagina precios", "sulla pagina contatti", "per la pagina about"), usa edit_page su QUELLA pagina — NON sulla pagina attiva.
@@ -687,6 +709,14 @@ insert_component({
 MEDIA LIBRARY DEL PROGETTO:
 ${mediaList}
 ${logoSection}
+INJECTION POINTS ATTIVI:
+${(() => {
+  const active = Object.entries(injectPoints ?? {}).filter(([, v]) => v && v.trim())
+  if (active.length === 0) return 'Nessun punto di iniezione configurato.'
+  return active.map(([slot, html]) => `- ${slot}: ${html.slice(0, 80)}${html.length > 80 ? '…' : ''}`).join('\n')
+})()}
+Usa set_inject_point per aggiungere/aggiornare/rimuovere embed, script o iframe in questi slot — senza toccare l'HTML delle pagine.
+
 PAGINE DEL SITO:
 ${pageContextBlocks}`
 

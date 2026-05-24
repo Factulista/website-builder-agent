@@ -996,6 +996,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogSidebarBannerUrl, setBlogSidebarBannerUrl] = useState('')
   const [blogSidebarBannerLink, setBlogSidebarBannerLink] = useState('')
   const [blogSidebarBannerOpen, setBlogSidebarBannerOpen] = useState(false)
+  const [injectPoints, setInjectPoints] = useState<Record<string, string>>({})
+  const [injectPointsOpen, setInjectPointsOpen] = useState(false)
+  const [injectPointsSaving, setInjectPointsSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const injectPointsRef = useRef<Record<string, string>>({})
   const [blogSidebarBannerSaving, setBlogSidebarBannerSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
   const [userFullName, setUserFullName] = useState('')
@@ -1109,6 +1113,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => { blogHeaderHtmlRef.current = blogHeaderHtml }, [blogHeaderHtml])
+  useEffect(() => { injectPointsRef.current = injectPoints }, [injectPoints])
   useEffect(() => { blogSidebarBannerUrlRef.current = blogSidebarBannerUrl }, [blogSidebarBannerUrl])
   useEffect(() => { blogSidebarBannerLinkRef.current = blogSidebarBannerLink }, [blogSidebarBannerLink])
   useEffect(() => { projectContextRef.current = projectContext }, [projectContext])
@@ -1270,6 +1275,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }).eq('id', id)
     setBlogHeaderSaving('saved')
     setTimeout(() => setBlogHeaderSaving('idle'), 2000)
+  }
+
+  const saveInjectPoints = async (updated: Record<string, string>) => {
+    setInjectPointsSaving('saving')
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existingConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: { ...existingConfig, inject_points: updated },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setInjectPointsSaving('saved')
+    setTimeout(() => setInjectPointsSaving('idle'), 2000)
   }
 
   const saveBlogSidebarBanner = async (url = blogSidebarBannerUrl, link = blogSidebarBannerLink) => {
@@ -1470,6 +1487,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (config?.media) setMediaMeta(config.media)
       if ((config as any)?.favicon_url) setFaviconUrl((config as any).favicon_url as string)
       setBlogHeaderHtml(config?.blog_header_html ?? '')
+      // Load inject_points (migrate legacy blog_newsletter_html if present)
+      const existingIp = ((config as any)?.inject_points ?? {}) as Record<string, string>
+      const legacyNewsletter = (config as any)?.blog_newsletter_html as string | undefined
+      if (legacyNewsletter && !existingIp.blog_post_bottom) {
+        existingIp.blog_post_bottom = legacyNewsletter
+      }
+      setInjectPoints(existingIp)
+      injectPointsRef.current = existingIp
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
       if ((config as any)?.designSystem) {
@@ -1526,8 +1551,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const bsbUrl = blogSidebarBannerUrlRef.current
     const bsbLink = blogSidebarBannerLinkRef.current
     const ctx = projectContextRef.current
+    const ip = injectPointsRef.current
     if (fav) cfg.favicon_url = fav
     if (bhh) cfg.blog_header_html = bhh
+    if (Object.keys(ip).length > 0) cfg.inject_points = ip
     if (bsbUrl) cfg.blog_sidebar_banner = { url: bsbUrl, link: bsbLink }
     if (ctx && Object.keys(ctx).length > 0) cfg.context = ctx
     return cfg
@@ -2463,6 +2490,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
       await saveState(finalMessages, newPages, versions)
       setViewMode('blog')
+      setLoading(false)
+      return
+    } else if (result.tool === 'set_inject_point') {
+      const slot = result.input.slot as string
+      const html = result.input.html as string
+      summary = `🔌 ${result.input.summary}`
+      // Merge into inject_points and save
+      const updatedIp = { ...injectPointsRef.current }
+      if (html.trim()) {
+        updatedIp[slot] = html
+      } else {
+        delete updatedIp[slot]
+      }
+      setInjectPoints(updatedIp)
+      injectPointsRef.current = updatedIp
+      await saveInjectPoints(updatedIp)
+      setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
+      const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
+      await saveState(finalMessages, newPages, versions)
       setLoading(false)
       return
     }
@@ -4477,6 +4523,77 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </div>
                     )}
                   </div>
+
+                  {/* Embed & Script injection panel */}
+                  {(() => {
+                    const SLOT_LABELS: Record<string, { label: string; desc: string }> = {
+                      head: { label: '<head>', desc: 'CSS, meta tag, script globali — iniettato in <head> di tutte le pagine' },
+                      body_end: { label: '</body>', desc: 'Pixel, chat widget, tag manager — prima di </body> su tutte le pagine' },
+                      blog_post_bottom: { label: 'Fondo articoli', desc: 'Dopo ogni articolo del blog (newsletter, CTA, embed)' },
+                      blog_list_bottom: { label: 'Fondo lista blog', desc: 'Dopo la griglia articoli nella pagina blog' },
+                    }
+                    const activeSlots = Object.entries(injectPoints).filter(([, v]) => v && v.trim())
+                    return (
+                      <div style={{ borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.white }}>
+                        <button
+                          onClick={() => setInjectPointsOpen(v => !v)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 24px', fontSize: '0.82rem', fontWeight: 600, color: C.text, fontFamily: 'inherit' }}
+                        >
+                          <span>🔌 Embed & Script</span>
+                          {activeSlots.length > 0 && (
+                            <span style={{ background: C.blue, color: 'white', borderRadius: '10px', fontSize: '0.65rem', padding: '1px 7px', fontWeight: 700 }}>{activeSlots.length}</span>
+                          )}
+                          <span style={{ fontSize: '0.65rem', marginLeft: 'auto' }}>{injectPointsOpen ? '▼' : '▶'}</span>
+                        </button>
+                        {injectPointsOpen && (
+                          <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <span style={{ fontSize: '0.72rem', color: C.textFaint, padding: '0 8px' }}>Incolla iframe, script o HTML in punti fissi del sito — senza toccare le pagine. L&apos;agente AI può farlo automaticamente su richiesta.</span>
+                            {Object.entries(SLOT_LABELS).map(([slot, { label, desc }]) => {
+                              const current = injectPoints[slot] ?? ''
+                              return (
+                                <div key={slot} style={{ background: '#fafaf8', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: C.text, fontFamily: 'monospace' }}>{label}</span>
+                                    {current && (
+                                      <button
+                                        onClick={async () => {
+                                          const updated = { ...injectPoints }
+                                          delete updated[slot]
+                                          setInjectPoints(updated)
+                                          injectPointsRef.current = updated
+                                          await saveInjectPoints(updated)
+                                        }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.72rem', fontFamily: 'inherit', padding: '2px 6px' }}
+                                      >✕ Rimuovi</button>
+                                    )}
+                                  </div>
+                                  <span style={{ fontSize: '0.68rem', color: C.textFaint }}>{desc}</span>
+                                  <textarea
+                                    value={current}
+                                    onChange={e => {
+                                      const updated = { ...injectPoints, [slot]: e.target.value }
+                                      if (!e.target.value.trim()) delete updated[slot]
+                                      setInjectPoints(updated)
+                                      injectPointsRef.current = updated
+                                    }}
+                                    style={{ width: '100%', height: '80px', fontFamily: 'monospace', fontSize: '0.72rem', border: `1px solid ${C.border}`, borderRadius: '6px', padding: '6px 8px', resize: 'vertical', background: '#fff', boxSizing: 'border-box' }}
+                                    placeholder={slot === 'head' ? '<link rel="stylesheet" href="...">' : slot === 'body_end' ? '<script src="..."></script>' : '<iframe src="https://..."></iframe>'}
+                                  />
+                                </div>
+                              )
+                            })}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 0 0 4px' }}>
+                              <button
+                                onClick={() => saveInjectPoints(injectPoints)}
+                                disabled={injectPointsSaving === 'saving'}
+                                style={{ background: C.blue, color: 'white', border: 'none', padding: '6px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                              >{injectPointsSaving === 'saving' ? '💾 Salvataggio...' : injectPointsSaving === 'saved' ? '✓ Salvato' : 'Salva tutto'}</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {/* Column headers */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 100px 120px', gap: '0 8px', padding: '8px 24px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { InjectPoints } from './blog-serve'
 
 type Page = {
   slug: string
@@ -50,7 +51,7 @@ function normalizeInternalLinks(html: string, knownSlugs: string[]): string {
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints): string {
   const baseTag = `<base href="${base}">`
 
   // Step 1: fix root-relative internal links before base href takes effect
@@ -80,6 +81,16 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     if (ogImageUrl && !/<meta[^>]+property=["']og:image["']/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<meta property="og:image" content="${ogImageUrl}">`)
     }
+  }
+
+  // Inject slot: head (before </head>)
+  if (injectPoints?.head && /<\/head>/i.test(result)) {
+    result = result.replace(/<\/head>/i, `${injectPoints.head}\n</head>`)
+  }
+
+  // Inject slot: body_end (before </body>)
+  if (injectPoints?.body_end && /<\/body>/i.test(result)) {
+    result = result.replace(/<\/body>/i, `${injectPoints.body_end}\n</body>`)
   }
 
   // Inject <base href> (skip if the page already has one)
@@ -137,8 +148,9 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const faviconUrl = config?.favicon_url
   const page = config?.pages?.find(p => p.slug === pageSlug)
   const ogImageUrl = page?.og_image
+  const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -175,8 +187,9 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const knownSlugs = ['blog', ...(config.published_pages).map(p => p.slug)]
   const faviconUrl = config.favicon_url
   const ogImageUrl = page.og_image
+  const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })

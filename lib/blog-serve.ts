@@ -1,4 +1,16 @@
 /**
+ * Named injection slots — points in the rendered HTML where arbitrary content
+ * can be injected without touching page HTML directly.
+ *
+ * - head            → inserted inside <head> of every page and blog page
+ * - body_end        → inserted before </body> of every page and blog page
+ * - blog_post_bottom → inserted after </article> in each blog post
+ * - blog_list_bottom → inserted after the article grid in the blog listing
+ */
+export type InjectSlot = 'head' | 'body_end' | 'blog_post_bottom' | 'blog_list_bottom'
+export type InjectPoints = Partial<Record<InjectSlot, string>>
+
+/**
  * HTML-escape a string for safe interpolation into element text or attribute values.
  * Use for ALL user-controlled values that end up in href/src/alt/content/title etc.
  * Do NOT use on intentionally-rendered HTML (e.g. post.content_html).
@@ -236,7 +248,8 @@ export function buildBlogListPage(
   headerHtml = '',
   currentPage = 1,
   totalPages = 1,
-  faviconUrl?: string
+  faviconUrl?: string,
+  injectPoints?: InjectPoints
 ): string {
   const title = 'Blog'
   const subtitle = lang === 'es' ? 'Artículos y novedades' : lang === 'en' ? 'Articles and updates' : 'Articoli e aggiornamenti'
@@ -320,6 +333,7 @@ export function buildBlogListPage(
   <meta name="description" content="${escapeHtml(subtitle)}">
   <link rel="canonical" href="${escapeHtml(baseUrl)}/blog">
   ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
+  ${injectPoints?.head ?? ''}
   ${siteStyle}
   <style>
     .blog-listing{max-width:1100px;margin:0 auto;padding:3rem 1.5rem 5rem}
@@ -361,7 +375,9 @@ export function buildBlogListPage(
     <div class="blog-grid">${cards}</div>
     ${paginationHtml}
   </section>
+  ${injectPoints?.blog_list_bottom ? `<div class="blog-inject-wrap" style="max-width:700px;margin:2rem auto;padding:0 1rem">${injectPoints.blog_list_bottom}</div>` : ''}
   ${siteFooter}
+  ${injectPoints?.body_end ?? ''}
 </body>
 </html>`
 }
@@ -375,7 +391,7 @@ export function buildBlogPostPage(
   lang = 'it',
   sidebarBanner?: BlogSidebarBanner | null,
   faviconUrl?: string,
-  newsletterHtml?: string
+  injectPoints?: InjectPoints
 ): string {
   const backLabel = '← Blog'
   const dateStr = escapeHtml(formatDate(post.published_at, lang))
@@ -452,6 +468,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   <meta property="og:url" content="${escapeHtml(baseUrl)}/blog/${escapeHtml(post.slug)}">
   <meta property="og:type" content="article">
   ${post.published_at ? `<meta property="article:published_time" content="${escapeHtml(post.published_at)}">` : ''}
+  ${injectPoints?.head ?? ''}
   ${siteStyle}
   <style>${BLOG_POST_CONTENT_CSS}</style>
 </head>
@@ -474,13 +491,14 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
       ${featuredImg}
       <div class="blog-post-content">${contentWithIds}</div>
     </article>
-    ${newsletterHtml ? `<div class="blog-newsletter-wrap" style="max-width:700px;margin:3rem auto 0;padding:0 1rem">${newsletterHtml}</div>` : ''}
+    ${injectPoints?.blog_post_bottom ? `<div class="blog-inject-wrap" style="max-width:700px;margin:3rem auto 0;padding:0 1rem">${injectPoints.blog_post_bottom}</div>` : ''}
 
     <!-- Banner destra -->
     ${bannerHtml}
   </div>
   ${siteFooter}
   ${tocScript}
+  ${injectPoints?.body_end ?? ''}
 </body>
 </html>`
 }

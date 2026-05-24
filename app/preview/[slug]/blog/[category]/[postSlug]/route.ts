@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildBlogPostPage, type Post } from '../../../../../../lib/blog-serve'
+import { buildBlogPostPage, type Post, type InjectPoints } from '../../../../../../lib/blog-serve'
 
 export const runtime = 'nodejs'
 
@@ -51,8 +51,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   if (!post) return new Response('Post not found', { status: 404 })
 
   const sidebarBanner = (config.blog_sidebar_banner as { url: string; link: string } | undefined) ?? null
-  const newsletterHtml = (config.blog_newsletter_html as string | undefined) ?? ''
+  const injectPoints = (config.inject_points as InjectPoints | undefined)
   const baseUrl = `/preview/${slug}`
-  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, undefined, newsletterHtml)
+  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, undefined, injectPoints)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
