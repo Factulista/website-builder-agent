@@ -1555,7 +1555,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (fav) cfg.favicon_url = fav
     if (bhh) cfg.blog_header_html = bhh
     if (Object.keys(ip).length > 0) cfg.inject_points = ip
-    if (bsbUrl) cfg.blog_sidebar_banner = { url: bsbUrl, link: bsbLink }
+    if (bsbUrl || bsbLink) cfg.blog_sidebar_banner = { url: bsbUrl, link: bsbLink }
     if (ctx && Object.keys(ctx).length > 0) cfg.context = ctx
     return cfg
   }
@@ -4508,6 +4508,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             type="text"
                             value={blogSidebarBannerUrl}
                             onChange={e => setBlogSidebarBannerUrl(e.target.value)}
+                            onBlur={e => saveBlogSidebarBanner(e.target.value, blogSidebarBannerLink)}
                             placeholder="https://..."
                             style={{ width: '100%', padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit', background: '#fafaf8', boxSizing: 'border-box' }}
                           />
@@ -4516,6 +4517,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             type="text"
                             value={blogSidebarBannerLink}
                             onChange={e => setBlogSidebarBannerLink(e.target.value)}
+                            onBlur={e => saveBlogSidebarBanner(blogSidebarBannerUrl, e.target.value)}
                             placeholder="https://..."
                             style={{ width: '100%', padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit', background: '#fafaf8', boxSizing: 'border-box' }}
                           />
@@ -4525,7 +4527,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <button
-                            onClick={() => saveBlogSidebarBanner()}
+                            onClick={() => saveBlogSidebarBanner(blogSidebarBannerUrl, blogSidebarBannerLink)}
                             disabled={blogSidebarBannerSaving === 'saving'}
                             style={{ background: C.blue, color: 'white', border: 'none', padding: '6px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
                           >{blogSidebarBannerSaving === 'saving' ? '💾 Salvataggio...' : blogSidebarBannerSaving === 'saved' ? '✓ Salvato' : 'Salva'}</button>
