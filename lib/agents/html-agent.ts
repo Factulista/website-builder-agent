@@ -537,6 +537,13 @@ export async function runHtmlAgent(
     return match ? match[0] : ''
   }
 
+  // Always provide home page CSS as the design system baseline so new pages inherit it
+  const homePage = pages.find(p => p.slug === 'home') ?? pages[0] ?? null
+  const homeStyle = homePage ? extractStyle(homePage.html) : ''
+  const designSystemBlock = homeStyle
+    ? `\nDESIGN SYSTEM (CSS della home — da usare VERBATIM come base per ogni nuova pagina):\n\`\`\`css\n${homeStyle}\n\`\`\``
+    : ''
+
   // Build per-page context blocks
   const pageContextBlocks = pages.map(p => {
     const isActive = p.slug === activePage?.slug
@@ -583,6 +590,7 @@ REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
+- add_page — REGOLA CSS FONDAMENTALE: copia il blocco <style> VERBATIM dal DESIGN SYSTEM (sezione in fondo) come base della nuova pagina. NON reinventare navbar, footer, bottoni, colori o font — devono essere identici alla home. Aggiungi solo CSS specifico per le sezioni uniche della nuova pagina IN FONDO al blocco <style>.
 - MAI creare una pagina con slug "blog". Il blog è gestito da un sistema dinamico separato. Se l'utente vuole il blog, aggiungi SOLO il link <a href="./blog">Blog</a> nella nav — non creare la pagina.
 - Per modificare l'intestazione/hero/testo della PAGINA BLOG (la sezione sopra gli articoli), usa update_blog_header — NON edit_page.
 - Per inserire embed/iframe/script/widget (newsletter, analytics, pixel, cookie banner, ecc.) usa set_inject_point — NON edit_page. Scegli lo slot corretto: head per CSS/script globali, body_end per pixel/widget, blog_post_bottom per CTA post-articolo, blog_list_bottom per embed dopo la lista articoli.
@@ -718,6 +726,8 @@ ${(() => {
   return active.map(([slot, html]) => `- ${slot}: ${html.slice(0, 80)}${html.length > 80 ? '…' : ''}`).join('\n')
 })()}
 Usa set_inject_point per aggiungere/aggiornare/rimuovere embed, script o iframe in questi slot — senza toccare l'HTML delle pagine.
+
+${designSystemBlock}
 
 PAGINE DEL SITO:
 ${pageContextBlocks}`
