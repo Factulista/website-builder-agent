@@ -535,6 +535,25 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       document.execCommand(cmd,false,val);
       triggerSave();
     }
+    if(e.data.type==='fact-fontsize'){
+      var pt=e.data.pt;
+      if(colorSavedRange){
+        var csel3=window.getSelection();
+        if(csel3){csel3.removeAllRanges();csel3.addRange(colorSavedRange);}
+        colorSavedRange=null;
+      }
+      // WYMeditor trick: use fontSize 7 as a marker, then replace with span
+      document.execCommand('styleWithCSS',false,'false');
+      document.execCommand('fontSize',false,'7');
+      var fonts=document.querySelectorAll('font[size="7"]');
+      fonts.forEach(function(f){
+        var span=document.createElement('span');
+        span.style.fontSize=pt+'pt';
+        span.innerHTML=f.innerHTML;
+        f.parentNode.replaceChild(span,f);
+      });
+      triggerSave();
+    }
     if(e.data.type==='fact-link'){
       var anch=getAnchorLink();
       saveSelection();
@@ -852,13 +871,13 @@ type DesignSystem = {
   h5: TypoConfig; h6: TypoConfig; p: TypoConfig; a: TypoConfig
 }
 const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
-  h1: { fontFamily: 'inherit', fontSize: '2.5rem',  fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2',  letterSpacing: '-0.02em' },
-  h2: { fontFamily: 'inherit', fontSize: '2rem',    fontWeight: '700', color: '#1a1a1a', lineHeight: '1.25', letterSpacing: '-0.01em' },
-  h3: { fontFamily: 'inherit', fontSize: '1.5rem',  fontWeight: '600', color: '#1a1a1a', lineHeight: '1.3',  letterSpacing: '0' },
-  h4: { fontFamily: 'inherit', fontSize: '1.25rem', fontWeight: '600', color: '#1a1a1a', lineHeight: '1.35', letterSpacing: '0' },
-  h5: { fontFamily: 'inherit', fontSize: '1.1rem',  fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
-  h6: { fontFamily: 'inherit', fontSize: '1rem',    fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
-  p:  { fontFamily: 'inherit', fontSize: '1rem',    fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
+  h1: { fontFamily: 'inherit', fontSize: '30pt', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2',  letterSpacing: '-0.02em' },
+  h2: { fontFamily: 'inherit', fontSize: '24pt', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.25', letterSpacing: '-0.01em' },
+  h3: { fontFamily: 'inherit', fontSize: '18pt', fontWeight: '600', color: '#1a1a1a', lineHeight: '1.3',  letterSpacing: '0' },
+  h4: { fontFamily: 'inherit', fontSize: '15pt', fontWeight: '600', color: '#1a1a1a', lineHeight: '1.35', letterSpacing: '0' },
+  h5: { fontFamily: 'inherit', fontSize: '13pt', fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
+  h6: { fontFamily: 'inherit', fontSize: '12pt', fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
+  p:  { fontFamily: 'inherit', fontSize: '12pt', fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
   a:  { fontFamily: 'inherit', fontSize: 'inherit', fontWeight: '500', color: '#2563eb', lineHeight: 'inherit', letterSpacing: '0' },
 }
 
@@ -3771,6 +3790,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </optgroup>
                     </select>
 
+                    {/* Font size picker (pt) */}
+                    <select
+                      title="Dimensione testo"
+                      defaultValue=""
+                      onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
+                      onChange={e => {
+                        const pt = e.target.value
+                        if (!pt) return
+                        win()?.postMessage({ type: 'fact-fontsize', pt: Number(pt) }, '*')
+                        e.target.value = ''
+                      }}
+                      style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', width: '68px' }}
+                    >
+                      <option value="" disabled>pt</option>
+                      {[9,10,11,12,13,14,15,16,18,20,24,28,30,36,48,60].map(pt => (
+                        <option key={pt} value={pt}>{pt} pt</option>
+                      ))}
+                    </select>
+
                     <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
 
                     {/* Color picker */}
@@ -4990,6 +5028,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </optgroup>
                           </select>
 
+                          {/* ── Font size picker (pt) ─────────────────────── */}
+                          <select
+                            title="Dimensione testo"
+                            defaultValue=""
+                            onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
+                            onChange={e => {
+                              const pt = e.target.value
+                              if (!pt) return
+                              win()?.postMessage({ type: 'fact-fontsize', pt: Number(pt) }, '*')
+                              e.target.value = ''
+                            }}
+                            style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', width: '68px' }}
+                          >
+                            <option value="" disabled>pt</option>
+                            {[9,10,11,12,13,14,15,16,18,20,24,28,30,36,48,60].map(pt => (
+                              <option key={pt} value={pt}>{pt} pt</option>
+                            ))}
+                          </select>
+
                           <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
 
                           {/* ── Color picker ──────────────────────────────── */}
@@ -5290,8 +5347,35 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <option>Inter</option><option>Space Grotesk</option><option>Lato</option><option>Roboto</option><option>Open Sans</option><option>Montserrat</option><option>Merriweather</option><option>Playfair Display</option><option>Source Serif 4</option>
                         </optgroup>
                       </select>
-                      {/* Size */}
-                      <input value={cfg.fontSize} onChange={e => update('fontSize', e.target.value)} placeholder="1rem" title="Dimensione (es. 2rem, 24px)" style={controlStyle} />
+                      {/* Size (pt) */}
+                      {(() => {
+                        const ptOptions = [9,10,11,12,13,14,15,16,18,20,24,28,30,36,48,60,72]
+                        // Normalize stored value to pt number for select matching
+                        const toPtNum = (v: string): number => {
+                          if (!v || v === 'inherit') return 0
+                          const ptM = v.match(/^(\d+(?:\.\d+)?)pt$/)
+                          if (ptM) return Math.round(Number(ptM[1]))
+                          const remM = v.match(/^(\d+(?:\.\d+)?)rem$/)
+                          if (remM) return Math.round(Number(remM[1]) * 12)
+                          const pxM = v.match(/^(\d+(?:\.\d+)?)px$/)
+                          if (pxM) return Math.round(Number(pxM[1]) * 0.75)
+                          return 0
+                        }
+                        const currentPt = toPtNum(cfg.fontSize)
+                        return (
+                          <select
+                            value={currentPt || ''}
+                            onChange={e => update('fontSize', e.target.value ? `${e.target.value}pt` : 'inherit')}
+                            title="Dimensione (pt)"
+                            style={controlStyle}
+                          >
+                            <option value="">—</option>
+                            {ptOptions.map(pt => (
+                              <option key={pt} value={pt}>{pt} pt</option>
+                            ))}
+                          </select>
+                        )
+                      })()}
                       {/* Weight */}
                       <select value={cfg.fontWeight} onChange={e => update('fontWeight', e.target.value)} style={controlStyle}>
                         <option value="300">300 Light</option><option value="400">400 Regular</option><option value="500">500 Medium</option><option value="600">600 SemiBold</option><option value="700">700 Bold</option><option value="800">800 ExtraBold</option><option value="900">900 Black</option>
