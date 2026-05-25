@@ -3797,7 +3797,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 }
                 return (
                   <div
-                    style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'nowrap', overflowX: 'auto' }}
                     onClick={() => { setInlineListOpen(false); setInlineInsertOpen(false); setInlineAlignOpen(false) }}
                   >
                     {/* Font picker */}
@@ -5032,7 +5032,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                       return (
                         <div
-                          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'nowrap', overflowX: 'auto' }}
                           // Close all dropdowns when clicking anywhere on the toolbar
                           onClick={() => { setBlogListOpen(false); setBlogInsertOpen(false); setBlogAlignOpen(false) }}
                         >
