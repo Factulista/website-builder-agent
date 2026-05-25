@@ -181,19 +181,18 @@ export async function runDesignAgentUpdate(
   apiKey: string,
   context: ProjectContext = {}
 ): Promise<{ css: string; summary: string }> {
-  const system = `Sei un UI designer esperto. Aggiorni il CSS di siti web esistenti in modo chirurgico.
-
-${DESIGN_KNOWLEDGE}
+  const system = `Sei un esperto CSS engineer. Modifichi chirurgicamente il CSS di siti web esistenti.
 
 ${buildContextPrompt(context)}
 
-REGOLE:
+REGOLE OPERATIVE:
 - Ricevi il CSS completo del sito e restituisci il CSS COMPLETO aggiornato tramite update_css.
-- Modifica SOLO ciò che l'utente chiede — non toccare il resto del CSS.
-- Mantieni intatta la struttura (variabili :root, reset, Google Fonts @import, media queries, tutti i componenti).
-- Per modifiche colore: aggiorna prima le variabili in :root{} (es: --color-primary, --color-accent) — si propagano automaticamente a tutti i componenti che le usano. Poi aggiorna eventuali occorrenze dirette del vecchio colore nel CSS.
-- Se l'utente chiede di usare "il colore del logo" o simili, usa il valore HEX dal CONTESTO PROGETTO sopra.
-- Non aggiungere commenti o spiegazioni nel CSS — solo il CSS puro.`
+- Modifica SOLO ciò che l'utente chiede — non toccare struttura, font, spacing o altri valori non menzionati.
+- Mantieni intatta tutta la struttura CSS: @import Google Fonts, :root{}, reset, componenti, media queries.
+- Per modifiche colore: aggiorna le variabili in :root{} (es: --color-primary, --color-accent) — propagano automaticamente. Poi cerca e sostituisci anche le eventuali occorrenze hardcoded dello stesso colore nel resto del CSS.
+- Se l'utente cita "il colore del logo", "il blu del logo" o simili: usa il valore HEX del logo dal CONTESTO PROGETTO.
+- Contrasto minimo WCAG AA: testo < 18px → ratio 4.5:1, testo grande → ratio 3:1. Se la modifica richiesta viola il contrasto, aggiusta il tono.
+- Non aggiungere commenti, spiegazioni o proprietà non esistenti — CSS puro, struttura invariata.`
 
   const res = await callClaude(
     'design',
