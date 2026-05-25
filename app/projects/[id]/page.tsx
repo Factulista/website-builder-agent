@@ -579,7 +579,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     var cur=el;
     while(cur&&cur!==document.body){
       var tag=cur.tagName||'';
-      if(blockTag==='P'&&(/^H[1-6]$/.test(tag)||tag==='BLOCKQUOTE'||tag==='LI')) blockTag=tag;
+      if(blockTag==='P'&&(/^H[1-6]$/.test(tag)||tag==='BLOCKQUOTE'||tag==='LI'||tag==='PRE')) blockTag=tag;
       if(!fontSizePt&&cur.style&&cur.style.fontSize){
         var fs=cur.style.fontSize;
         var ptM=fs.match(/^(\d+(?:\.\d+)?)pt$/);
@@ -3880,6 +3880,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       }}
                       style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'monospace', fontWeight: 700, minWidth: '80px' }}
                     >
+                      <option value="LI" hidden>• Elemento lista</option>
                       <option value="H1">H1 — Titolo 1</option>
                       <option value="H2">H2 — Titolo 2</option>
                       <option value="H3">H3 — Titolo 3</option>
@@ -5125,6 +5126,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               }}
                               style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'monospace', fontWeight: 700, minWidth: '80px' }}
                             >
+                              <option value="LI" hidden>• Elemento lista</option>
                               <option value="H1">H1 — Titolo 1</option>
                               <option value="H2">H2 — Titolo 2</option>
                               <option value="H3">H3 — Titolo 3</option>
