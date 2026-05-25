@@ -3038,7 +3038,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 onChange={(e) => {
                   setInput(e.target.value)
                   e.target.style.height = 'auto'
-                  e.target.style.height = `${e.target.scrollHeight}px`
+                  const maxH = 180
+                  const newH = Math.min(e.target.scrollHeight, maxH)
+                  e.target.style.height = `${newH}px`
+                  e.target.style.overflowY = e.target.scrollHeight > maxH ? 'auto' : 'hidden'
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
