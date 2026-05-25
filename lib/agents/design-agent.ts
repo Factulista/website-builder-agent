@@ -203,7 +203,14 @@ export async function runDesignAgentUpdate(
   apiKey: string,
   context: ProjectContext = {}
 ): Promise<{ pages: Page[]; summary: string }> {
-  const pagesContext = pages.map(p => `=== ${p.slug} ===\n${p.html.slice(0, 3000)}`).join('\n\n')
+  const pagesContext = pages.map(p => {
+    // Send the full <style> block (CSS variables are critical for color changes) + a short HTML skeleton
+    const styleMatch = p.html.match(/<style[\s\S]*?<\/style>/i)
+    const styleBlock = styleMatch ? styleMatch[0] : ''
+    const htmlWithoutStyle = p.html.replace(/<style[\s\S]*?<\/style>/i, '')
+    const htmlSkeleton = htmlWithoutStyle.slice(0, 1500)
+    return `=== ${p.slug} ===\n${styleBlock}\n${htmlSkeleton}`
+  }).join('\n\n')
 
   const system = `Sei un UI designer esperto. Aggiorni il design di siti web esistenti tramite find/replace CSS mirati.
 
@@ -215,7 +222,10 @@ REGOLE:
 - Usa update_design con find/replace precisi sullo stile CSS esistente.
 - Applica le modifiche a TUTTE le pagine in modo coerente.
 - Modifica solo CSS (colori, font, border-radius, spacing) — non il contenuto HTML.
-- I find devono essere stringhe ESATTE presenti nell'HTML.`
+- I find devono essere stringhe ESATTE presenti nell'HTML (anche solo una parola/valore è sufficiente se univoco).
+- Per modifiche al colore: preferisci cambiare le variabili CSS in :root{} (es: --color-primary, --color-accent) invece di cercare ogni occorrenza inline. Una sola modifica nella variabile si propaga ovunque.
+- Se l'utente chiede di usare "il colore del logo" o "il blu del logo" o simili, usa il valore HEX del logo dal CONTESTO PROGETTO sopra.
+- Se non trovi un valore esatto, usa la stringa più corta e univoca che identifichi il valore da cambiare.`
 
   const res = await callClaude(
     'design',
