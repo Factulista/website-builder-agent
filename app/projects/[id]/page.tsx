@@ -564,21 +564,38 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     }
   });
 
-  // ── Report current block tag to parent for toolbar active state ────────────
+  // ── Report selection style to parent for toolbar sync ─────────────────────
+  function rgbToHex(rgb){
+    var m=rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if(!m) return '';
+    return '#'+[m[1],m[2],m[3]].map(function(n){return parseInt(n).toString(16).padStart(2,'0');}).join('');
+  }
   document.addEventListener('selectionchange',function(){
     var sel=window.getSelection();
     if(!sel||!sel.rangeCount) return;
     var node=sel.getRangeAt(0).startContainer;
     var el=node.nodeType===3?node.parentElement:node;
-    while(el&&el!==document.body){
-      var tag=el.tagName||'';
-      if(/^H[1-6]$/.test(tag)||tag==='P'||tag==='BLOCKQUOTE'||tag==='LI'){
-        window.parent.postMessage({type:'fact-block',tag:tag},'*');
-        return;
+    var blockTag='P',fontName='',fontSizePt=null,color='';
+    var cur=el;
+    while(cur&&cur!==document.body){
+      var tag=cur.tagName||'';
+      if(blockTag==='P'&&(/^H[1-6]$/.test(tag)||tag==='BLOCKQUOTE'||tag==='LI')) blockTag=tag;
+      if(!fontSizePt&&cur.style&&cur.style.fontSize){
+        var fs=cur.style.fontSize;
+        var ptM=fs.match(/^(\d+(?:\.\d+)?)pt$/);
+        if(ptM) fontSizePt=Math.round(parseFloat(ptM[1]));
+        else{var pxM=fs.match(/^(\d+(?:\.\d+)?)px$/);if(pxM) fontSizePt=Math.round(parseFloat(pxM[1])*0.75);}
       }
-      el=el.parentElement;
+      if(!fontName&&cur.style&&cur.style.fontFamily){
+        fontName=cur.style.fontFamily.replace(/['"]/g,'').split(',')[0].trim();
+      }
+      if(!color&&cur.style&&cur.style.color){
+        var c=cur.style.color;
+        color=c.startsWith('#')?c:rgbToHex(c);
+      }
+      cur=cur.parentElement;
     }
-    window.parent.postMessage({type:'fact-block',tag:'P'},'*');
+    window.parent.postMessage({type:'fact-style',block:blockTag,fontName:fontName,fontSizePt:fontSizePt,color:color},'*');
   });
 
 })();`
@@ -1037,9 +1054,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [designSaving, setDesignSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   // ── Inline editor toolbar state ──────────────────────────────────────────
   const [inlineActiveBlock, setInlineActiveBlock] = useState<string>('')
+  const [inlineFontName, setInlineFontName] = useState('')
+  const [inlineFontSizePt, setInlineFontSizePt] = useState<number | null>(null)
+  const inlineColorInputRef = useRef<HTMLInputElement | null>(null)
   const [inlineListOpen, setInlineListOpen] = useState(false)
   const [inlineInsertOpen, setInlineInsertOpen] = useState(false)
   const [inlineAlignOpen, setInlineAlignOpen] = useState(false)
+  const [blogFontName, setBlogFontName] = useState('')
+  const [blogFontSizePt, setBlogFontSizePt] = useState<number | null>(null)
+  const blogColorInputRef = useRef<HTMLInputElement | null>(null)
   const inlineImgInputRef = useRef<HTMLInputElement | null>(null)
   const [mediaPickerTarget, setMediaPickerTarget] = useState<'inline' | 'blog' | null>(null)
   const mediaPickerUploadRef = useRef<HTMLInputElement | null>(null)
@@ -1227,6 +1250,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setInlineActiveBlock(e.data.tag ?? '')
         return
       }
+      if (e.data?.type === 'fact-style') {
+        setInlineActiveBlock(e.data.block ?? 'P')
+        setInlineFontName(e.data.fontName ?? '')
+        setInlineFontSizePt(e.data.fontSizePt ?? null)
+        if (inlineColorInputRef.current && e.data.color) inlineColorInputRef.current.value = e.data.color
+        return
+      }
       if (e.data?.type !== 'html-change' || !activePage) return
       const newHtml = e.data.html as string
       // Keep editBaseHtmlRef in sync so AI-change detection doesn't false-positive
@@ -1256,6 +1286,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const handleBlogMessage = (e: MessageEvent) => {
       if (e.data?.type === 'fact-block') {
         setBlogActiveBlock(e.data.tag ?? '')
+        return
+      }
+      if (e.data?.type === 'fact-style') {
+        setBlogActiveBlock(e.data.block ?? 'P')
+        setBlogFontName(e.data.fontName ?? '')
+        setBlogFontSizePt(e.data.fontSizePt ?? null)
+        if (blogColorInputRef.current && e.data.color) blogColorInputRef.current.value = e.data.color
         return
       }
       if (e.data?.type !== 'html-change') return
@@ -3760,17 +3797,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     {/* Font picker */}
                     <select
                       title="Scegli font"
-                      defaultValue=""
+                      value={inlineFontName}
                       onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                       onChange={e => {
                         const font = e.target.value
                         if (!font) return
                         win()?.postMessage({ type: 'fact-format', cmd: 'fontName', val: font }, '*')
-                        e.target.value = ''
                       }}
                       style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', maxWidth: '110px' }}
                     >
-                      <option value="" disabled>Font</option>
+                      <option value="">Font</option>
                       <optgroup label="Sistema">
                         <option value="Georgia">Georgia</option>
                         <option value="Times New Roman">Times New Roman</option>
@@ -3796,17 +3832,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     {/* Font size picker (pt) */}
                     <select
                       title="Dimensione testo"
-                      defaultValue=""
+                      value={inlineFontSizePt ?? ''}
                       onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                       onChange={e => {
                         const pt = e.target.value
                         if (!pt) return
                         win()?.postMessage({ type: 'fact-fontsize', pt: Number(pt) }, '*')
-                        e.target.value = ''
                       }}
                       style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', width: '68px' }}
                     >
-                      <option value="" disabled>pt</option>
+                      <option value="">pt</option>
                       {[9,10,11,12,13,14,15,16,18,20,24,28,30,36,48,60].map(pt => (
                         <option key={pt} value={pt}>{pt} pt</option>
                       ))}
@@ -3819,6 +3854,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       <span style={{ fontSize: '0.82rem', fontWeight: 800, color: C.text, lineHeight: 1, pointerEvents: 'none' }}>A</span>
                       <div style={{ width: '14px', height: '3px', borderRadius: '1px', background: 'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7)', pointerEvents: 'none' }} />
                       <input type="color" defaultValue="#000000"
+                        ref={el => { inlineColorInputRef.current = el }}
                         onMouseDown={() => win()?.postMessage({ type: 'fact-save-sel' }, '*')}
                         onChange={e => win()?.postMessage({ type: 'fact-format', cmd: 'foreColor', val: e.target.value }, '*')}
                         style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }}
@@ -4998,17 +5034,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           {/* ── Font picker ───────────────────────────────── */}
                           <select
                             title="Scegli font"
-                            defaultValue=""
+                            value={blogFontName}
                             onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                             onChange={e => {
                               const font = e.target.value
                               if (!font) return
                               win()?.postMessage({ type: 'fact-format', cmd: 'fontName', val: font }, '*')
-                              e.target.value = ''
                             }}
                             style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', maxWidth: '110px' }}
                           >
-                            <option value="" disabled>Font</option>
+                            <option value="">Font</option>
                             <optgroup label="Sistema">
                               <option value="Georgia">Georgia</option>
                               <option value="Times New Roman">Times New Roman</option>
@@ -5034,17 +5069,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           {/* ── Font size picker (pt) ─────────────────────── */}
                           <select
                             title="Dimensione testo"
-                            defaultValue=""
+                            value={blogFontSizePt ?? ''}
                             onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                             onChange={e => {
                               const pt = e.target.value
                               if (!pt) return
                               win()?.postMessage({ type: 'fact-fontsize', pt: Number(pt) }, '*')
-                              e.target.value = ''
                             }}
                             style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', width: '68px' }}
                           >
-                            <option value="" disabled>pt</option>
+                            <option value="">pt</option>
                             {[9,10,11,12,13,14,15,16,18,20,24,28,30,36,48,60].map(pt => (
                               <option key={pt} value={pt}>{pt} pt</option>
                             ))}
@@ -5057,6 +5091,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             <span style={{ fontSize: '0.82rem', fontWeight: 800, color: C.text, lineHeight: 1, pointerEvents: 'none' }}>A</span>
                             <div style={{ width: '14px', height: '3px', borderRadius: '1px', background: 'linear-gradient(90deg,#ef4444,#f59e0b,#22c55e,#3b82f6,#a855f7)', pointerEvents: 'none' }} />
                             <input type="color" defaultValue="#000000"
+                              ref={el => { blogColorInputRef.current = el }}
                               onMouseDown={() => win()?.postMessage({ type: 'fact-save-sel' }, '*')}
                               onChange={e => win()?.postMessage({ type: 'fact-format', cmd: 'foreColor', val: e.target.value }, '*')}
                               style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none', padding: 0 }}
