@@ -945,10 +945,9 @@ function applyDesignSystemToPages(ds: DesignSystem, currentPages: Page[]): Page[
   if (!css.trim()) return currentPages
   const styleTag = `<style id="fact-design-system">\n/* Factulista Design System - auto-generated */\n${css}\n</style>`
   return currentPages.map(p => {
-    let html = p.html
-    if (/<style[^>]*id="fact-design-system"[^>]*>/i.test(html)) {
-      html = html.replace(/<style[^>]*id="fact-design-system"[^>]*>[\s\S]*?<\/style>/i, styleTag)
-    } else if (/<\/head>/i.test(html)) {
+    // Strip ALL existing fact-design-system style tags (handles accidental duplicates)
+    let html = p.html.replace(/<style[^>]*id="fact-design-system"[^>]*>[\s\S]*?<\/style>\s*/gi, '')
+    if (/<\/head>/i.test(html)) {
       html = html.replace(/<\/head>/i, `${styleTag}\n</head>`)
     } else {
       html = styleTag + '\n' + html
@@ -1330,19 +1329,32 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         contentHtml = bodyMatch ? bodyMatch[1].trim() : newHtml
       }
       setSelectedPost(prev => prev ? { ...prev, content_html: contentHtml } : prev)
+      // Capture the post id this content belongs to, so a fast post switch
+      // doesn't save the new content under the previous post's id
+      const targetPostId = selectedPost.id
       if (blogAutoSaveTimer.current) clearTimeout(blogAutoSaveTimer.current)
       blogAutoSaveTimer.current = setTimeout(async () => {
         setBlogSaving('saving')
         const { data: { session } } = await supabase.auth.getSession()
         const token = session?.access_token
-        if (!token) return
-        await fetch(`/api/blog-posts/${selectedPost.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ content_html: contentHtml }),
-        })
-        setBlogSaving('saved')
-        setTimeout(() => setBlogSaving('idle'), 2000)
+        if (!token) { setBlogSaving('idle'); return }
+        try {
+          const res = await fetch(`/api/blog-posts/${targetPostId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ content_html: contentHtml }),
+          })
+          if (!res.ok) {
+            console.error('Blog autosave failed:', res.status, await res.text().catch(() => ''))
+            setBlogSaving('idle')
+            return
+          }
+          setBlogSaving('saved')
+          setTimeout(() => setBlogSaving('idle'), 2000)
+        } catch (err) {
+          console.error('Blog autosave error:', err)
+          setBlogSaving('idle')
+        }
       }, 2000)
     }
     window.addEventListener('message', handleBlogMessage)
@@ -4431,11 +4443,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               const { data: { session } } = await supabase.auth.getSession()
               const token = session?.access_token
               if (!token) return
-              const res = await fetch(`/api/blog-posts/${post.id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              })
-              const json = await res.json()
-              const full: BlogPost = json.post ?? post
+              let full: BlogPost = post
+              try {
+                const res = await fetch(`/api/blog-posts/${post.id}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                })
+                if (!res.ok) {
+                  alert(`Impossibile aprire l'articolo (${res.status}). Potrebbe essere stato eliminato.`)
+                  await loadBlogPosts()
+                  return
+                }
+                const json = await res.json()
+                full = json.post ?? post
+              } catch (err) {
+                console.error('openPost error:', err)
+                alert('Errore di rete nel caricamento dell\'articolo')
+                return
+              }
               setSelectedPost(full)
               setBlogMetaEdits({})
               // Build editor srcdoc — uses the same CSS as the live blog preview
@@ -4481,9 +4505,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               const { data: { session } } = await supabase.auth.getSession()
               const token = session?.access_token
               if (!token) return
-              await fetch(`/api/blog-posts/${postId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
-              if (selectedPost?.id === postId) setSelectedPost(null)
-              await loadBlogPosts()
+              try {
+                const res = await fetch(`/api/blog-posts/${postId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+                if (!res.ok) {
+                  alert(`Errore eliminazione: ${res.status}`)
+                  return
+                }
+                if (selectedPost?.id === postId) setSelectedPost(null)
+                await loadBlogPosts()
+              } catch (err) {
+                console.error('deletePost error:', err)
+                alert('Errore di rete durante l\'eliminazione')
+              }
             }
 
             const togglePublish = async (post: BlogPost) => {
@@ -4508,13 +4541,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               const { data: { session } } = await supabase.auth.getSession()
               const token = session?.access_token
               if (!token) return
-              await fetch(`/api/blog-posts/${postId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify(updates),
-              })
-              setSelectedPost(prev => prev ? { ...prev, ...updates } : prev)
-              setBlogPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updates } : p))
+              try {
+                const res = await fetch(`/api/blog-posts/${postId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify(updates),
+                })
+                if (!res.ok) {
+                  console.error('saveMeta failed:', res.status, await res.text().catch(() => ''))
+                  return
+                }
+                setSelectedPost(prev => prev ? { ...prev, ...updates } : prev)
+                setBlogPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updates } : p))
+              } catch (err) {
+                console.error('saveMeta error:', err)
+              }
             }
 
             const generateWithAI = async () => {

@@ -59,7 +59,18 @@ export async function POST(req: NextRequest) {
     })
 
     if (!vercelRes.ok) {
-      return NextResponse.json({ status: 'pending', domain: project.custom_domain })
+      // 404 = domain not yet registered with Vercel → genuinely "pending"
+      // 401/403 = our Vercel token is invalid/expired → server config error
+      // 5xx = Vercel is down → caller should retry later
+      if (vercelRes.status === 404) {
+        return NextResponse.json({ status: 'pending', domain: project.custom_domain })
+      }
+      const errText = await vercelRes.text().catch(() => '')
+      console.error('[verify-custom-domain] Vercel error', vercelRes.status, errText)
+      if (vercelRes.status === 401 || vercelRes.status === 403) {
+        return NextResponse.json({ error: 'Token Vercel non valido o scaduto. Contatta l\'amministratore.' }, { status: 502 })
+      }
+      return NextResponse.json({ error: `Vercel ha risposto ${vercelRes.status}. Riprova fra qualche secondo.` }, { status: 502 })
     }
 
     const vercelData = await vercelRes.json()

@@ -279,8 +279,12 @@ export async function POST(req: NextRequest) {
       runFullPipeline(lastUserMessage, pages ?? [], apiKey, context, emit)
         .then(async (result) => {
           if (result.updatedContext) {
+            // Re-read fresh siteConfig right before update to minimise lost-update
+            // window against concurrent requests on the same project
+            const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+            const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
             await supabase.from('projects').update({
-              site_config: { ...siteConfig, context: result.updatedContext },
+              site_config: { ...freshConfig, context: result.updatedContext },
             }).eq('id', projectId)
           }
           // Se il pipeline ha generato un template, salvalo nel DB (non-blocking)
@@ -349,8 +353,10 @@ export async function POST(req: NextRequest) {
         const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context, currentSharedCss)
         // Save shared_css directly to DB (design-update doesn't go through buildSiteConfig on client)
         if (result.tool === 'update_shared_css' && result.input?.shared_css) {
+          const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+          const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
           await supabase.from('projects').update({
-            site_config: { ...siteConfig, shared_css: result.input.shared_css },
+            site_config: { ...freshConfig, shared_css: result.input.shared_css },
           }).eq('id', projectId)
         }
         const duUsage = result.usage as Usage
@@ -411,14 +417,17 @@ export async function POST(req: NextRequest) {
         ])
 
         // Apply blog SEO updates
+        // Note: serial (not parallel) to reduce race-condition risk if user
+        // triggers SEO twice in rapid succession on the same project.
         if (blogResult?.input?.posts?.length) {
-          await Promise.all(blogResult.input.posts.map(p =>
-            supabase.from('blog_posts').update({
+          for (const p of blogResult.input.posts) {
+            const { error } = await supabase.from('blog_posts').update({
               seo_title: p.seo_title,
               seo_description: p.seo_description,
               tags: p.tags,
             }).eq('id', p.id)
-          ))
+            if (error) console.error('[blog-seo-update] error for post', p.id, error.message)
+          }
         }
 
         const seoUsage = result.usage as Usage
@@ -486,8 +495,10 @@ export async function POST(req: NextRequest) {
       // Run memory agent in background (non-blocking)
       runMemoryAgent(messages, context, apiKey).then(async (updatedContext) => {
         if (updatedContext) {
+          const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+          const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
           await supabase.from('projects').update({
-            site_config: { ...siteConfig, context: updatedContext },
+            site_config: { ...freshConfig, context: updatedContext },
           }).eq('id', projectId)
         }
       }).catch(() => null)
