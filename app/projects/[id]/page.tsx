@@ -1498,7 +1498,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       injectPointsRef.current = existingIp
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
-      if ((config as any)?.shared_css) sharedCssRef.current = (config as any).shared_css as string
+      if ((config as any)?.shared_css) {
+        sharedCssRef.current = (config as any).shared_css as string
+      } else if (loadedPages.length > 0) {
+        // One-time migration: extract shared_css from home page and save it
+        const homeForMigration = loadedPages.find(p => p.slug === 'home') ?? loadedPages[0]
+        const cssBlocks = homeForMigration.html.match(/<style[\s\S]*?<\/style>/gi) ?? []
+        const extractedCss = cssBlocks.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
+        if (extractedCss) {
+          sharedCssRef.current = extractedCss
+          supabase.from('projects').update({
+            site_config: { ...(config ?? {}), shared_css: extractedCss },
+          }).eq('id', id).then(() => console.log('[shared_css] migrated from home page'))
+        }
+      }
       if ((config as any)?.designSystem) {
         const ds = (config as any).designSystem as DesignSystem
         setDesignSystem(ds)
