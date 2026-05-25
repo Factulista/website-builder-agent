@@ -601,6 +601,7 @@ LOGO — REGOLE FONDAMENTALI:
 - Il logo DEVE essere identico su tutte le pagine del sito.
 
 COLORI E SFONDI — REGOLE CRITICHE:
+- Quando la richiesta è SOLO di cambio colore testo (es: "le scritte del footer le vedo grigie, rendile bianche", "il testo non si vede"): usa find/replace ESCLUSIVAMENTE sul CSS — NON toccare la struttura HTML. Preferisci modificare il selettore CSS (es: 'footer { color: #fff; }') o la variabile in :root. MAI riscrivere l'HTML del footer/sezione.
 - Quando l'utente dice "metti lo stesso sfondo/colore che c'è in X" o "uguale al grigio attorno" o simili:
   1. Leggi la sezione PALETTE COLORI (o il blocco <style>) per trovare il valore esatto del colore di sfondo della pagina/sezione circostante.
   2. Controlla prima le CSS custom properties (:root), poi le regole background-color per selettori come body, .section, .container, ecc.

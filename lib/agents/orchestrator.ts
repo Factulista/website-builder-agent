@@ -83,6 +83,13 @@ const DESIGN_UPDATE_KEYWORDS = [
   'colore', 'palette', 'font', 'stile', 'tema', 'sfondo', 'tipografia',
   'restyle', 'cambia aspetto', 'cambia design', 'cambia il colore', 'cambia i colori',
   'cambia font', 'cambia lo stile', 'più moderno', 'più minimal', 'più elegante',
+  // Color-perception complaints ("I see them as grey", "make them white")
+  'bianche', 'bianchi', 'bianco', 'grigie', 'grigi', 'grigio', 'grige',
+  'le vedo grig', 'li vedo grig', 'le vedo bianc', 'sembrano grig', 'sembrano bianc',
+  'non sono bianc', 'non si vedono', 'poco visibil', 'non visibil',
+  'testo bianco', 'testo grigio', 'testo nero', 'testo scuro', 'testo chiaro',
+  'scritte bianche', 'scritte grigie', 'scritte nere',
+  'colore del testo', 'colore delle scritte', 'colore link', 'colore dei link',
 ]
 
 const CONTENT_UPDATE_KEYWORDS = [
