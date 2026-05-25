@@ -176,24 +176,24 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
   return `<li class="comp-nfd" data-comp="nav-feature-dropdown">
   <style>
     .comp-nfd{position:relative;list-style:none;}
-    .comp-nfd-trigger{background:none;border:none;padding:0.5rem 0.75rem;font:inherit;font-weight:500;color:var(--color-text,#1a1a1a);cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:inherit;}
-    .comp-nfd-trigger::after{content:'';display:inline-block;border:4px solid transparent;border-top-color:currentColor;margin-top:5px;transition:transform .2s;}
-    .comp-nfd[data-open="true"] .comp-nfd-trigger::after{transform:rotate(180deg);margin-top:-2px;}
-    .comp-nfd-panel{position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:1.25rem;padding-top:calc(1.25rem + 8px);box-shadow:0 12px 40px rgba(0,0,0,0.12);display:none;min-width:480px;z-index:100;}
-    .comp-nfd[data-open="true"] .comp-nfd-panel{display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:0.4rem 1.25rem;}
-    .comp-nfd-item{display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0.7rem;border-radius:10px;color:var(--color-text,#1a1a1a);text-decoration:none;transition:background .15s;font-size:0.9rem;}
-    .comp-nfd-item:hover{background:#f8fafc;}
-    .comp-nfd-icon{width:32px;height:32px;border-radius:8px;background:#eff6ff;display:inline-flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;color:var(--color-accent,#2563eb);}
-    .comp-nfd-label{flex:1;font-weight:500;}
-    .comp-nfd-badge{font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:0.04em;flex-shrink:0;}
-    .comp-nfd-badge-top{background:#fef3c7;color:#92400e;}
-    .comp-nfd-badge-new{background:#dbeafe;color:#1d4ed8;}
+    .comp-nfd-trigger{background:none;border:none;padding:0.5rem 0.75rem;font:inherit;font-weight:500;color:var(--color-text,#1a1a1a);cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:inherit;}
+    .comp-nfd-trigger svg{width:12px;height:12px;transition:transform .2s;opacity:0.5;flex-shrink:0;}
+    .comp-nfd[data-open="true"] .comp-nfd-trigger svg{transform:rotate(180deg);}
+    .comp-nfd-panel{position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:0.75rem;padding-top:calc(0.75rem + 8px);box-shadow:0 8px 32px rgba(0,0,0,0.10);display:none;min-width:440px;z-index:100;}
+    .comp-nfd[data-open="true"] .comp-nfd-panel{display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:2px;}
+    .comp-nfd-item{display:flex;align-items:center;gap:0.6rem;padding:0.55rem 0.65rem;border-radius:8px;color:var(--color-text,#1a1a1a);text-decoration:none;transition:background .12s;font-size:0.875rem;}
+    .comp-nfd-item:hover{background:#f4f6f8;}
+    .comp-nfd-icon{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:0.8rem;flex-shrink:0;opacity:0.6;}
+    .comp-nfd-label{flex:1;font-weight:500;color:var(--color-text,#1a1a1a);}
+    .comp-nfd-badge{font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0;}
+    .comp-nfd-badge-top{background:#f1f5f9;color:#64748b;}
+    .comp-nfd-badge-new{background:#eff6ff;color:#2563eb;}
     @media(max-width:640px){
       .comp-nfd-panel{position:fixed;top:auto;bottom:0;left:0;right:0;transform:none;min-width:0;border-radius:14px 14px 0 0;max-height:70vh;overflow-y:auto;}
       .comp-nfd[data-open="true"] .comp-nfd-panel{grid-template-columns:1fr;}
     }
   </style>
-  <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${id}">${triggerLabel}</button>
+  <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${id}">${triggerLabel}<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2 4 6 8 10 4"/></svg></button>
   <div class="comp-nfd-panel" id="${id}" role="menu">
       ${itemsHtml}
   </div>
