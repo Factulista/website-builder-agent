@@ -1311,9 +1311,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (e.data?.type !== 'html-change') return
       const newHtml = e.data.html as string
       blogBaseHtmlRef.current = newHtml
-      // Extract just the body content from the full HTML
-      const bodyMatch = newHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
-      const contentHtml = bodyMatch ? bodyMatch[1].trim() : newHtml
+      // Extract the innermost .blog-post-content innerHTML to avoid
+      // accumulating wrappers on every save/reload cycle
+      let contentHtml = ''
+      try {
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(newHtml, 'text/html')
+        const allContent = doc.querySelectorAll('.blog-post-content')
+        const innermost = allContent.length > 0 ? allContent[allContent.length - 1] : null
+        if (innermost) {
+          contentHtml = innermost.innerHTML.trim()
+        } else {
+          const bodyMatch = newHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+          contentHtml = bodyMatch ? bodyMatch[1].trim() : newHtml
+        }
+      } catch {
+        const bodyMatch = newHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+        contentHtml = bodyMatch ? bodyMatch[1].trim() : newHtml
+      }
       setSelectedPost(prev => prev ? { ...prev, content_html: contentHtml } : prev)
       if (blogAutoSaveTimer.current) clearTimeout(blogAutoSaveTimer.current)
       blogAutoSaveTimer.current = setTimeout(async () => {
@@ -4424,7 +4439,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               setSelectedPost(full)
               setBlogMetaEdits({})
               // Build editor srcdoc — uses the same CSS as the live blog preview
-              const contentHtml = full.content_html ?? ''
+              // Strip any accumulated wrapper divs from legacy saves
+              let contentHtml = full.content_html ?? ''
+              try {
+                const parser = new DOMParser()
+                const doc = parser.parseFromString(`<div id="__wrap">${contentHtml}</div>`, 'text/html')
+                const allContent = doc.querySelectorAll('.blog-post-content')
+                if (allContent.length > 0) {
+                  contentHtml = allContent[allContent.length - 1].innerHTML.trim()
+                }
+              } catch { /* keep original */ }
               // Extract siteStyle from home page so CSS variables (--color-accent etc.) are inherited
               const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
               const siteStyleBlocks = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
