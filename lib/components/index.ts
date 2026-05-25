@@ -16,6 +16,74 @@ export type Component = {
   paramSchema?: string
 }
 
+// ── Button smart renderer ─────────────────────────────────────────────────────
+
+function renderButton(data: Record<string, unknown>): string {
+  const label    = String(data.label    ?? 'Clicca qui')
+  const href     = data.href    ? String(data.href)    : ''
+  const variant  = String(data.variant  ?? 'primary')   // primary | secondary | ghost | outline | pill | destructive
+  const size     = String(data.size     ?? 'md')        // sm | md | lg
+  const icon     = data.icon    ? String(data.icon)    : ''
+  const iconPos  = String(data.iconPos  ?? 'right')     // left | right
+  const fullWidth = Boolean(data.fullWidth ?? false)
+  const id = `btn-${Math.random().toString(36).slice(2, 8)}`
+
+  const padMap: Record<string, string> = {
+    sm: '0.45rem 1rem',
+    md: '0.75rem 1.6rem',
+    lg: '1rem 2.2rem',
+  }
+  const fontMap: Record<string, string> = {
+    sm: '0.82rem',
+    md: '1rem',
+    lg: '1.1rem',
+  }
+  const pad  = padMap[size]  ?? padMap.md
+  const font = fontMap[size] ?? fontMap.md
+
+  const baseStyle = [
+    `display:inline-flex`,
+    `align-items:center`,
+    `justify-content:center`,
+    `gap:0.45em`,
+    `padding:${pad}`,
+    `font-size:${font}`,
+    `font-weight:700`,
+    `font-family:inherit`,
+    `border-radius:var(--btn-radius,var(--radius,10px))`,
+    `cursor:pointer`,
+    `text-decoration:none`,
+    `border:2px solid transparent`,
+    `transition:opacity 0.15s,transform 0.15s,box-shadow 0.15s`,
+    `line-height:1.2`,
+    fullWidth ? `width:100%` : '',
+  ].filter(Boolean).join(';')
+
+  const variantStyles: Record<string, string> = {
+    primary:     `background:var(--color-accent,#2563eb);color:#fff;border-color:transparent;`,
+    secondary:   `background:transparent;color:var(--color-accent,#2563eb);border-color:var(--color-accent,#2563eb);`,
+    ghost:       `background:transparent;color:var(--color-text,#1a1a1a);border-color:transparent;`,
+    outline:     `background:transparent;color:var(--color-text,#1a1a1a);border-color:#d1d5db;`,
+    pill:        `background:var(--color-accent,#2563eb);color:#fff;border-color:transparent;border-radius:999px;`,
+    destructive: `background:#dc2626;color:#fff;border-color:transparent;`,
+  }
+  const vs = variantStyles[variant] ?? variantStyles.primary
+
+  const content = icon
+    ? (iconPos === 'left' ? `${icon} ${label}` : `${label} ${icon}`)
+    : label
+
+  const tag = href ? 'a' : 'button'
+  const hrefAttr  = href ? ` href="${href}"` : ''
+  const typeAttr  = !href ? ` type="button"` : ''
+
+  return `<${tag} id="${id}" class="comp-btn" style="${baseStyle};${vs}"${hrefAttr}${typeAttr}>${content}</${tag}>
+<style>
+  #${id}:hover{opacity:0.88;transform:translateY(-1px);}
+  #${id}:active{transform:translateY(0);opacity:1;}
+</style>`
+}
+
 // ── New smart component renderers ────────────────────────────────────────────
 
 function renderStatsRow(data: Record<string, unknown>): string {

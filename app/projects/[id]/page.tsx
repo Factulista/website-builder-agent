@@ -3685,7 +3685,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <select
                       title="Scegli font"
                       defaultValue=""
-                      onMouseDown={e => e.stopPropagation()}
+                      onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                       onChange={e => {
                         const font = e.target.value
                         if (!font) return
@@ -3736,7 +3736,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <select
                       title="Tipo di blocco"
                       value={inlineActiveBlock || 'P'}
-                      onMouseDown={e => e.stopPropagation()}
+                      onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                       onChange={e => {
                         fmt('formatBlock', e.target.value.toLowerCase())
                         setInlineListOpen(false); setInlineInsertOpen(false); setInlineAlignOpen(false)
@@ -4902,7 +4902,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <select
                             title="Scegli font"
                             defaultValue=""
-                            onMouseDown={e => e.stopPropagation()}
+                            onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                             onChange={e => {
                               const font = e.target.value
                               if (!font) return
@@ -4961,7 +4961,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             <select
                               title="Tipo di blocco"
                               value={blogActiveBlock || 'P'}
-                              onMouseDown={e => e.stopPropagation()}
+                              onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
                               onChange={e => {
                                 fmt('formatBlock', e.target.value.toLowerCase())
                                 setBlogListOpen(false); setBlogInsertOpen(false); setBlogAlignOpen(false)

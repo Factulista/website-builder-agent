@@ -95,6 +95,7 @@ export const SAAS2_FEATURE_TEMPLATE = `<!DOCTYPE html>
       color: #737373;
       font-size: 0.95rem;
       font-weight: 500;
+      font-family: var(--font);
       padding: 6px 14px;
       transition: color 0.2s;
     }

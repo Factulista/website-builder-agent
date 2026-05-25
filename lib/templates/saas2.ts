@@ -97,6 +97,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       color: #737373;
       font-size: 16px;
       font-weight: 500;
+      font-family: var(--font);
       padding: 6px 14px;
       border-radius: 0;
       transition: color 0.2s;
@@ -121,6 +122,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       border-radius: 0;
       font-size: 0.88rem;
       font-weight: 500;
+      font-family: var(--font);
       cursor: pointer;
       text-decoration: none;
       transition: color 0.2s;
@@ -137,6 +139,7 @@ export const SAAS2_TEMPLATE = `<!DOCTYPE html>
       border-radius: 0;
       font-size: 0.88rem;
       font-weight: 500;
+      font-family: var(--font);
       cursor: pointer;
       text-decoration: none;
       border: none;
