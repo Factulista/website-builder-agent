@@ -595,6 +595,12 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       }
       cur=cur.parentElement;
     }
+    // Fallback to computed style when no inline font-size found
+    if(!fontSizePt&&el){
+      var compFs=window.getComputedStyle(el).fontSize;
+      var compM=compFs.match(/^(\d+(?:\.\d+)?)px$/);
+      if(compM) fontSizePt=Math.round(parseFloat(compM[1])*0.75);
+    }
     window.parent.postMessage({type:'fact-style',block:blockTag,fontName:fontName,fontSizePt:fontSizePt,color:color},'*');
   });
 
