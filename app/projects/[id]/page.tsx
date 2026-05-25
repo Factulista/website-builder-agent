@@ -530,6 +530,8 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
         if(csel2){csel2.removeAllRanges();csel2.addRange(colorSavedRange);}
         colorSavedRange=null;
       }
+      // Ensure iframe document is focused so execCommand applies
+      try{ window.focus(); }catch(_){}
       // Enable CSS-based styling so we get <span style="..."> instead of deprecated tags
       if(cmd==='fontName'||cmd==='foreColor'){document.execCommand('styleWithCSS',false,'true');}
       document.execCommand(cmd,false,val);
@@ -542,6 +544,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
         if(csel3){csel3.removeAllRanges();csel3.addRange(colorSavedRange);}
         colorSavedRange=null;
       }
+      try{ window.focus(); }catch(_){}
       var sel3=window.getSelection();
       if(!sel3||sel3.isCollapsed) return;
       // Snapshot pre-existing font[size="7"] so we only replace newly created ones
@@ -575,11 +578,14 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     if(!sel||!sel.rangeCount) return;
     var node=sel.getRangeAt(0).startContainer;
     var el=node.nodeType===3?node.parentElement:node;
-    var blockTag='P',fontName='',fontSizePt=null,color='';
+    var blockTag=null,fontName='',fontSizePt=null,color='';
     var cur=el;
     while(cur&&cur!==document.body){
       var tag=cur.tagName||'';
-      if(blockTag==='P'&&(/^H[1-6]$/.test(tag)||tag==='BLOCKQUOTE'||tag==='LI'||tag==='PRE')) blockTag=tag;
+      // First block-level ancestor wins (closest to cursor)
+      if(blockTag===null&&(/^H[1-6]$/.test(tag)||tag==='P'||tag==='BLOCKQUOTE'||tag==='LI'||tag==='PRE')){
+        blockTag=tag;
+      }
       if(!fontSizePt&&cur.style&&cur.style.fontSize){
         var fs=cur.style.fontSize;
         var ptM=fs.match(/^(\d+(?:\.\d+)?)pt$/);
@@ -595,6 +601,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       }
       cur=cur.parentElement;
     }
+    if(!blockTag) blockTag='P';
     // Fallback to computed style when no inline font-size found
     if(!fontSizePt&&el){
       var compFs=window.getComputedStyle(el).fontSize;
