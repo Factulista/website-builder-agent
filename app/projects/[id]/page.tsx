@@ -4661,12 +4661,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <img src={blogSidebarBannerUrl} alt="Banner preview" style={{ width: '100%', maxWidth: '200px', borderRadius: '8px', border: `1px solid ${C.border}` }} />
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <button
-                            onClick={() => saveBlogSidebarBanner(blogSidebarBannerUrl, blogSidebarBannerLink)}
-                            disabled={blogSidebarBannerSaving === 'saving'}
-                            style={{ background: C.blue, color: 'white', border: 'none', padding: '6px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
-                          >{blogSidebarBannerSaving === 'saving' ? '💾 Salvataggio...' : blogSidebarBannerSaving === 'saved' ? '✓ Salvato' : 'Salva'}</button>
                           <span style={{ fontSize: '0.72rem', color: C.textFaint }}>Appare fisso a destra durante la lettura degli articoli</span>
+                          {blogSidebarBannerSaving === 'saving' && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>💾 Salvataggio...</span>}
+                          {blogSidebarBannerSaving === 'saved' && <span style={{ fontSize: '0.72rem', color: '#16a34a' }}>✓ Salvato</span>}
                         </div>
                       </div>
                     )}
