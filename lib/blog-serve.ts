@@ -201,6 +201,14 @@ export type BlogSidebarBanner = {
   link: string
 }
 
+/**
+ * Rewrites relative nav links (href="./slug") to absolute (href="baseUrl/slug").
+ * Blog pages are served at /blog/category/post depth, so relative links resolve wrong.
+ */
+function fixNavLinks(nav: string, baseUrl: string): string {
+  return nav.replace(/href="\.\//g, `href="${baseUrl}/`)
+}
+
 function slugifySimple(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
@@ -324,6 +332,8 @@ export function buildBlogListPage(
 </nav>`
   }
 
+  const fixedNav = fixNavLinks(siteNav, baseUrl)
+
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(lang)}">
 <head>
@@ -367,7 +377,7 @@ export function buildBlogListPage(
   </style>
 </head>
 <body>
-  ${siteNav}
+  ${fixedNav}
   ${headerSection}
   <section class="blog-listing">
     ${headerHtml ? '' : `<div class="blog-listing-header"><h1>${title}</h1><p>${subtitle}</p></div>`}
@@ -453,6 +463,8 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 })();
 </script>` : ''
 
+  const fixedNav = fixNavLinks(siteNav, baseUrl)
+
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(lang)}">
 <head>
@@ -473,7 +485,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   <style>${BLOG_POST_CONTENT_CSS}</style>
 </head>
 <body>
-  ${siteNav}
+  ${fixedNav}
   <div class="blog-post-layout">
     <!-- TOC sinistra -->
     <aside class="blog-toc" aria-label="Indice">
