@@ -534,6 +534,23 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       try{ window.focus(); }catch(_){}
       // Enable CSS-based styling so we get <span style="..."> instead of deprecated tags
       if(cmd==='fontName'||cmd==='foreColor'){document.execCommand('styleWithCSS',false,'true');}
+      // Special-case: formatBlock on an LI is invalid HTML. First exit the list,
+      // then apply the requested block type.
+      if(cmd==='formatBlock'){
+        var fsel=window.getSelection();
+        if(fsel&&fsel.rangeCount){
+          var fnode=fsel.getRangeAt(0).startContainer;
+          var fel=fnode.nodeType===3?fnode.parentElement:fnode;
+          var inUl=false,inOl=false;
+          while(fel&&fel!==document.body){
+            if(fel.tagName==='UL'){inUl=true;break;}
+            if(fel.tagName==='OL'){inOl=true;break;}
+            fel=fel.parentElement;
+          }
+          if(inUl) document.execCommand('insertUnorderedList',false,null);
+          else if(inOl) document.execCommand('insertOrderedList',false,null);
+        }
+      }
       document.execCommand(cmd,false,val);
       triggerSave();
     }
@@ -3834,6 +3851,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap', minHeight: '42px' }}
                     onClick={() => { setInlineListOpen(false); setInlineInsertOpen(false); setInlineAlignOpen(false) }}
                   >
+                    {/* Undo / Redo */}
+                    <button title="Annulla (Ctrl+Z)" onMouseDown={e => { e.preventDefault(); fmt('undo') }}
+                      style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>
+                    </button>
+                    <button title="Ripristina (Ctrl+Shift+Z)" onMouseDown={e => { e.preventDefault(); fmt('redo') }}
+                      style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>
+                    </button>
+
+                    <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
                     {/* Font picker */}
                     <select
                       title="Scegli font"
@@ -4476,7 +4507,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               // Extract siteStyle from home page so CSS variables (--color-accent etc.) are inherited
               const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
               const siteStyleBlocks = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
-              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
+              // Editor-only overrides: live blog renders inside a grid layout that provides
+              // horizontal padding; the editor doesn't, so add it here to keep list markers
+              // (bullets/numbers) visible inside the iframe.
+              const editorOnlyCss = `body{margin:0!important}.blog-post-wrapper{padding:1.5rem 2rem 3rem!important;max-width:760px!important;margin:0 auto!important}`
+              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style><style>${editorOnlyCss}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
               setBlogEditorSrcDoc(editorHtml)
               blogBaseHtmlRef.current = editorHtml
             }
@@ -5106,6 +5141,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           // Close all dropdowns when clicking anywhere on the toolbar
                           onClick={() => { setBlogListOpen(false); setBlogInsertOpen(false); setBlogAlignOpen(false) }}
                         >
+                          {/* ── Undo / Redo ─────────────────────────────── */}
+                          <button title="Annulla (Ctrl+Z)" onMouseDown={e => { e.preventDefault(); fmt('undo') }}
+                            style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>
+                          </button>
+                          <button title="Ripristina (Ctrl+Shift+Z)" onMouseDown={e => { e.preventDefault(); fmt('redo') }}
+                            style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>
+                          </button>
+
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
 
                           {/* ── Font picker ───────────────────────────────── */}
                           <select
