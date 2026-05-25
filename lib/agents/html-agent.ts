@@ -667,6 +667,7 @@ Questi componenti sono pre-costruiti e ricevono solo i dati. Risparmiano TANTI t
 ▸ nav-feature-dropdown — Mega-menu nella nav (trigger + griglia di funzionalità).
   Caso d'uso tipico: "voglio una dropdown nella nav con le voci Facturación, Contabilidad, …"
   placement: replace-nav-link, targetText="Funcionalidades" (testo del link nav esistente)
+  NOTA: replace-nav-link funziona anche per AGGIORNARE un mega menu già presente — usa lo stesso targetText del triggerLabel del menu esistente (es. "Funcionalidades").
   data: {
     triggerLabel: string         // testo che resta visibile nella nav
     columns?: 1|2|3|4            // colonne nel pannello (default 2)

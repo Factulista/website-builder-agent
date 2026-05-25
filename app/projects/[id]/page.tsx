@@ -2452,15 +2452,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             if (re.test(html)) { html = html.replace(re, componentHtml); didInject = true }
           }
         } else if (placement === 'replace-nav-link' && targetText) {
-          // Find an <a>...targetText...</a> inside <nav> and replace its surrounding <li> (or the <a> if no li)
+          // Find an <a>...targetText...</a> inside <nav> and replace its surrounding <li> (or the <a> if no li).
+          // Also matches an existing nav-feature-dropdown <li class="comp-nfd"> with the same trigger text,
+          // so the user can update/replace a previously inserted mega menu without errors.
           const navMatch = html.match(/<nav[\s\S]*?<\/nav>/i)
           if (navMatch) {
             const navHtml = navMatch[0]
             const escaped = targetText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            // 1. Existing mega menu (comp-nfd) with matching trigger label — replace the whole <li>
+            const compNfdRe = new RegExp(
+              `<li[^>]*class=["'][^"']*\\bcomp-nfd\\b[^"']*["'][\\s\\S]*?<button[^>]*class=["'][^"']*\\bcomp-nfd-trigger\\b[^"']*["'][^>]*>\\s*${escaped}[\\s\\S]*?<\\/li>`,
+              'i'
+            )
+            // 2. Plain <li><a>label</a></li>
             const liRe = new RegExp(`<li[^>]*>\\s*<a[^>]*>\\s*${escaped}\\s*<\\/a>\\s*<\\/li>`, 'i')
+            // 3. Standalone <a>label</a>
             const aRe = new RegExp(`<a[^>]*>\\s*${escaped}\\s*<\\/a>`, 'i')
             let newNav: string | null = null
-            if (liRe.test(navHtml)) newNav = navHtml.replace(liRe, componentHtml)
+            if (compNfdRe.test(navHtml)) newNav = navHtml.replace(compNfdRe, componentHtml)
+            else if (liRe.test(navHtml)) newNav = navHtml.replace(liRe, componentHtml)
             else if (aRe.test(navHtml)) newNav = navHtml.replace(aRe, componentHtml)
             if (newNav) {
               html = html.replace(navHtml, newNav)
