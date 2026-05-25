@@ -542,11 +542,14 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
         if(csel3){csel3.removeAllRanges();csel3.addRange(colorSavedRange);}
         colorSavedRange=null;
       }
-      // WYMeditor trick: use fontSize 7 as a marker, then replace with span
+      var sel3=window.getSelection();
+      if(!sel3||sel3.isCollapsed) return;
+      // Snapshot pre-existing font[size="7"] so we only replace newly created ones
+      var existingFonts=Array.prototype.slice.call(document.querySelectorAll('font[size="7"]'));
       document.execCommand('styleWithCSS',false,'false');
       document.execCommand('fontSize',false,'7');
-      var fonts=document.querySelectorAll('font[size="7"]');
-      fonts.forEach(function(f){
+      document.querySelectorAll('font[size="7"]').forEach(function(f){
+        if(existingFonts.indexOf(f)>=0) return;
         var span=document.createElement('span');
         span.style.fontSize=pt+'pt';
         span.innerHTML=f.innerHTML;
