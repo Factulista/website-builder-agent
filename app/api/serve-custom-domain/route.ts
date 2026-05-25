@@ -141,7 +141,8 @@ ${items}
     const homePage = publishedPages.find(p => p.slug === 'home')
     const siteNav = homePage ? extractNav(homePage.html) : ''
     const siteFooter = homePage ? extractFooter(homePage.html) : ''
-    const siteStyle = homePage ? extractStyles(homePage.html) : ''
+    const sharedCss = typeof siteConfig.shared_css === 'string' ? siteConfig.shared_css : null
+    const siteStyle = sharedCss ? `<style>${sharedCss}</style>` : (homePage ? extractStyles(homePage.html) : '')
 
     // /blog or /blog/ → listing
     if (pathname === '/blog' || pathname === '/blog/') {

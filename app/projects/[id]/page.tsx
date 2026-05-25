@@ -1085,6 +1085,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const blogSidebarBannerUrlRef = useRef<string>('')
   const blogSidebarBannerLinkRef = useRef<string>('')
   const projectContextRef = useRef<{ businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }>({})
+  const sharedCssRef = useRef<string>('')
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -1497,6 +1498,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       injectPointsRef.current = existingIp
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
+      if ((config as any)?.shared_css) sharedCssRef.current = (config as any).shared_css as string
       if ((config as any)?.designSystem) {
         const ds = (config as any).designSystem as DesignSystem
         setDesignSystem(ds)
@@ -1557,6 +1559,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (Object.keys(ip).length > 0) cfg.inject_points = ip
     if (bsbUrl || bsbLink) cfg.blog_sidebar_banner = { url: bsbUrl, link: bsbLink }
     if (ctx && Object.keys(ctx).length > 0) cfg.context = ctx
+    const css = sharedCssRef.current
+    if (css) cfg.shared_css = css
     return cfg
   }
 
@@ -2314,6 +2318,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return
     }
 
+    if (result.tool === 'update_shared_css') {
+      // Design-update: apply new CSS to in-memory pages (for srcDoc preview) + save shared_css
+      const newCss = result.input.shared_css
+      if (newCss) {
+        sharedCssRef.current = newCss
+        // Apply new CSS to all pages in memory so srcDoc preview reflects the change
+        const styleTag = `<style>${newCss}</style>`
+        newPages = pages.map(p => ({
+          ...p,
+          html: p.html.replace(/<style[\s\S]*?<\/style>/gi, '') // strip old
+            .replace(/<\/head>/i, `${styleTag}\n</head>`),      // inject new
+        }))
+      }
+      summary = `🎨 ${result.input.summary}`
+      // Fall through to saveState below (newPages is updated)
+    } else
+
     if (result.tool === 'create_site') {
       const rawPages = result.input.pages
       if (!Array.isArray(rawPages)) { markFailed('risposta non valida dal server'); return }
@@ -2326,6 +2347,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const newSlugs = result.input.newPageSlugs as string[] | undefined
       const firstNew = newSlugs?.find(s => newPages.some(p => p.slug === s))
       newActiveSlug = firstNew ?? (newPages.length > 0 ? newPages[0].slug : activeSlug)
+      // Extract and store shared_css from home page HTML
+      const homeForCss = newPages.find(p => p.slug === 'home') ?? newPages[0]
+      if (homeForCss) {
+        const cssBlocks = homeForCss.html.match(/<style[\s\S]*?<\/style>/gi) ?? []
+        const extracted = cssBlocks.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
+        if (extracted) sharedCssRef.current = extracted
+      }
 
       // Auto-seed blog posts if user requested a blog and none exist yet
       const blogMentioned = /\bblog\b/i.test(effectiveInput) ||

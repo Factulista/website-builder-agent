@@ -42,7 +42,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const lang = detectLang(context, homePage?.html ?? '')
   const siteNav = homePage ? extractNav(homePage.html) : ''
   const siteFooter = homePage ? extractFooter(homePage.html) : ''
-  const siteStyle = homePage ? extractStyles(homePage.html) : ''
+  const sharedCss = typeof config.shared_css === 'string' ? config.shared_css : null
+  const siteStyle = sharedCss ? `<style>${sharedCss}</style>` : (homePage ? extractStyles(homePage.html) : '')
 
   const { data: post } = await supabase
     .from('blog_posts')

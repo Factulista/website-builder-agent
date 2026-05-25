@@ -124,8 +124,8 @@ export function classify(userMessage: string, hasPages: boolean): AgentType {
 }
 
 export type PipelineResult = {
-  tool: 'create_site'
-  input: { pages: Page[]; summary: string; newPageSlugs?: string[] }
+  tool: 'create_site' | 'update_shared_css'
+  input: { pages: Page[]; summary: string; newPageSlugs?: string[]; shared_css?: string }
   agent: 'pipeline' | 'html' | 'design-update' | 'content-update' | 'seo' | 'images'
   steps: string[]
   updatedContext?: ProjectContext
@@ -182,20 +182,15 @@ export async function runDesignUpdate(
   userRequest: string,
   pages: Page[],
   apiKey: string,
-  context: ProjectContext = {}
+  context: ProjectContext = {},
+  currentSharedCss: string = ''
 ): Promise<PipelineResult> {
-  const result = await runDesignAgentUpdate(userRequest, pages, apiKey, context)
-  // Aggiorna il design system nel contesto con i nuovi valori CSS estratti dalle pagine
-  const updatedDesign = extractUpdatedDesign(result.pages, context.design)
-  const updatedContext: ProjectContext | undefined = updatedDesign
-    ? { ...context, design: updatedDesign }
-    : undefined
+  const result = await runDesignAgentUpdate(userRequest, currentSharedCss, apiKey, context)
   return {
-    tool: 'create_site',
-    input: { pages: result.pages, summary: `🎨 ${result.summary}` },
+    tool: 'update_shared_css',
+    input: { pages, summary: `🎨 ${result.summary}`, shared_css: result.css },
     agent: 'design-update',
-    steps: [`🎨 Design aggiornato su ${result.pages.length} pagine`],
-    updatedContext,
+    steps: [`🎨 CSS aggiornato`],
   }
 }
 

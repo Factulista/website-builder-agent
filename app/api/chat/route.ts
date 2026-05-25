@@ -335,20 +335,29 @@ export async function POST(req: NextRequest) {
 
     if (agent === 'design-update') {
       return makeStream(async (emit) => {
-        emit('🎨 Aggiornando design su tutte le pagine…')
-        const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context)
-        if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
-        // Salva il design system aggiornato nel contesto del progetto
-        if (result.updatedContext) {
+        emit('🎨 Aggiornando CSS del sito…')
+        const currentSharedCss = typeof siteConfig.shared_css === 'string'
+          ? siteConfig.shared_css
+          // Fallback: if no shared_css yet, extract from home page HTML
+          : (() => {
+              const home = (pages ?? []).find(p => p.slug === 'home') ?? (pages ?? [])[0]
+              if (!home) return ''
+              return (home.html.match(/<style[\s\S]*?<\/style>/gi) ?? [])
+                .map(s => s.replace(/<\/?style[^>]*>/gi, ''))
+                .join('\n')
+            })()
+        const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context, currentSharedCss)
+        // Save shared_css directly to DB (design-update doesn't go through buildSiteConfig on client)
+        if (result.tool === 'update_shared_css' && result.input?.shared_css) {
           await supabase.from('projects').update({
-            site_config: { ...siteConfig, context: result.updatedContext },
+            site_config: { ...siteConfig, shared_css: result.input.shared_css },
           }).eq('id', projectId)
         }
         const duUsage = result.usage as Usage
         consumeUsage(duUsage)
         if (runId) {
           completeRun(runId, {
-            output_summary: `design-update: ${result.input?.pages?.length ?? 0} pagine`,
+            output_summary: `design-update: CSS aggiornato`,
             input_tokens: duUsage?.input_tokens ?? 0,
             output_tokens: duUsage?.output_tokens ?? 0,
             cache_read_tokens: duUsage?.cache_read_input_tokens ?? 0,

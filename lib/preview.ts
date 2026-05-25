@@ -13,6 +13,7 @@ type SiteConfig = {
   html?: string
   pages?: Page[]
   published_pages?: Page[]
+  shared_css?: string
   favicon_url?: string
   blog_header_html?: string
   blog_sidebar_banner?: { url: string; link?: string }
@@ -44,6 +45,21 @@ function normalizeInternalLinks(html: string, knownSlugs: string[]): string {
 }
 
 /**
+ * If shared_css is provided, replaces the page's own <style> block(s) with the
+ * canonical shared CSS. This is the single source of truth for all site styling.
+ * Falls back gracefully: pages without shared_css are served as-is.
+ */
+function applySharedCss(html: string, sharedCss: string): string {
+  // Strip page-level <style> blocks (they may be stale after design-update)
+  const stripped = html.replace(/<style[\s\S]*?<\/style>/gi, '')
+  const styleTag = `<style>${sharedCss}</style>`
+  if (/<\/head>/i.test(stripped)) {
+    return stripped.replace(/<\/head>/i, `${styleTag}\n</head>`)
+  }
+  return styleTag + stripped
+}
+
+/**
  * Prepares page HTML for serving:
  * 1. Normalises root-relative internal links (href="/blog" → href="./blog").
  * 2. Injects <base href> so all relative links (./blog, ./contact …) resolve correctly.
@@ -51,8 +67,11 @@ function normalizeInternalLinks(html: string, knownSlugs: string[]): string {
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string): string {
   const baseTag = `<base href="${base}">`
+
+  // Step 0: apply shared_css if available (replaces page-level <style> blocks)
+  if (sharedCss) html = applySharedCss(html, sharedCss)
 
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
@@ -149,8 +168,9 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const page = config?.pages?.find(p => p.slug === pageSlug)
   const ogImageUrl = page?.og_image
   const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
+  const sharedCss = config?.shared_css
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -188,8 +208,9 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const faviconUrl = config.favicon_url
   const ogImageUrl = page.og_image
   const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
+  const sharedCss = config.shared_css
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })

@@ -160,78 +160,46 @@ NON aggiungere stili per button, nav, card, section, hero o altri componenti. L'
   throw new Error('Design agent: troppi tentativi falliti')
 }
 
-type Page = { slug: string; name: string; html: string }
-
-const DESIGN_UPDATE_TOOLS = [
+const UPDATE_CSS_TOOL = [
   {
-    name: 'update_design',
-    description: 'Aggiorna il design di tutte le pagine del sito con find/replace CSS mirati.',
+    name: 'update_css',
+    description: 'Aggiorna il CSS condiviso del sito. Restituisce il CSS completo modificato.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        pages: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              pageSlug: { type: 'string' },
-              edits: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    find: { type: 'string' },
-                    replace: { type: 'string' },
-                  },
-                  required: ['find', 'replace'],
-                },
-              },
-            },
-            required: ['pageSlug', 'edits'],
-          },
-        },
-        summary: { type: 'string' },
+        css: { type: 'string', description: 'Il CSS completo e aggiornato del sito. Deve contenere tutto il CSS originale con solo le modifiche richieste applicate.' },
+        summary: { type: 'string', description: 'Breve descrizione di cosa è stato modificato.' },
       },
-      required: ['pages', 'summary'],
+      required: ['css', 'summary'],
     },
   },
 ]
 
 export async function runDesignAgentUpdate(
   userRequest: string,
-  pages: Page[],
+  currentCss: string,
   apiKey: string,
   context: ProjectContext = {}
-): Promise<{ pages: Page[]; summary: string }> {
-  const pagesContext = pages.map(p => {
-    // Send the full <style> block (CSS variables are critical for color changes) + a short HTML skeleton
-    const styleMatch = p.html.match(/<style[\s\S]*?<\/style>/i)
-    const styleBlock = styleMatch ? styleMatch[0] : ''
-    const htmlWithoutStyle = p.html.replace(/<style[\s\S]*?<\/style>/i, '')
-    const htmlSkeleton = htmlWithoutStyle.slice(0, 1500)
-    return `=== ${p.slug} ===\n${styleBlock}\n${htmlSkeleton}`
-  }).join('\n\n')
-
-  const system = `Sei un UI designer esperto. Aggiorni il design di siti web esistenti tramite find/replace CSS mirati.
+): Promise<{ css: string; summary: string }> {
+  const system = `Sei un UI designer esperto. Aggiorni il CSS di siti web esistenti in modo chirurgico.
 
 ${DESIGN_KNOWLEDGE}
 
 ${buildContextPrompt(context)}
 
 REGOLE:
-- Usa update_design con find/replace precisi sullo stile CSS esistente.
-- Applica le modifiche a TUTTE le pagine in modo coerente.
-- Modifica solo CSS (colori, font, border-radius, spacing) — non il contenuto HTML.
-- I find devono essere stringhe ESATTE presenti nell'HTML (anche solo una parola/valore è sufficiente se univoco).
-- Per modifiche al colore: preferisci cambiare le variabili CSS in :root{} (es: --color-primary, --color-accent) invece di cercare ogni occorrenza inline. Una sola modifica nella variabile si propaga ovunque.
-- Se l'utente chiede di usare "il colore del logo" o "il blu del logo" o simili, usa il valore HEX del logo dal CONTESTO PROGETTO sopra.
-- Se non trovi un valore esatto, usa la stringa più corta e univoca che identifichi il valore da cambiare.`
+- Ricevi il CSS completo del sito e restituisci il CSS COMPLETO aggiornato tramite update_css.
+- Modifica SOLO ciò che l'utente chiede — non toccare il resto del CSS.
+- Mantieni intatta la struttura (variabili :root, reset, Google Fonts @import, media queries, tutti i componenti).
+- Per modifiche colore: aggiorna prima le variabili in :root{} (es: --color-primary, --color-accent) — si propagano automaticamente a tutti i componenti che le usano. Poi aggiorna eventuali occorrenze dirette del vecchio colore nel CSS.
+- Se l'utente chiede di usare "il colore del logo" o simili, usa il valore HEX dal CONTESTO PROGETTO sopra.
+- Non aggiungere commenti o spiegazioni nel CSS — solo il CSS puro.`
 
   const res = await callClaude(
     'design',
     system,
-    [{ role: 'user', content: `Richiesta: ${userRequest}\n\nPAGINE ATTUALI:\n${pagesContext}` }],
-    DESIGN_UPDATE_TOOLS,
+    [{ role: 'user', content: `Richiesta: ${userRequest}\n\nCSS ATTUALE DEL SITO:\n${currentCss}` }],
+    UPDATE_CSS_TOOL,
     apiKey
   )
 
@@ -240,17 +208,6 @@ REGOLE:
   const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
   if (!toolUse) throw new Error('No tool use in Design Update response')
 
-  const result = toolUse.input as { pages: { pageSlug: string; edits: { find: string; replace: string }[] }[]; summary: string }
-
-  const updatedPages = pages.map(page => {
-    const patch = result.pages?.find(p => p.pageSlug === page.slug)
-    if (!patch) return page
-    let html = page.html
-    for (const edit of patch.edits) {
-      if (html.includes(edit.find)) html = html.replace(edit.find, edit.replace)
-    }
-    return { ...page, html }
-  })
-
-  return { pages: updatedPages, summary: result.summary }
+  const result = toolUse.input as { css: string; summary: string }
+  return { css: result.css, summary: result.summary }
 }

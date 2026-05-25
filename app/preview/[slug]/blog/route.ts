@@ -46,7 +46,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const lang = detectLang(context, homePage?.html ?? '')
   const siteNav = homePage ? extractNav(homePage.html) : ''
   const siteFooter = homePage ? extractFooter(homePage.html) : ''
-  const siteStyle = homePage ? extractStyles(homePage.html) : ''
+  const sharedCss = typeof config.shared_css === 'string' ? config.shared_css : null
+  const siteStyle = sharedCss ? `<style>${sharedCss}</style>` : (homePage ? extractStyles(homePage.html) : '')
   const headerHtml = (config.blog_header_html as string) ?? ''
   const injectPoints = (config.inject_points as InjectPoints | undefined)
 
