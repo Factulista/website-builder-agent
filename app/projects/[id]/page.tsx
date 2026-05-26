@@ -1570,6 +1570,46 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Reusable: AI-generate alt/title/caption/description for an uploaded image
+  // in the project's language. Called by ALL upload paths so every image in the
+  // media library has SEO metadata populated automatically.
+  const generateAndSaveImageMeta = async (path: string, imageUrl: string) => {
+    try {
+      const detectedLang: string =
+        projectContext?.language ||
+        latestPagesRef.current[0]?.html?.match(/<html[^>]+lang=["']([^"']{2})/i)?.[1] ||
+        'it'
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      const r = await fetch('/api/generate-image-meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ imageUrl, context: { ...projectContext, language: detectedLang } }),
+      })
+      if (!r.ok) {
+        console.error('[image-meta] generation failed:', r.status)
+        return
+      }
+      const meta = await r.json()
+      if (!meta) return
+      const newMeta = {
+        ...mediaMeta,
+        [path]: {
+          alt: meta.alt ?? '',
+          title: meta.title ?? '',
+          caption: meta.caption ?? '',
+          description: meta.description ?? '',
+        },
+      }
+      setMediaMeta(newMeta)
+      saveState(messages, latestPagesRef.current, versions, newMeta)
+      console.log('[image-meta] generated for', path, meta)
+    } catch (err) {
+      console.error('[image-meta] error:', err)
+    }
+  }
+
   const uploadImageFile = async (file: File, target: 'chat' | 'media' = 'chat') => {
     if (!file.type.startsWith('image/')) { await alertDialog('Solo immagini supportate'); return }
     setUploading(true)
@@ -1585,39 +1625,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     setUploading(false)
     if (target === 'media' || viewMode === 'media') loadMedia()
-
-    // Detect project language: context.language → <html lang="..."> of first page → fallback 'it'
-    const detectedLang: string =
-      projectContext?.language ||
-      latestPagesRef.current[0]?.html?.match(/<html[^>]+lang=["']([^"']{2})/i)?.[1] ||
-      'it'
-
-    // Generate SEO metadata for the image in background (non-blocking)
-    ;(async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const token = session?.access_token
-        if (!token) return
-        const r = await fetch('/api/generate-image-meta', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ imageUrl, context: { ...projectContext, language: detectedLang } }),
-        })
-        if (!r.ok) return
-        const meta = await r.json()
-        if (!meta) return
-        const newMeta = {
-          ...mediaMeta,
-          [path]: {
-            alt: meta.alt ?? '',
-            title: meta.title ?? '',
-            description: meta.description ?? '',
-          },
-        }
-        setMediaMeta(newMeta)
-        saveState(messages, latestPagesRef.current, versions, newMeta)
-      } catch { /* silently ignore */ }
-    })()
+    // Generate SEO meta in background (non-blocking)
+    generateAndSaveImageMeta(path, imageUrl)
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3980,6 +3989,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
                   const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${publicUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
                   win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
+                  // Generate SEO meta for the media library entry (non-blocking)
+                  generateAndSaveImageMeta(path, publicUrl)
                 }
                 const dropMenu: React.CSSProperties = {
                   position: 'absolute', top: '100%', left: 0, zIndex: 9999,
@@ -5161,6 +5172,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         if (error) return
                         const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
                         saveMeta(post.id, { featured_image: publicUrl })
+                        generateAndSaveImageMeta(path, publicUrl)
                       }
                       return (
                         <div>
@@ -5269,6 +5281,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
                         const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${publicUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
                         win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
+                        generateAndSaveImageMeta(path, publicUrl)
                       }
 
                       // Shared dropdown menu styles

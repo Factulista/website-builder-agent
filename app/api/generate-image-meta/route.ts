@@ -7,6 +7,7 @@ export const runtime = 'nodejs'
 type ImageMeta = {
   alt: string
   title: string
+  caption: string
   description: string
   suggestedFilename: string
 }
@@ -81,6 +82,14 @@ export async function POST(req: NextRequest) {
         fr: 'titre court de l\'image, max 60 caractères',
         pt: 'título curto da imagem, máx 60 caracteres',
       },
+      captionDesc: {
+        it: 'didascalia da mostrare sotto l\'immagine, frase breve e naturale (max 80 caratteri)',
+        es: 'pie de foto breve y natural para mostrar bajo la imagen (máx 80 caracteres)',
+        en: 'short natural caption to display below the image (max 80 chars)',
+        de: 'kurze, natürliche Bildunterschrift unter dem Bild (max 80 Zeichen)',
+        fr: 'légende courte et naturelle à afficher sous l\'image (max 80 caractères)',
+        pt: 'legenda curta e natural para mostrar abaixo da imagem (máx 80 caracteres)',
+      },
       descDesc: {
         it: 'descrizione estesa, max 200 caratteri',
         es: 'descripción extendida, máx 200 caracteres',
@@ -103,6 +112,7 @@ export async function POST(req: NextRequest) {
 {
   "alt": "${L('altDesc')}",
   "title": "${L('titleDesc')}",
+  "caption": "${L('captionDesc')}",
   "description": "${L('descDesc')}",
   "suggestedFilename": "seo-friendly-filename-no-extension-lowercase-hyphens"
 }`
