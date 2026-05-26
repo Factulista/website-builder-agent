@@ -1073,7 +1073,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
-  const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const blogPendingSaveRef = useRef<{ postId: string; contentHtml: string } | null>(null)
   const [blogActiveBlock, setBlogActiveBlock] = useState<string>('')
   const [blogListOpen, setBlogListOpen] = useState(false)
   const [blogInsertOpen, setBlogInsertOpen] = useState(false)
@@ -1136,7 +1137,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [hoveredVersionId, setHoveredVersionId] = useState<string | null>(null)
   const [codeSaving, setCodeSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [editSrcDoc, setEditSrcDoc] = useState('')
-  const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [editOutdated, setEditOutdated] = useState(false)
   const [chatHidden, setChatHidden] = useState(false)
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
@@ -1299,10 +1300,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setEditSaving('saving')
         const curPages = latestPagesRef.current
         const newVersions = createVersion('Modifica inline', curPages, versions)
-        await saveState(messages, curPages, newVersions)
-        setEditSaving('saved')
-        setTimeout(() => setEditSaving('idle'), 2000)
-      }, 2000)
+        const ok = await saveState(messages, curPages, newVersions)
+        if (ok) {
+          setEditSaving('saved')
+          setTimeout(() => setEditSaving(prev => prev === 'saved' ? 'idle' : prev), 2000)
+        } else {
+          setEditSaving('failed')
+        }
+      }, 800)
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
@@ -1349,30 +1354,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       // Capture the post id this content belongs to, so a fast post switch
       // doesn't save the new content under the previous post's id
       const targetPostId = selectedPost.id
+      // Track pending save so beforeunload can flush it
+      blogPendingSaveRef.current = { postId: targetPostId, contentHtml }
       if (blogAutoSaveTimer.current) clearTimeout(blogAutoSaveTimer.current)
       blogAutoSaveTimer.current = setTimeout(async () => {
         setBlogSaving('saving')
         const { data: { session } } = await supabase.auth.getSession()
         const token = session?.access_token
-        if (!token) { setBlogSaving('idle'); return }
+        if (!token) { setBlogSaving('failed'); return }
         try {
           const res = await fetch(`/api/blog-posts/${targetPostId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ content_html: contentHtml }),
+            keepalive: true,
           })
           if (!res.ok) {
-            console.error('Blog autosave failed:', res.status, await res.text().catch(() => ''))
-            setBlogSaving('idle')
+            const errBody = await res.text().catch(() => '')
+            console.error('[blog-autosave] FAILED', res.status, errBody)
+            setBlogSaving('failed')
             return
           }
+          console.log('[blog-autosave] ok', targetPostId, contentHtml.length, 'chars')
+          blogPendingSaveRef.current = null
           setBlogSaving('saved')
-          setTimeout(() => setBlogSaving('idle'), 2000)
+          setTimeout(() => setBlogSaving(prev => prev === 'saved' ? 'idle' : prev), 2000)
         } catch (err) {
-          console.error('Blog autosave error:', err)
-          setBlogSaving('idle')
+          console.error('[blog-autosave] network error:', err)
+          setBlogSaving('failed')
         }
-      }, 2000)
+      }, 800)
     }
     window.addEventListener('message', handleBlogMessage)
     return () => window.removeEventListener('message', handleBlogMessage)
@@ -1693,19 +1704,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return cfg
   }
 
-  const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[], newMedia?: Record<string, MediaMeta>) => {
+  const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[], newMedia?: Record<string, MediaMeta>): Promise<boolean> => {
     // Safety guard: never overwrite existing pages with an empty array
     if (!Array.isArray(newPages) || (newPages.length === 0 && latestPagesRef.current.length > 0)) {
       console.warn('saveState: skipping — refusing to overwrite existing pages with empty array')
-      return
+      return false
     }
     const vers = newVersions ?? versions
     const med = newMedia ?? mediaMeta
     const merged = await buildSiteConfig(newPages, newMessages, vers, med)
-    await supabase.from('projects').update({
+    const { error } = await supabase.from('projects').update({
       site_config: merged,
       updated_at: new Date().toISOString(),
     }).eq('id', id)
+    if (error) {
+      console.error('[saveState] supabase error:', error.message)
+      return false
+    }
+    console.log('[saveState] ok', newPages.length, 'pages,', newMessages.length, 'msgs')
+    return true
   }
 
   const loadMedia = async () => {
@@ -3819,8 +3836,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 <span style={{ fontSize: '0.72rem', color: C.textFaint }}>
                   ✎ Clicca sul testo per modificarlo
                 </span>
-                <span style={{ fontSize: '0.72rem', color: editSaving === 'saving' ? '#f59e0b' : editSaving === 'saved' ? '#10b981' : C.textFaint }}>
-                  {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : 'Auto-save attivo'}
+                <span style={{ fontSize: '0.72rem', color: editSaving === 'saving' ? '#f59e0b' : editSaving === 'saved' ? '#10b981' : editSaving === 'failed' ? '#dc2626' : C.textFaint, fontWeight: editSaving === 'failed' ? 600 : 400 }}>
+                  {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : editSaving === 'failed' ? '⚠ Salvataggio fallito — controlla console' : 'Auto-save attivo'}
                 </span>
               </div>
 
@@ -4928,6 +4945,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   }}>{post.status === 'published' ? '● Pubblicato' : '○ Bozza'}</span>
                   {blogSaving === 'saving' && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>💾 Salvataggio...</span>}
                   {blogSaving === 'saved' && <span style={{ fontSize: '0.72rem', color: '#16a34a' }}>✓ Salvato</span>}
+                  {blogSaving === 'failed' && <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 600 }}>⚠ Salvataggio fallito — controlla la console</span>}
                   <a
                     href={`/preview/${projectSlug}/blog/${post.slug}`}
                     target="_blank"
