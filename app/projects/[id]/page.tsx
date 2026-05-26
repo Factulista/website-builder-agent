@@ -106,7 +106,10 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       ['#fact-edit-global','#fact-edit-script','#fact-edit-marker','#fact-ctx-menu','#fact-link-overlay'].forEach(function(sel){
         var el=clone.querySelector(sel);if(el)el.remove();
       });
-      window.parent.postMessage({type:'html-change',html:'<!DOCTYPE html>\\n'+clone.outerHTML},'*');
+      var html='<!DOCTYPE html>\\n'+clone.outerHTML;
+      var snippet=html.length>300?html.slice(0,300)+'…':html;
+      console.log('[iframe] triggerSave sending html-change, length:',html.length,'preview:',snippet);
+      window.parent.postMessage({type:'html-change',html:html},'*');
     },80);
   }
 
@@ -524,6 +527,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     }
     if(e.data.type==='fact-format'){
       var cmd=e.data.cmd,val=e.data.val||null;
+      console.log('[iframe] fact-format', cmd, val);
       // Restore selection if it was saved before opening a native picker (e.g. color input)
       if(colorSavedRange){
         var csel2=window.getSelection();
@@ -1384,6 +1388,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         const bodyMatch = newHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
         contentHtml = bodyMatch ? bodyMatch[1].trim() : newHtml
       }
+      console.log('[parent-blog] html-change received, contentHtml length:', contentHtml.length, 'preview:', contentHtml.length > 200 ? contentHtml.slice(0, 200) + '…' : contentHtml)
       setSelectedPost(prev => prev ? { ...prev, content_html: contentHtml } : prev)
       // Push snapshot to history unless this html-change came from undo/redo itself
       if (!undoOpInFlightRef.current) {
@@ -1402,18 +1407,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const targetPostId = selectedPost.id
       // Track pending save so beforeunload can flush it
       blogPendingSaveRef.current = { postId: targetPostId, contentHtml }
+      console.log('[parent-blog] autosave scheduled in 800ms for post', selectedPost.id)
       if (blogAutoSaveTimer.current) clearTimeout(blogAutoSaveTimer.current)
       blogAutoSaveTimer.current = setTimeout(async () => {
+        console.log('[parent-blog] autosave FIRING for post', targetPostId, 'content length:', contentHtml.length)
         setBlogSaving('saving')
         const { data: { session } } = await supabase.auth.getSession()
         const token = session?.access_token
-        if (!token) { setBlogSaving('failed'); return }
+        if (!token) { console.error('[parent-blog] no auth token'); setBlogSaving('failed'); return }
         try {
           const res = await fetch(`/api/blog-posts/${targetPostId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ content_html: contentHtml }),
             keepalive: true,
+            cache: 'no-store',
           })
           if (!res.ok) {
             const errBody = await res.text().catch(() => '')
@@ -1770,6 +1778,56 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     console.log('[saveState] ok', newPages.length, 'pages,', newMessages.length, 'msgs')
     return true
   }
+
+  // Force any pending blog autosave to fire NOW.
+  // Called on post switch, back-to-list, and tab/visibility change so the
+  // user never loses changes by leaving within the 800ms debounce window.
+  const flushBlogSave = async () => {
+    const pending = blogPendingSaveRef.current
+    if (!pending) return
+    if (blogAutoSaveTimer.current) {
+      clearTimeout(blogAutoSaveTimer.current)
+      blogAutoSaveTimer.current = null
+    }
+    blogPendingSaveRef.current = null
+    console.log('[parent-blog] FLUSHING pending save for', pending.postId, 'length:', pending.contentHtml.length)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) { console.error('[parent-blog] flush: no token'); setBlogSaving('failed'); return }
+    setBlogSaving('saving')
+    try {
+      const res = await fetch(`/api/blog-posts/${pending.postId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content_html: pending.contentHtml }),
+        keepalive: true,
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        console.error('[parent-blog] flush FAILED', res.status, await res.text().catch(() => ''))
+        setBlogSaving('failed')
+        return
+      }
+      console.log('[parent-blog] flush ok')
+      setBlogSaving('saved')
+      setTimeout(() => setBlogSaving(prev => prev === 'saved' ? 'idle' : prev), 1500)
+    } catch (err) {
+      console.error('[parent-blog] flush error:', err)
+      setBlogSaving('failed')
+    }
+  }
+
+  // Flush on tab visibility change (user switches tab or minimises window)
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        flushBlogSave()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Custom undo/redo for the blog editor. Restores a previous content snapshot
   // by setting the iframe's editable innerHTML directly — bypasses the buggy
@@ -4554,6 +4612,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           /* ── Blog Manager ───────────────────────────────────────────────────── */
           (() => {
             const openPost = async (post: BlogPost) => {
+              // CRITICAL: flush any pending autosave BEFORE fetching, so we don't
+              // race the API GET against an in-flight save of older content
+              await flushBlogSave()
               const { data: { session } } = await supabase.auth.getSession()
               const token = session?.access_token
               if (!token) return
@@ -4561,6 +4622,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               try {
                 const res = await fetch(`/api/blog-posts/${post.id}`, {
                   headers: { Authorization: `Bearer ${token}` },
+                  cache: 'no-store',
                 })
                 if (!res.ok) {
                   alert(`Impossibile aprire l'articolo (${res.status}). Potrebbe essere stato eliminato.`)
@@ -4569,6 +4631,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 }
                 const json = await res.json()
                 full = json.post ?? post
+                console.log('[parent-blog] openPost fetched fresh content, length:', (full.content_html ?? '').length, 'preview:', (full.content_html ?? '').slice(0, 200))
               } catch (err) {
                 console.error('openPost error:', err)
                 alert('Errore di rete nel caricamento dell\'articolo')
@@ -5001,7 +5064,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 {/* Editor header */}
                 <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, background: C.white }}>
                   <button
-                    onClick={() => setSelectedPost(null)}
+                    onClick={async () => { await flushBlogSave(); setSelectedPost(null) }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.85rem', padding: '4px 8px', borderRadius: '6px', fontFamily: 'inherit', fontWeight: 500 }}
                   >← Lista</button>
                   <div style={{ width: '1px', height: '16px', background: C.border }} />
