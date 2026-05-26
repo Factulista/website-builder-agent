@@ -530,8 +530,19 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
         if(csel2){csel2.removeAllRanges();csel2.addRange(colorSavedRange);}
         colorSavedRange=null;
       }
-      // Ensure iframe document is focused so execCommand applies
-      try{ window.focus(); }catch(_){}
+      // Ensure iframe document is focused so execCommand applies.
+      // For undo/redo, focus the contenteditable element specifically — the
+      // browser maintains the undo stack per editable element, and undo from
+      // an unfocused element can leave dangling new content while restoring
+      // the old (the "Resumen rápidoResumen rápido" duplication bug).
+      try{
+        if(cmd==='undo'||cmd==='redo'){
+          var ed=document.querySelector('[contenteditable="true"], [contenteditable=""]');
+          if(ed&&typeof ed.focus==='function') ed.focus();
+        } else {
+          window.focus();
+        }
+      }catch(_){}
       // Enable CSS-based styling so we get <span style="..."> instead of deprecated tags
       if(cmd==='fontName'||cmd==='foreColor'){document.execCommand('styleWithCSS',false,'true');}
       // Special-case: formatBlock on an LI is invalid HTML. First exit the list,
@@ -581,6 +592,24 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       var anch=getAnchorLink();
       saveSelection();
       showLinkDialog(anch?anch.getAttribute('href'):null);
+    }
+    if(e.data.type==='fact-set-content'){
+      // Custom undo/redo: parent sends a content snapshot to restore.
+      // We set innerHTML directly and DON'T call triggerSave — the parent
+      // already has this content in history and handles persistence.
+      var editable=document.querySelector('[data-fact-edit]');
+      if(editable&&typeof editable.focus==='function'){
+        editable.focus();
+        editable.innerHTML=e.data.html||'';
+        // Move cursor to end so user can continue typing
+        try{
+          var range=document.createRange();
+          range.selectNodeContents(editable);
+          range.collapse(false);
+          var s=window.getSelection();
+          if(s){s.removeAllRanges();s.addRange(range);}
+        }catch(_){}
+      }
     }
   });
 
@@ -1075,6 +1104,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const blogPendingSaveRef = useRef<{ postId: string; contentHtml: string } | null>(null)
+  // Custom undo/redo for blog editor: snapshot history at the parent level
+  // (browser's native execCommand('undo') is unreliable for contenteditable
+  // in iframes — it can duplicate content after formatBlock).
+  const blogHistoryRef = useRef<{ stack: string[]; index: number }>({ stack: [], index: -1 })
+  const undoOpInFlightRef = useRef(false)
   const [blogActiveBlock, setBlogActiveBlock] = useState<string>('')
   const [blogListOpen, setBlogListOpen] = useState(false)
   const [blogInsertOpen, setBlogInsertOpen] = useState(false)
@@ -1351,6 +1385,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         contentHtml = bodyMatch ? bodyMatch[1].trim() : newHtml
       }
       setSelectedPost(prev => prev ? { ...prev, content_html: contentHtml } : prev)
+      // Push snapshot to history unless this html-change came from undo/redo itself
+      if (!undoOpInFlightRef.current) {
+        const h = blogHistoryRef.current
+        if (h.stack[h.index] !== contentHtml) {
+          h.stack = h.stack.slice(0, h.index + 1)
+          h.stack.push(contentHtml)
+          if (h.stack.length > 50) h.stack.shift()
+          else h.index++
+        }
+      } else {
+        undoOpInFlightRef.current = false
+      }
       // Capture the post id this content belongs to, so a fast post switch
       // doesn't save the new content under the previous post's id
       const targetPostId = selectedPost.id
@@ -1723,6 +1769,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     console.log('[saveState] ok', newPages.length, 'pages,', newMessages.length, 'msgs')
     return true
+  }
+
+  // Custom undo/redo for the blog editor. Restores a previous content snapshot
+  // by setting the iframe's editable innerHTML directly — bypasses the buggy
+  // browser execCommand('undo') which can leave duplicated content.
+  const blogUndo = () => {
+    const h = blogHistoryRef.current
+    if (h.index <= 0) return
+    h.index--
+    const prev = h.stack[h.index]
+    undoOpInFlightRef.current = true
+    blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-set-content', html: prev }, '*')
+  }
+  const blogRedo = () => {
+    const h = blogHistoryRef.current
+    if (h.index >= h.stack.length - 1) return
+    h.index++
+    const next = h.stack[h.index]
+    undoOpInFlightRef.current = true
+    blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-set-content', html: next }, '*')
   }
 
   const loadMedia = async () => {
@@ -4531,6 +4597,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style><style>${editorOnlyCss}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
               setBlogEditorSrcDoc(editorHtml)
               blogBaseHtmlRef.current = editorHtml
+              // Initialise undo history with the loaded content as the first snapshot
+              blogHistoryRef.current = { stack: [contentHtml], index: 0 }
             }
 
             const createPost = async () => {
@@ -5159,13 +5227,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           // Close all dropdowns when clicking anywhere on the toolbar
                           onClick={() => { setBlogListOpen(false); setBlogInsertOpen(false); setBlogAlignOpen(false) }}
                         >
-                          {/* ── Undo / Redo ─────────────────────────────── */}
-                          <button title="Annulla (Ctrl+Z)" onMouseDown={e => { e.preventDefault(); fmt('undo') }}
+                          {/* ── Undo / Redo (custom snapshot-based, more reliable than execCommand) ── */}
+                          <button title="Annulla" onMouseDown={e => { e.preventDefault(); blogUndo() }}
                             style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>
                           </button>
-                          <button title="Ripristina (Ctrl+Shift+Z)" onMouseDown={e => { e.preventDefault(); fmt('redo') }}
+                          <button title="Ripristina" onMouseDown={e => { e.preventDefault(); blogRedo() }}
                             style={{ padding: '2px 7px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', height: '26px' }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>
