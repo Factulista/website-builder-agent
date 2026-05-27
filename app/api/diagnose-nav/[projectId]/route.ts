@@ -89,7 +89,31 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   if (project.user_id !== user.id) return NextResponse.json({ error: 'not yours' }, { status: 403 })
 
   const pages = (project.site_config?.pages ?? []) as Page[]
-  return NextResponse.json(analyze(pages))
+  const analysis = analyze(pages)
+
+  // Also check blog_posts (served from a separate table, not in pages array)
+  const { data: posts, error: postsErr } = await supabase
+    .from('blog_posts')
+    .select('id, slug, title, status, published_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+
+  // Detect whether the navbar links to /blog
+  const home = pages.find(p => p.slug === 'home') ?? pages[0]
+  const navMatch = home?.html.match(/<nav[\s\S]*?<\/nav>/i)
+  const navHtml = navMatch ? navMatch[0] : ''
+  const items = parseNavItems(navHtml)
+  const blogInNav = items.some(it => /\/blog(\/|$|\?|#|\b)/i.test(it.href) || it.href === './blog' || it.href === 'blog')
+
+  return NextResponse.json({
+    ...analysis,
+    blog: {
+      postsCount: posts?.length ?? 0,
+      posts: posts ?? [],
+      postsQueryError: postsErr?.message ?? null,
+      blogLinkInNav: blogInNav,
+    },
+  })
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
