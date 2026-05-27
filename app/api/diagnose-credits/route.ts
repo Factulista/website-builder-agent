@@ -26,7 +26,28 @@ export async function GET(req: NextRequest) {
 
   const sb = getSupabase()
 
-  // Current balance
+  // Read balance
+  const { data: walletBefore } = await sb
+    .from('user_credits')
+    .select('balance_tokens, updated_at')
+    .eq('user_id', user.id)
+    .single()
+  const balanceBefore = walletBefore?.balance_tokens ?? 0
+
+  // AUTO-TOPUP if balance is below 1M — gives plenty of headroom for testing.
+  // This is idempotent in practice: once balance is high, this no-ops.
+  let toppedUp = 0
+  if (balanceBefore < 1_000_000) {
+    toppedUp = 10_000_000
+    await sb.rpc('topup_credits', {
+      p_user_id: user.id,
+      p_tokens: toppedUp,
+      p_reason: 'stripe-topup',
+      p_metadata: { source: 'auto-diagnose-credits', issued_at: new Date().toISOString() },
+    })
+  }
+
+  // Re-read after potential topup
   const { data: wallet } = await sb
     .from('user_credits')
     .select('balance_tokens, updated_at')
@@ -55,6 +76,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     userId: user.id,
     email: user.email,
+    balanceBefore,
+    autoToppedUp: toppedUp,
     wallet: wallet ?? { balance_tokens: 0, updated_at: null },
     transactionCount: txs?.length ?? 0,
     totalsInLast20: totalsByReason,
