@@ -61,3 +61,28 @@ export async function GET(req: NextRequest) {
     recentTransactions: txs ?? [],
   })
 }
+
+// POST → top up the current user's wallet by a fixed large amount
+// Body (optional): { amount: number }  default 10_000_000
+export async function POST(req: NextRequest) {
+  const user = await getUser(req)
+  if (!user) return NextResponse.json({ error: 'auth required' }, { status: 401 })
+
+  let amount = 10_000_000
+  try {
+    const body = await req.json()
+    if (typeof body?.amount === 'number' && body.amount > 0) amount = Math.floor(body.amount)
+  } catch { /* no body, use default */ }
+
+  const sb = getSupabase()
+  const { data, error } = await sb.rpc('topup_credits', {
+    p_user_id: user.id,
+    p_tokens: amount,
+    p_reason: 'stripe-topup',
+    p_metadata: { source: 'manual-diagnose-credits', issued_at: new Date().toISOString() },
+  })
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+
+  const newBalance = Number(data)
+  return NextResponse.json({ ok: true, addedTokens: amount, newBalance, userId: user.id })
+}
