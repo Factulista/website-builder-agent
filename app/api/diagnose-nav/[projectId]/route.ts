@@ -131,15 +131,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   const pages = (config.pages ?? []) as Page[]
   const diag = analyze(pages)
   if ('error' in diag) return NextResponse.json({ ok: false, diag }, { status: 400 })
-  if (diag.missingPages.length === 0) return NextResponse.json({ ok: true, message: 'nothing to fix', diag })
+
+  // ALSO check: are there blog posts but no /blog link in the nav?
+  const { data: posts } = await supabase
+    .from('blog_posts').select('id').eq('project_id', projectId).limit(1)
+  const home = pages.find(p => p.slug === 'home') ?? pages[0]
+  const navMatch = home?.html.match(/<nav[\s\S]*?<\/nav>/i)
+  const items = parseNavItems(navMatch ? navMatch[0] : '')
+  const blogInNav = items.some(it => /\/blog(\/|$|\?|#|\b)/i.test(it.href) || it.href === './blog' || it.href === 'blog')
+  const needsBlogLink = (posts && posts.length > 0) && !blogInNav
+
+  if (diag.missingPages.length === 0 && !needsBlogLink) {
+    return NextResponse.json({ ok: true, message: 'nothing to fix', diag })
+  }
 
   // Inject missing pages as <li><a> entries inside every page's <nav>'s first <ul>.
   // If no <ul> is found, append just before </nav>.
-  const newNavItemsHtml = diag.missingPages.map(p => {
+  const missingPageItems = diag.missingPages.map(p => {
     const label = p.menuLabel ?? p.name ?? p.slug
     const href = `./${p.slug}`
     return `<li><a href="${href}">${label}</a></li>`
-  }).join('')
+  })
+  if (needsBlogLink) {
+    missingPageItems.push(`<li><a href="./blog">Blog</a></li>`)
+  }
+  const newNavItemsHtml = missingPageItems.join('')
 
   const navUlRe = /(<nav[\s\S]*?<ul[\s\S]*?)(<\/ul>[\s\S]*?<\/nav>)/i
   const navCloseRe = /(<nav[\s\S]*?)(<\/nav>)/i
@@ -162,7 +178,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
 
   return NextResponse.json({
     ok: true,
-    added: diag.missingPages,
-    message: `Re-added ${diag.missingPages.length} pages to nav across ${newPages.length} pages`,
+    addedPages: diag.missingPages,
+    addedBlogLink: needsBlogLink,
+    message: `Updated nav in ${newPages.length} pages — added ${diag.missingPages.length} pages${needsBlogLink ? ' + Blog link' : ''}`,
   })
 }
