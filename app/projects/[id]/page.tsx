@@ -117,7 +117,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
   var saveTimer;
   document.addEventListener('input',function(){
     clearTimeout(saveTimer);
-    saveTimer=setTimeout(triggerSave,400);
+    saveTimer=setTimeout(triggerSave,200);
   });
 
   // ── Selection helpers ──────────────────────────────────────────────────────
@@ -1792,6 +1792,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Called on post switch, back-to-list, and tab/visibility change so the
   // user never loses changes by leaving within the 800ms debounce window.
   const flushBlogSave = async () => {
+    // CRITICAL: read the LATEST state directly from the iframe DOM.
+    // The iframe has its own 400ms input-debounce before sending html-change,
+    // so blogPendingSaveRef may not yet reflect the user's last keystroke.
+    // Pulling directly from the editable element avoids that race.
+    const iframe = blogIframeRef.current
+    if (iframe?.contentDocument && selectedPost?.id) {
+      try {
+        const editable = iframe.contentDocument.querySelector('.blog-post-content')
+        if (editable) {
+          const latestContent = (editable as HTMLElement).innerHTML.trim()
+          blogPendingSaveRef.current = { postId: selectedPost.id, contentHtml: latestContent }
+        }
+      } catch (err) {
+        console.warn('[parent-blog] flush: could not read iframe DOM:', err)
+      }
+    }
     const pending = blogPendingSaveRef.current
     if (!pending) return
     if (blogAutoSaveTimer.current) {
