@@ -830,8 +830,10 @@ function reorderNavLinks(pages: Page[]): Page[] {
   const items   = liItems.length > 0 ? liItems : aItems
   if (items.length === 0) return pages
 
-  // Map slug → nav item
+  // Map slug → nav item, AND track items that didn't match any page
+  // (anchor links like #features, external links, etc.) so we can preserve them.
   const slugToItem = new Map<string, Element>()
+  const matched = new Set<Element>()
   for (const item of items) {
     const a = (item.tagName === 'A' ? item : item.querySelector('a')) as HTMLAnchorElement | null
     if (!a) continue
@@ -844,21 +846,34 @@ function reorderNavLinks(pages: Page[]): Page[] {
       ]
       if (variants.some(v => href === v || href.endsWith(`/${page.slug}`))) {
         slugToItem.set(page.slug, item)
+        matched.add(item)
         // Apply menuLabel if set
         if (page.menuLabel && page.menuLabel !== page.name) a.textContent = page.menuLabel
         break
       }
     }
   }
+  // Preserve unmatched items in their original order (anchor links, external,
+  // unknown hrefs) so they survive a reorder. Without this, they'd be silently
+  // dropped, which is how 'menu items disappeared from the site' happens.
+  const unmatched = items.filter(i => !matched.has(i))
+  if (unmatched.length > 0) {
+    console.warn('[reorderNavLinks] preserving', unmatched.length, 'unmatched nav items')
+  }
 
   // Reorder inside parent
   const parent = items[0].parentElement
   if (parent) {
     items.forEach(el => el.remove())
+    // 1) Matched items in pages order (respecting inMenu=false)
     for (const page of pages) {
       if (page.inMenu === false) continue
       const item = slugToItem.get(page.slug)
       if (item) parent.appendChild(item)
+    }
+    // 2) Append unmatched items at the end so they aren't lost
+    for (const item of unmatched) {
+      parent.appendChild(item)
     }
   }
 
