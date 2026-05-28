@@ -91,6 +91,35 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   const pages = (project.site_config?.pages ?? []) as Page[]
   const analysis = analyze(pages)
 
+  // Optional: dump diagnostics for a specific page (?page=<slug>)
+  const pageSlug = req.nextUrl.searchParams.get('page')
+  let pageDump: Record<string, unknown> | null = null
+  if (pageSlug) {
+    const pg = pages.find(p => p.slug === pageSlug)
+    if (!pg) {
+      pageDump = { error: `page '${pageSlug}' not found`, availableSlugs: pages.map(p => p.slug) }
+    } else {
+      const html = pg.html ?? ''
+      const styleCount = (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).length
+      const headMatch = html.match(/<head[\s\S]*?<\/head>/i)
+      const hasHtmlTag = /<html[\s>]/i.test(html)
+      const hasBodyTag = /<body[\s>]/i.test(html)
+      const hasNav = /<nav[\s\S]*?<\/nav>/i.test(html)
+      const editorArtifacts = /contenteditable|data-fact-edit|fact-edit-script|html-change/i.test(html)
+      pageDump = {
+        slug: pg.slug,
+        name: pg.name,
+        htmlLength: html.length,
+        styleBlockCount: styleCount,
+        hasHtmlTag, hasBodyTag, hasNav,
+        editorArtifactsPresent: editorArtifacts,
+        headPreview: headMatch ? headMatch[0].slice(0, 1500) : '(no <head>)',
+        htmlStart: html.slice(0, 1200),
+        htmlEnd: html.slice(-800),
+      }
+    }
+  }
+
   // Also check blog_posts (served from a separate table, not in pages array)
   const { data: posts, error: postsErr } = await supabase
     .from('blog_posts')
@@ -107,6 +136,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
 
   return NextResponse.json({
     ...analysis,
+    pageDump,
     blog: {
       postsCount: posts?.length ?? 0,
       posts: posts ?? [],
