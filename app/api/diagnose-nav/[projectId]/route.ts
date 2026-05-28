@@ -134,9 +134,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   const items = parseNavItems(navHtml)
   const blogInNav = items.some(it => /\/blog(\/|$|\?|#|\b)/i.test(it.href) || it.href === './blog' || it.href === 'blog')
 
+  // Report shared_css presence — decides whether applySharedCss strips page styles at serve time
+  const sharedCss = (project.site_config as Record<string, unknown>)?.shared_css
+  const sharedCssInfo = {
+    present: typeof sharedCss === 'string' && sharedCss.length > 0,
+    length: typeof sharedCss === 'string' ? sharedCss.length : 0,
+    usesColorVars: typeof sharedCss === 'string' ? /--color-/.test(sharedCss) : false,
+    usesShortVars: typeof sharedCss === 'string' ? /--accent|--primary|--text\b/.test(sharedCss) : false,
+    preview: typeof sharedCss === 'string' ? sharedCss.slice(0, 400) : null,
+  }
+
   return NextResponse.json({
     ...analysis,
     pageDump,
+    sharedCssInfo,
     blog: {
       postsCount: posts?.length ?? 0,
       posts: posts ?? [],
