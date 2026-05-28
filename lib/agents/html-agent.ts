@@ -541,7 +541,7 @@ export async function runHtmlAgent(
   const homePage = pages.find(p => p.slug === 'home') ?? pages[0] ?? null
   const homeStyle = homePage ? extractStyle(homePage.html) : ''
   const designSystemBlock = homeStyle
-    ? `\nDESIGN SYSTEM (CSS condiviso del sito — SOLO per riferimento colori/stili. Non copiarlo in add_page, viene iniettato automaticamente):\n\`\`\`css\n${homeStyle}\n\`\`\``
+    ? `\nDESIGN SYSTEM (CSS della home page — usa come riferimento per stili, variabili CSS e classi comuni. Per add_page: usa le variabili var(--...) invece di colori hardcoded, e copia navbar/footer dalla home):\n\`\`\`css\n${homeStyle}\n\`\`\``
     : ''
 
   // Build per-page context blocks
@@ -590,7 +590,7 @@ REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
-- add_page — REGOLA CSS FONDAMENTALE: NON includere alcun blocco <style> nella nuova pagina. Il CSS condiviso (navbar, footer, bottoni, variabili, reset) viene iniettato automaticamente dal sistema al momento del serving — non devi includerlo tu. Genera SOLO il <head> con meta tags SEO e il <body> con la struttura HTML della nuova pagina.
+- add_page — REGOLA CSS: La nuova pagina DEVE includere un blocco <style> completo con tutto il CSS necessario per i suoi componenti specifici (layout, sezioni, tabelle, card, ecc.). I token di design (:root con colori, font, spaziature) vengono sincronizzati automaticamente dal sito — usa le variabili CSS (var(--accent), var(--bg), var(--text), ecc.) invece di valori hardcoded così i colori del brand saranno coerenti. COPIA navbar e footer dalla home page così sono identici. Genera una pagina HTML completa e stilata, autonoma visivamente.
 - MAI creare una pagina con slug "blog". Il blog è gestito da un sistema dinamico separato. Se l'utente vuole il blog, aggiungi SOLO il link <a href="./blog">Blog</a> nella nav — non creare la pagina.
 - Per modificare l'intestazione/hero/testo della PAGINA BLOG (la sezione sopra gli articoli), usa update_blog_header — NON edit_page.
 - Per inserire embed/iframe/script/widget (newsletter, analytics, pixel, cookie banner, ecc.) usa set_inject_point — NON edit_page. Scegli lo slot corretto: head per CSS/script globali, body_end per pixel/widget, blog_post_bottom per CTA post-articolo, blog_list_bottom per embed dopo la lista articoli.
