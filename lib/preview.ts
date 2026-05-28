@@ -50,7 +50,42 @@ function normalizeInternalLinks(html: string, knownSlugs: string[]): string {
  * Falls back gracefully: pages without shared_css are served as-is.
  */
 function applySharedCss(html: string, sharedCss: string): string {
-  // Strip page-level <style> blocks (they may be stale after design-update)
+  // Two kinds of pages exist:
+  //  A) "token-only" pages: generated with NO page-level <style> — they rely
+  //     entirely on shared_css for ALL styling (tokens + components).
+  //  B) "self-contained" pages: have their own complete component CSS (hero,
+  //     faq, footer, etc.) — possibly a different layout than the home page.
+  //
+  // For (A) we inject the full shared_css.
+  // For (B) we must NOT strip the page's component CSS (that would leave the
+  // page unstyled — the "pagina sballata" bug). Instead we only sync the
+  // :root design tokens so colors/fonts stay consistent site-wide, while the
+  // page keeps its own component styling.
+  const pageStyles = html.match(/<style[\s\S]*?<\/style>/gi) ?? []
+  const pageStyleContent = pageStyles.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
+  // Remove :root blocks and the universal reset to see if real component CSS remains
+  const remainder = pageStyleContent
+    .replace(/:root\s*\{[\s\S]*?\}/gi, '')
+    .replace(/\*[^{]*\{[^}]*\}/g, '')
+    .trim()
+  const isSelfContained = remainder.length > 300
+
+  if (isSelfContained) {
+    // Sync only the :root token block from shared_css into the page.
+    const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
+    if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
+      return html.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
+    }
+    // Page has component CSS but no :root — prepend shared tokens, keep page CSS.
+    if (sharedRoot) {
+      const styleTag = `<style>${sharedRoot}</style>`
+      if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${styleTag}\n</head>`)
+      return styleTag + html
+    }
+    return html // nothing safe to do — leave the page intact
+  }
+
+  // Token-only page: strip the (minimal) page styles, inject the full shared_css.
   const stripped = html.replace(/<style[\s\S]*?<\/style>/gi, '')
   const styleTag = `<style>${sharedCss}</style>`
   if (/<\/head>/i.test(stripped)) {

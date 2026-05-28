@@ -884,6 +884,37 @@ function reorderNavLinks(pages: Page[]): Page[] {
   }))
 }
 
+/**
+ * Merge shared_css into a page's HTML — MUST mirror applySharedCss in lib/preview.ts.
+ * - Self-contained pages (own component CSS) → only sync the :root token block,
+ *   keep their component styling (prevents the "pagina sballata" bug).
+ * - Token-only pages (no real component CSS) → strip + inject full shared_css.
+ */
+function mergeSharedCssIntoPage(html: string, sharedCss: string): string {
+  const pageStyles = html.match(/<style[\s\S]*?<\/style>/gi) ?? []
+  const pageStyleContent = pageStyles.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
+  const remainder = pageStyleContent
+    .replace(/:root\s*\{[\s\S]*?\}/gi, '')
+    .replace(/\*[^{]*\{[^}]*\}/g, '')
+    .trim()
+  const isSelfContained = remainder.length > 300
+
+  if (isSelfContained) {
+    const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
+    if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
+      return html.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
+    }
+    if (sharedRoot) {
+      const styleTag = `<style>${sharedRoot}</style>`
+      return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${styleTag}\n</head>`) : styleTag + html
+    }
+    return html
+  }
+  const stripped = html.replace(/<style[\s\S]*?<\/style>/gi, '')
+  const styleTag = `<style>${sharedCss}</style>`
+  return /<\/head>/i.test(stripped) ? stripped.replace(/<\/head>/i, `${styleTag}\n</head>`) : styleTag + stripped
+}
+
 function stripEditorArtifacts(html: string): string {
   if (typeof window === 'undefined' || !html) return html
   // Quick exit if no markers present (also check for <base> which may have accumulated)
@@ -2633,13 +2664,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const newCss = result.input.shared_css
       if (newCss) {
         sharedCssRef.current = newCss
-        // Apply new CSS to all pages in memory so srcDoc preview reflects the change
-        const styleTag = `<style>${newCss}</style>`
-        newPages = pages.map(p => ({
-          ...p,
-          html: p.html.replace(/<style[\s\S]*?<\/style>/gi, '') // strip old
-            .replace(/<\/head>/i, `${styleTag}\n</head>`),      // inject new
-        }))
+        // Apply new CSS to all pages in memory so srcDoc preview reflects the change.
+        // Uses the self-contained detection so pages with their own component CSS
+        // (unique layouts) only get their :root tokens synced, not stripped.
+        newPages = pages.map(p => ({ ...p, html: mergeSharedCssIntoPage(p.html, newCss) }))
       }
       summary = `🎨 ${result.input.summary}`
       // Fall through to saveState below (newPages is updated)
