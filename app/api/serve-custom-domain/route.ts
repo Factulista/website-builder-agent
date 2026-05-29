@@ -139,8 +139,12 @@ ${items}
   if (isBlogPath) {
     // Get site design from home page
     const homePage = publishedPages.find(p => p.slug === 'home')
-    const siteNav = homePage ? extractNav(homePage.html) : ''
-    const siteFooter = homePage ? extractFooter(homePage.html) : ''
+    const siteNav = (typeof siteConfig.shared_nav_html === 'string' && siteConfig.shared_nav_html)
+      ? siteConfig.shared_nav_html
+      : (homePage ? extractNav(homePage.html) : '')
+    const siteFooter = (typeof siteConfig.shared_footer_html === 'string' && siteConfig.shared_footer_html)
+      ? siteConfig.shared_footer_html
+      : (homePage ? extractFooter(homePage.html) : '')
     const sharedCss = typeof siteConfig.shared_css === 'string' ? siteConfig.shared_css : null
     const siteStyle = sharedCss ? `<style>${sharedCss}</style>` : (homePage ? extractStyles(homePage.html) : '')
 

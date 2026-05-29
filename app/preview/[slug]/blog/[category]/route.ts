@@ -40,8 +40,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const context = (config.context ?? {}) as Record<string, unknown>
   const homePage = pages.find(p => p.slug === 'home')
   const lang = detectLang(context, homePage?.html ?? '')
-  const siteNav = homePage ? extractNav(homePage.html) : ''
-  const siteFooter = homePage ? extractFooter(homePage.html) : ''
+  const siteNav = (typeof config.shared_nav_html === 'string' && config.shared_nav_html)
+    ? config.shared_nav_html
+    : (homePage ? extractNav(homePage.html) : '')
+  const siteFooter = (typeof config.shared_footer_html === 'string' && config.shared_footer_html)
+    ? config.shared_footer_html
+    : (homePage ? extractFooter(homePage.html) : '')
   const sharedCss = typeof config.shared_css === 'string' ? config.shared_css : null
   const siteStyle = sharedCss ? `<style>${sharedCss}</style>` : (homePage ? extractStyles(homePage.html) : '')
 

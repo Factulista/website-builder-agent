@@ -73,18 +73,32 @@ function applySharedCss(html: string, sharedCss: string): string {
   const isSelfContained = remainder.length > 300
 
   if (isSelfContained) {
-    // Sync only the :root token block from shared_css into the page.
+    // Self-contained pages keep their own component CSS, but need shared_css available
+    // so that injected nav/footer elements (which use home-page CSS classes) render correctly.
+    //
+    // Strategy:
+    //  1. Inject full shared_css inside a @layer (lowest priority) — nav/footer classes are now
+    //     available without overriding the page's own component styles (unlayered CSS always
+    //     beats layered CSS per CSS Cascade Level 5).
+    //  2. Sync the :root token block so colors/fonts stay consistent.
     const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
-    if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
-      return html.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
-    }
-    // Page has component CSS but no :root — prepend shared tokens, keep page CSS.
+    // Build the base layer tag — wrap shared_css in @layer so it never wins against
+    // the page's own unlayered CSS.
+    const layerTag = `<style id="nfd-shared-base">@layer nfd-shared{${sharedCss}}</style>`
+
+    // Sync :root tokens into the page's own :root (they need to be in unlayered scope
+    // so they have the same specificity as the rest of the page tokens).
+    let result = html
     if (sharedRoot) {
-      const styleTag = `<style>${sharedRoot}</style>`
-      if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${styleTag}\n</head>`)
-      return styleTag + html
+      if (/:root\s*\{[\s\S]*?\}/i.test(result)) {
+        result = result.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
+      }
     }
-    return html // nothing safe to do — leave the page intact
+    // Inject the shared base layer BEFORE the page's own <style> blocks so the page CSS wins.
+    if (/<head[^>]*>/i.test(result)) {
+      return result.replace(/<head[^>]*>/i, (m) => `${m}\n${layerTag}`)
+    }
+    return layerTag + result
   }
 
   // Token-only page: strip the (minimal) page styles, inject the full shared_css.

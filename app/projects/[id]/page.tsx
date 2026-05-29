@@ -939,15 +939,21 @@ function mergeSharedCssIntoPage(html: string, sharedCss: string): string {
   const isSelfContained = remainder.length > 300
 
   if (isSelfContained) {
+    // Inject full shared_css inside a @layer (lowest cascade priority) so that
+    // nav/footer classes (from home page) are available, but the page's own
+    // unlayered CSS always wins for page-specific components.
     const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
-    if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
-      return html.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
-    }
+    const layerTag = `<style id="nfd-shared-base">@layer nfd-shared{${sharedCss}}</style>`
+    let result = html
+    // Sync :root tokens in the page's own unlayered scope for correct specificity
     if (sharedRoot) {
-      const styleTag = `<style>${sharedRoot}</style>`
-      return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${styleTag}\n</head>`) : styleTag + html
+      if (/:root\s*\{[\s\S]*?\}/i.test(result)) {
+        result = result.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
+      }
     }
-    return html
+    // Inject the shared base layer before the page's own CSS
+    if (/<head[^>]*>/i.test(result)) return result.replace(/<head[^>]*>/i, (m) => `${m}\n${layerTag}`)
+    return layerTag + result
   }
   const stripped = html.replace(/<style[\s\S]*?<\/style>/gi, '')
   const styleTag = `<style>${sharedCss}</style>`
@@ -1009,7 +1015,7 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string): string {
+function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string): string {
   let clean = stripEditorArtifacts(html)
 
   // Inject shared nav/footer so the editor preview matches the served site.
@@ -1031,7 +1037,12 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
 
   // data-fact-editor marks the <base> as editor-only so triggerSave() removes it before saving
   const baseTag = `<base data-fact-editor href="/preview/${projectSlug}/">`
-  const inject = `${baseTag}\n${EDITOR_FONTS_INJECT}`
+  // Inject shared CSS as a low-priority @layer so nav/footer classes render correctly
+  // even on self-contained pages that have their own component CSS.
+  const sharedCssLayer = sharedCss
+    ? `<style data-fact-editor id="nfd-shared-base">@layer nfd-shared{${sharedCss}}</style>`
+    : ''
+  const inject = `${baseTag}\n${EDITOR_FONTS_INJECT}${sharedCssLayer ? `\n${sharedCssLayer}` : ''}`
   if (/<\/body>/i.test(clean)) {
     return clean
       .replace(/<head[^>]*>/i, (m) => `${m}\n${inject}`)
@@ -1345,9 +1356,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // Build "virtual pages" for blog posts using the same renderer as the live site
     const homePage = pages.find(p => p.slug === 'home')
     const homeHtml = homePage?.html ?? ''
-    const siteNav = homeHtml.match(/<nav[\s\S]*?<\/nav>/i)?.[0] ?? ''
+    const siteNav = sharedNavHtmlRef.current || homeHtml.match(/<nav[\s\S]*?<\/nav>/i)?.[0] || ''
     const footerMatches = [...homeHtml.matchAll(/<footer[\s\S]*?<\/footer>/gi)]
-    const siteFooter = footerMatches.length > 0 ? footerMatches[footerMatches.length - 1][0] : ''
+    const siteFooter = sharedFooterHtmlRef.current || (footerMatches.length > 0 ? footerMatches[footerMatches.length - 1][0] : '')
     const siteStyle = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
     const lang = projectContext?.language
       || homeHtml.match(/<html[^>]+lang=["']([^"']{2})/i)?.[1]
@@ -1399,7 +1410,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (viewMode === 'edit' && activePage && projectSlug) {
       editBaseHtmlRef.current = activePage.html
-      setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined))
+      setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined))
       setEditSaving('idle')
       setEditOutdated(false)
     }
@@ -2256,9 +2267,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
     // Build the rendered HTML so the SEO agent sees exactly what the live page looks like
     const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
-    const siteNav = homeHtml.match(/<nav[\s\S]*?<\/nav>/i)?.[0] ?? ''
+    const siteNav = sharedNavHtmlRef.current || homeHtml.match(/<nav[\s\S]*?<\/nav>/i)?.[0] || ''
     const footerMatches = [...homeHtml.matchAll(/<footer[\s\S]*?<\/footer>/gi)]
-    const siteFooter = footerMatches.length > 0 ? footerMatches[footerMatches.length - 1][0] : ''
+    const siteFooter = sharedFooterHtmlRef.current || (footerMatches.length > 0 ? footerMatches[footerMatches.length - 1][0] : '')
     const siteStyle = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
     const lang = (projectContext?.language as string | undefined) || 'it'
     const baseUrl = customDomain ? `https://${customDomain}` : `/preview/${projectSlug}`
@@ -4470,7 +4481,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   onClick={() => {
                     if (!activePage) return
                     editBaseHtmlRef.current = activePage.html
-                    setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined))
+                    setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined))
                     setEditOutdated(false)
                   }}
                   style={{
@@ -6169,7 +6180,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               {activePage ? (
                 <iframe
                   ref={previewIframeRef}
-                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined)}
+                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined)}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"
                   sandbox="allow-scripts allow-same-origin"
