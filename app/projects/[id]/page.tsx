@@ -2614,6 +2614,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return [html.split(oldSrc).join(newSrc), true]
     }
 
+    // 6. Closing-tag anchor: when the find contains a closing structural tag (</main>,
+    //    </body>, </footer>) that exists in the HTML, anchor the replace on the LAST
+    //    occurrence of that tag. Handles "insert section before </main>" patterns where
+    //    the agent correctly uses structural anchors but surrounding whitespace differs.
+    const closingTagMatch = find.match(/<\/(main|body|footer|article|section)>/i)
+    if (closingTagMatch) {
+      const anchor = closingTagMatch[0].toLowerCase() // e.g. </main>
+      const lastIdx = html.toLowerCase().lastIndexOf(anchor)
+      if (lastIdx !== -1) {
+        // Build a replace that swaps the anchor with whatever is in the replace string
+        // that ends with the same anchor
+        const replaceLower = replace.toLowerCase()
+        if (replaceLower.includes(anchor)) {
+          // Use the replace as-is, applied at the last occurrence of the anchor in html
+          const before = html.slice(0, lastIdx)
+          const after = html.slice(lastIdx + anchor.length)
+          // Preserve original case of anchor in the replace
+          const newReplace = replace.slice(0, replace.toLowerCase().lastIndexOf(anchor)) + anchor + replace.slice(replace.toLowerCase().lastIndexOf(anchor) + anchor.length)
+          return [before + newReplace + after, true]
+        }
+      }
+    }
+
     return [html, false]
   }
 

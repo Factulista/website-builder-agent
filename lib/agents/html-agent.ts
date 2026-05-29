@@ -622,6 +622,11 @@ COLORI E SFONDI — REGOLE CRITICHE:
 
 FIND/REPLACE — REGOLE CRITICHE:
 - Le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
+- L'HTML che vedi nel contesto è uno SCHELETRO SEMPLIFICATO: i testi lunghi sono troncati e il CSS è omesso. NON usare MAI testo visibile (contenuto di paragrafi, titoli, ecc.) come stringa "find" — potrebbe essere troncato. Usa SEMPRE ancore strutturali: tag di chiusura, attributi id="...", class="...", o pattern univoci del markup.
+- INSERIRE UNA NUOVA SEZIONE (dopo o prima di un blocco esistente): usa SEMPRE come "find" la stringa \`</main>\` oppure \`</body>\` e come "replace" la nuova sezione + il tag di chiusura. Es:
+  find: '</main>'   replace: '<section class="nuova">…</section>\n</main>'
+  MAI cercare di trovare il </section> di un blocco specifico — ci sono troppi </section> e il testo attorno potrebbe essere troncato.
+- MODIFICARE UNA SEZIONE ESISTENTE: usa come "find" l'attributo id="..." univoco della sezione, oppure un class="..." sufficientemente unico. Es: find: 'id="pricing"' → replace: 'id="pricing" data-updated="1"' (poi includi l'intera sezione nel replace). Oppure usa la classe più specifica del contenitore.
 - Per sostituire un'immagine usa SEMPRE find/replace SOLO sull'attributo src, non sull'intero tag <img>:
   CORRETTO:  find: 'src="https://vecchio-url.com/foto.jpg"'  replace: 'src="https://nuovo-url.com/foto.jpg"'
   SBAGLIATO: find: '<img src="..." class="..." style="...">' (troppo fragile, fallirà)
