@@ -17,6 +17,18 @@ export class CreditsError extends ApiError {
   }
 }
 
+/**
+ * Thrown when the server-side Anthropic API key has no credits.
+ * This is a platform-level issue, not a per-user credits issue.
+ * Surface as 503 so the user knows to retry later (or contact support).
+ */
+export class AnthropicBillingError extends Error {
+  readonly statusCode = 503
+  constructor() {
+    super('ANTHROPIC_BILLING')
+  }
+}
+
 export type CreditReason = 'chat' | 'seo-fix' | 'image-meta' | 'stripe-topup' | 'signup-bonus'
 
 /** Read current balance (creates wallet with 0 if missing). */

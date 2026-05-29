@@ -1,4 +1,14 @@
 import { fetchWithRetry } from './fetch-retry'
+import { AnthropicBillingError } from '../credits'
+
+/** Detect Anthropic billing-out-of-credits error from a non-ok response body. */
+async function detectBillingError(res: Response): Promise<void> {
+  if (res.status !== 400 && res.status !== 402) return
+  const body = await res.clone().text().catch(() => '')
+  if (body.includes('credit balance is too low') || body.includes('Your credit balance')) {
+    throw new AnthropicBillingError()
+  }
+}
 
 export type AgentConfig = {
   model: string
@@ -135,6 +145,8 @@ export async function callClaude(
       continue
     }
 
+    // Detect billing error before returning the raw response to callers
+    await detectBillingError(res)
     return res
   }
 
@@ -189,6 +201,7 @@ export async function callClaudeMultimodal(
       continue
     }
 
+    await detectBillingError(res)
     return res
   }
 

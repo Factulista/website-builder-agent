@@ -6,7 +6,7 @@ import { getCheck } from '../../../lib/seo/checks'
 import type { CheckId } from '../../../lib/seo/checks'
 import type { CheckResult } from '../../../lib/seo/analyzer'
 import { requireUserAndProject, ApiError } from '../../../lib/api-auth'
-import { precheckCredits, consumeCredits, CreditsError } from '../../../lib/credits'
+import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 
 /** Shared per-request token counter, mutated by callSeoAgent. */
 type TokenBag = { input: number; output: number }
@@ -750,7 +750,11 @@ Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza b
       }
 
     } catch (err) {
-      emitError(String(err))
+      if (err instanceof AnthropicBillingError || String(err).includes('credit balance is too low')) {
+        emitError('Servizio temporaneamente non disponibile. Riprova tra qualche minuto.')
+      } else {
+        emitError(String(err))
+      }
     }
   })()
 

@@ -9,7 +9,7 @@ import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
 import { findComponentByKeywords } from '../../../lib/components/index'
 import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-auth'
-import { precheckCredits, consumeCredits, CreditsError } from '../../../lib/credits'
+import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 import { detectLangFromText } from '../../../lib/agents/detect-lang'
 
 type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
@@ -521,8 +521,16 @@ export async function POST(req: NextRequest) {
     if (err instanceof CreditsError) {
       return Response.json({ error: err.message, code: 'INSUFFICIENT_CREDITS', balance: err.balance }, { status: 402 })
     }
+    if (err instanceof AnthropicBillingError) {
+      return Response.json({ error: 'Servizio temporaneamente non disponibile. Riprova tra qualche minuto.', code: 'SERVICE_UNAVAILABLE' }, { status: 503 })
+    }
     if (err instanceof ApiError) {
       return Response.json({ error: err.message }, { status: err.status })
+    }
+    // Last-resort: check if raw error string contains Anthropic billing signal
+    const errStr = String(err)
+    if (errStr.includes('credit balance is too low') || errStr.includes('Your credit balance')) {
+      return Response.json({ error: 'Servizio temporaneamente non disponibile. Riprova tra qualche minuto.', code: 'SERVICE_UNAVAILABLE' }, { status: 503 })
     }
     return Response.json({ error: String(err) }, { status: 500 })
   }
