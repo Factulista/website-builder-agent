@@ -261,7 +261,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
 
   return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },
   })
 }
 
@@ -303,6 +303,6 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
 
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },
   })
 }

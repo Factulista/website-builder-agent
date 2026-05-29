@@ -156,7 +156,7 @@ ${items}
       if (customBlogPage) {
         return new Response(customBlogPage.html, {
           status: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },
         })
       }
 
@@ -179,7 +179,8 @@ ${items}
       const html = buildBlogListPageFromLib(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, faviconUrl, injectPoints)
       return new Response(html, {
         status: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
+        // Blog listing: shorter CDN TTL (new posts appear here)
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600' },
       })
     }
 
@@ -207,7 +208,7 @@ ${items}
       const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints)
       return new Response(html, {
         status: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },
       })
     }
   }

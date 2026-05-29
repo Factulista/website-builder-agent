@@ -864,6 +864,18 @@ SEO — REGOLE DI DEFAULT (applica SEMPRE su ogni pagina che crei o modifichi):
 - Schema.org JSON-LD: usa {{site_url}} come valore del campo "url" (es: "@id": "{{site_url}}", "url": "{{site_url}}").
 Queste regole si applicano ANCHE alle modifiche parziali: se aggiungi una sezione, assicurati che la pagina soddisfi questi requisiti.
 
+PERFORMANCE — REGOLE OBBLIGATORIE (impattano Core Web Vitals e ranking SEO):
+- Google Fonts: usa SEMPRE il parametro display=swap nell'URL → ?display=swap. Esempio: href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap". NON omettere mai display=swap.
+- Google Fonts preconnect: aggiungi SEMPRE entrambe queste righe PRIMA del link al font:
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+- LCP image (hero): la prima immagine above-the-fold NON deve avere loading="lazy". Aggiungi invece:
+  <link rel="preload" as="image" href="[URL_IMMAGINE_HERO]"> nel <head>.
+  Attributo fetchpriority="high" sull'elemento <img> stesso.
+- Tutte le altre immagini: loading="lazy" + width + height espliciti (previene CLS).
+- Script non critici: aggiungi sempre defer o async — mai script bloccanti nel <head>.
+- Nessuna risorsa esterna non necessaria: non caricare librerie JS (jQuery, Bootstrap JS, ecc.) se non strettamente necessarie. CSS inline > CDN esterno.
+
 IMMAGINI ALLEGATE — REGOLA CRITICA:
 Quando l'utente allega un'immagine, hai due comportamenti distinti:
 A) L'immagine contiene TESTO (screenshot di dati, lista prezzi, articolo, menu, scheda prodotto, tabella, documento):
