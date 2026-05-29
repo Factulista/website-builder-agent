@@ -2208,14 +2208,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode])
 
+  const [faviconSaving, setFaviconSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+
   const saveFaviconUrl = async (url: string) => {
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: { ...existing, favicon_url: url },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
-    setFaviconUrl(url)
+    setFaviconSaving('saving')
+    try {
+      const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+      const existing = (proj?.site_config ?? {}) as Record<string, unknown>
+      const { error } = await supabase.from('projects').update({
+        site_config: { ...existing, favicon_url: url },
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+      if (error) throw error
+      setFaviconUrl(url)
+      faviconUrlRef.current = url
+      setFaviconSaving('saved')
+      setTimeout(() => setFaviconSaving('idle'), 2000)
+    } catch (err) {
+      console.error('[saveFaviconUrl]', err)
+      setFaviconSaving('idle')
+    }
   }
 
   const saveDesignSystem = async (ds: DesignSystem) => {
@@ -4906,18 +4918,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   <div style={{ marginBottom: '14px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                     <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#9b9896', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Usa come</div>
                     <button
+                      type="button"
                       onClick={() => saveFaviconUrl(selectedMedia.url)}
+                      disabled={faviconSaving === 'saving'}
                       style={{
                         width: '100%', padding: '7px 10px',
-                        background: selectedMedia.url === faviconUrl ? '#dbeafe' : 'white',
-                        border: `1px solid ${selectedMedia.url === faviconUrl ? '#2563eb' : '#e5e7eb'}`,
+                        background: faviconSaving === 'saved' ? '#dcfce7' : selectedMedia.url === faviconUrl ? '#dbeafe' : 'white',
+                        border: `1px solid ${faviconSaving === 'saved' ? '#16a34a' : selectedMedia.url === faviconUrl ? '#2563eb' : '#e5e7eb'}`,
                         borderRadius: '7px', fontSize: '0.78rem', fontWeight: 600,
-                        color: selectedMedia.url === faviconUrl ? '#1d4ed8' : '#374151',
-                        cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const,
+                        color: faviconSaving === 'saved' ? '#15803d' : selectedMedia.url === faviconUrl ? '#1d4ed8' : '#374151',
+                        cursor: faviconSaving === 'saving' ? 'wait' : 'pointer',
+                        fontFamily: 'inherit', textAlign: 'left' as const,
                         display: 'flex', alignItems: 'center', gap: '6px',
                       }}
                     >
-                      {selectedMedia.url === faviconUrl ? '✓ ' : ''} 🌐 Favicon del progetto
+                      {faviconSaving === 'saving' ? '⏳ ' : faviconSaving === 'saved' ? '✓ Salvato!' : selectedMedia.url === faviconUrl ? '✓ ' : ''}{faviconSaving !== 'saved' ? '🌐 Favicon del progetto' : ''}
                     </button>
                   </div>
                   {(['alt', 'title', 'caption', 'description'] as const).map(field => {
