@@ -2,6 +2,7 @@ import { callClaude } from './config'
 import { fetchWithRetry } from './fetch-retry'
 import { extractImageUrls } from './site-analyzer'
 import type { LogoDefinition } from './design-agent'
+import { langName } from './detect-lang'
 
 /** Fetches an image URL and returns it as base64 for multimodal API calls. */
 async function fetchImageAsBase64(url: string): Promise<{ data: string; media_type: string } | null> {
@@ -494,7 +495,8 @@ export async function runHtmlAgent(
   apiKey: string,
   projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = [],
   contextLogo?: LogoDefinition,
-  injectPoints?: Record<string, string>
+  injectPoints?: Record<string, string>,
+  userLang = 'it'
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -736,7 +738,7 @@ ${designSystemBlock}
 PAGINE DEL SITO:
 ${pageContextBlocks}
 
-LINGUA RISPOSTA CHAT: il campo \`summary\` di OGNI tool che usi DEVE essere scritto nella stessa lingua in cui l'utente ha scritto il suo messaggio — non sempre in italiano. Se l'utente scrive in inglese → summary in inglese. Spagnolo → spagnolo. Francese → francese. Ecc.`
+LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`summary\` di OGNI tool DEVE essere in ${langName(userLang)}. Non usare un'altra lingua anche se il sito è in una lingua diversa.`
 
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)

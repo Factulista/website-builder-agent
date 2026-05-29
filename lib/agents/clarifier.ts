@@ -1,5 +1,6 @@
 import { fetchWithRetry } from './fetch-retry'
 import type { ProjectContext } from './memory-agent'
+import { langName } from './detect-lang'
 
 export type ClarifierResult =
   | { proceed: true }
@@ -17,7 +18,7 @@ const CLARIFIER_TOOL = {
       },
       message: {
         type: 'string',
-        description: 'Se proceed=false: domande da fare all\'utente, tono amichevole, NELLA STESSA LINGUA in cui scrive l\'utente (italiano→italiano, inglese→inglese, spagnolo→spagnolo, ecc.). Se proceed=true: lascia vuoto.',
+        description: 'If proceed=false: questions for the user, friendly tone. MUST be written in the DETECTED_LANG placeholder language. If proceed=true: leave empty.',
       },
     },
     required: ['proceed'],
@@ -53,7 +54,8 @@ export async function runClarifier(
   existingPages: { slug: string; name: string }[],
   context: ProjectContext,
   apiKey: string,
-  agentType: AgentType = 'pipeline'
+  agentType: AgentType = 'pipeline',
+  userLang = 'it'
 ): Promise<ClarifierResult> {
   // SEO e images: procedi sempre senza chiamata LLM
   if (agentType === 'seo' || agentType === 'images') return { proceed: true }
@@ -80,7 +82,7 @@ REGOLE PER AGENTE "${agentType}":
 ${agentRules}
 
 REGOLA GLOBALE: in caso di dubbio → procedi. È meglio generare qualcosa che bloccarsi.
-Se fai domande: max 2, sintetiche, tono amichevole, NELLA STESSA LINGUA in cui scrive l'utente — non in italiano se scrive in un'altra lingua.`
+LINGUA OBBLIGATORIA: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`message\` DEVE essere scritto in ${langName(userLang)} — non cambiare lingua anche se il contesto del sito è diverso.`
 
   try {
     const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
@@ -94,7 +96,19 @@ Se fai domande: max 2, sintetiche, tono amichevole, NELLA STESSA LINGUA in cui s
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 256,
         system,
-        tools: [CLARIFIER_TOOL],
+        tools: [{
+          ...CLARIFIER_TOOL,
+          input_schema: {
+            ...CLARIFIER_TOOL.input_schema,
+            properties: {
+              ...CLARIFIER_TOOL.input_schema.properties,
+              message: {
+                type: 'string' as const,
+                description: `If proceed=false: questions for the user, friendly tone. MUST be written in ${langName(userLang)}. If proceed=true: leave empty.`,
+              },
+            },
+          },
+        }],
         tool_choice: { type: 'any' },
         messages: [{ role: 'user', content: userRequest }],
       }),
