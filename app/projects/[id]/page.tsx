@@ -736,16 +736,55 @@ function syncNavigation(
   if (pages.length <= 1 || op === 'none') return pages
 
   if (op === 'add' && targetSlug) {
-    // Source of truth: the newly added page (generated with full slug list)
+    // Source of truth for nav STRUCTURE: the home page (has the correct CSS classes,
+    // mega-menu, dropdowns, etc.). The new page's AI-generated nav may have a simpler
+    // structure that would break existing pages if propagated there.
+    // Strategy:
+    //  1. Take the home page's nav (or the first existing page with a nav).
+    //  2. Add a link to the new page if it's not already there.
+    //  3. Push this complete, correctly-styled nav to ALL pages (including the new one).
     const newPage = pages.find(p => p.slug === targetSlug)
     if (!newPage) return pages
-    const navMatch = newPage.html.match(/<nav[\s\S]*?<\/nav>/i)
-    if (!navMatch) return pages
-    const newNav = navMatch[0]
+
+    const srcPage =
+      pages.find(p => p.slug === 'home' && p.slug !== targetSlug && /<nav[\s\S]*?<\/nav>/i.test(p.html)) ??
+      pages.find(p => p.slug !== targetSlug && /<nav[\s\S]*?<\/nav>/i.test(p.html))
+
+    if (!srcPage) {
+      // No existing page with a nav — fall back: push new page's nav to everyone else
+      const navMatch = newPage.html.match(/<nav[\s\S]*?<\/nav>/i)
+      if (!navMatch) return pages
+      const newNav = navMatch[0]
+      return pages.map(p => {
+        if (p.slug === targetSlug) return p
+        if (!/<nav[\s\S]*?<\/nav>/i.test(p.html)) return p
+        return { ...p, html: p.html.replace(/<nav[\s\S]*?<\/nav>/i, newNav) }
+      })
+    }
+
+    const srcNavMatch = srcPage.html.match(/<nav[\s\S]*?<\/nav>/i)
+    if (!srcNavMatch) return pages
+    let baseNav = srcNavMatch[0]
+
+    // Add the new page's link to the base nav only if it isn't already there
+    const alreadyLinked = new RegExp(`href=["'](?:\\./)?(${targetSlug})/?["']`, 'i').test(baseNav)
+    if (!alreadyLinked) {
+      const newPageLabel = newPage.name ?? targetSlug
+      const newLink = `<li><a href="./${targetSlug}">${newPageLabel}</a></li>`
+      // Insert before the last </ul> inside the nav
+      const ulCloseIdx = baseNav.lastIndexOf('</ul>')
+      if (ulCloseIdx !== -1) {
+        baseNav = baseNav.slice(0, ulCloseIdx) + newLink + baseNav.slice(ulCloseIdx)
+      } else {
+        // No <ul> — insert before </nav>
+        baseNav = baseNav.replace(/<\/nav>/i, `${newLink}</nav>`)
+      }
+    }
+
+    // Propagate the complete nav to every page (including the new one)
     return pages.map(p => {
-      if (p.slug === targetSlug) return p
       if (!/<nav[\s\S]*?<\/nav>/i.test(p.html)) return p
-      return { ...p, html: p.html.replace(/<nav[\s\S]*?<\/nav>/i, newNav) }
+      return { ...p, html: p.html.replace(/<nav[\s\S]*?<\/nav>/i, baseNav) }
     })
   }
 
