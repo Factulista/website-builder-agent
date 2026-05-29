@@ -1172,6 +1172,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [loadingMsgId, setLoadingMsgId] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const loadingStartRef = useRef<number>(0)
+  // Typing animation for new assistant messages
+  const [typingContent, setTypingContent] = useState<Record<string, string>>({})
+  const typingTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
+  const typedMsgIds = useRef(new Set<string>())
   const [pages, setPages] = useState<Page[]>([])
   const [activeSlug, setActiveSlug] = useState<string>('home')
   const [projectName, setProjectName] = useState('')
@@ -1344,6 +1348,38 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => { blogSidebarBannerUrlRef.current = blogSidebarBannerUrl }, [blogSidebarBannerUrl])
   useEffect(() => { blogSidebarBannerLinkRef.current = blogSidebarBannerLink }, [blogSidebarBannerLink])
   useEffect(() => { projectContextRef.current = projectContext }, [projectContext])
+
+  // On mount: mark all existing messages as already typed (no animation for history)
+  useEffect(() => {
+    messages.forEach(m => typedMsgIds.current.add(m.id))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Typing animation: animate new assistant messages character-by-character
+  useEffect(() => {
+    messages.forEach(msg => {
+      if (msg.role !== 'assistant' || !msg.content) return
+      if (typedMsgIds.current.has(msg.id)) return     // already animated or old message
+      if (typingTimers.current[msg.id]) return         // already animating
+      typedMsgIds.current.add(msg.id)
+      const full = msg.content
+      let i = 0
+      // Initialize with empty so render immediately shows animated version
+      setTypingContent(prev => ({ ...prev, [msg.id]: '' }))
+      typingTimers.current[msg.id] = setInterval(() => {
+        i = Math.min(i + 6, full.length)               // 6 chars/tick @ 18ms ≈ fast typing
+        setTypingContent(prev => ({ ...prev, [msg.id]: full.slice(0, i) }))
+        if (i >= full.length) {
+          clearInterval(typingTimers.current[msg.id])
+          delete typingTimers.current[msg.id]
+        }
+      }, 18)
+    })
+  }, [messages])
+
+  // Cleanup typing timers on unmount
+  useEffect(() => {
+    return () => { Object.values(typingTimers.current).forEach(clearInterval) }
+  }, [])
 
   // Re-analyze SEO whenever pages or blog posts change or the SEO tab is opened.
   // Blog posts are rendered to their published HTML form (same builder used by the
@@ -3346,8 +3382,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     {(() => {
                       const isRunning = msg.id === loadingMsgId && loading && !msg.content
                       if (!isRunning) {
-                        // Normal: show final content
-                        return stripHtmlFromChat(msg.content, language) || ''
+                        // Show typing animation for new messages, full content for old ones
+                        const displayed = msg.id in typingContent ? typingContent[msg.id] : msg.content
+                        return stripHtmlFromChat(displayed, language) || ''
                       }
                       // ── Progress block (Claude Code style) ──
                       const SPINNER = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']

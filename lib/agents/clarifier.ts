@@ -17,7 +17,7 @@ const CLARIFIER_TOOL = {
       },
       message: {
         type: 'string',
-        description: 'Se proceed=false: domande da fare all\'utente, tono amichevole, in italiano. Se proceed=true: lascia vuoto.',
+        description: 'Se proceed=false: domande da fare all\'utente, tono amichevole, NELLA STESSA LINGUA in cui scrive l\'utente (italiano→italiano, inglese→inglese, spagnolo→spagnolo, ecc.). Se proceed=true: lascia vuoto.',
       },
     },
     required: ['proceed'],
@@ -80,7 +80,7 @@ REGOLE PER AGENTE "${agentType}":
 ${agentRules}
 
 REGOLA GLOBALE: in caso di dubbio → procedi. È meglio generare qualcosa che bloccarsi.
-Se fai domande: max 2, sintetiche, tono amichevole, in italiano.`
+Se fai domande: max 2, sintetiche, tono amichevole, NELLA STESSA LINGUA in cui scrive l'utente — non in italiano se scrive in un'altra lingua.`
 
   try {
     const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {

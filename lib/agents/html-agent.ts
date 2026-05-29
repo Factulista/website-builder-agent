@@ -734,7 +734,9 @@ Usa set_inject_point per aggiungere/aggiornare/rimuovere embed, script o iframe 
 ${designSystemBlock}
 
 PAGINE DEL SITO:
-${pageContextBlocks}`
+${pageContextBlocks}
+
+LINGUA RISPOSTA CHAT: il campo \`summary\` di OGNI tool che usi DEVE essere scritto nella stessa lingua in cui l'utente ha scritto il suo messaggio — non sempre in italiano. Se l'utente scrive in inglese → summary in inglese. Spagnolo → spagnolo. Francese → francese. Ecc.`
 
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)
