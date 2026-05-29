@@ -44,7 +44,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     ? config.shared_footer_html
     : (homePage ? extractFooter(homePage.html) : '')
   const sharedCss = typeof config.shared_css === 'string' ? config.shared_css : null
-  const siteStyle = sharedCss ? `<style>${sharedCss}</style>` : (homePage ? extractStyles(homePage.html) : '')
+  const fontLinks = (homePage?.html ?? '').match(/<link[^>]*(googleapis\.com|gstatic\.com)[^>]*>/gi)?.join('\n') ?? ''
+  const siteStyle = sharedCss ? `${fontLinks}\n<style>${sharedCss}</style>` : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
 
   const { data: post } = await supabase
     .from('blog_posts')

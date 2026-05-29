@@ -146,7 +146,8 @@ ${items}
       ? siteConfig.shared_footer_html
       : (homePage ? extractFooter(homePage.html) : '')
     const sharedCss = typeof siteConfig.shared_css === 'string' ? siteConfig.shared_css : null
-    const siteStyle = sharedCss ? `<style>${sharedCss}</style>` : (homePage ? extractStyles(homePage.html) : '')
+    const fontLinks = (homePage?.html ?? '').match(/<link[^>]*(googleapis\.com|gstatic\.com)[^>]*>/gi)?.join('\n') ?? ''
+    const siteStyle = sharedCss ? `${fontLinks}\n<style>${sharedCss}</style>` : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
 
     // /blog or /blog/ → listing
     if (pathname === '/blog' || pathname === '/blog/') {
