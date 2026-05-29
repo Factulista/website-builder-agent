@@ -151,6 +151,61 @@ function renderCtaBanner(data: Record<string, unknown>): string {
 // passes structured data; the renderer produces final HTML server-side
 // (no token cost on output).
 
+// ── Built-in SVG icon set for the mega-menu ──────────────────────────────────
+// Each icon is a 16×16 viewBox, stroke-based, 1.5px stroke.
+const NFD_ICONS: Record<string, string> = {
+  // Documents / billing
+  invoice:     `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1" width="10" height="14" rx="1"/><line x1="5.5" y1="5" x2="10.5" y2="5"/><line x1="5.5" y1="8" x2="10.5" y2="8"/><line x1="5.5" y1="11" x2="8" y2="11"/></svg>`,
+  document:    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1" width="10" height="14" rx="1"/><line x1="5.5" y1="5" x2="10.5" y2="5"/><line x1="5.5" y1="8" x2="10.5" y2="8"/><line x1="5.5" y1="11" x2="8" y2="11"/></svg>`,
+  // Analytics / charts
+  chart:       `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="3" height="5"/><rect x="6.5" y="5" width="3" height="9"/><rect x="11" y="2" width="3" height="12"/></svg>`,
+  analytics:   `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="3" height="5"/><rect x="6.5" y="5" width="3" height="9"/><rect x="11" y="2" width="3" height="12"/></svg>`,
+  // People / team
+  users:       `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><path d="M1 14c0-2.76 2.24-5 5-5s5 2.24 5 5"/><circle cx="12" cy="5" r="2"/><path d="M15 14c0-2.21-1.34-4-3-4"/></svg>`,
+  team:        `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.5"/><path d="M1 14c0-2.76 2.24-5 5-5s5 2.24 5 5"/><circle cx="12" cy="5" r="2"/><path d="M15 14c0-2.21-1.34-4-3-4"/></svg>`,
+  // Finance / money
+  money:       `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v1m0 4v1m-1.5-5.5h2.25A1.25 1.25 0 0 1 8 7.5h-.5A1.25 1.25 0 0 0 8 10h1.5"/></svg>`,
+  treasury:    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v1m0 4v1m-1.5-5.5h2.25A1.25 1.25 0 0 1 8 7.5h-.5A1.25 1.25 0 0 0 8 10h1.5"/></svg>`,
+  // Inventory / warehouse
+  box:         `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5l6-3 6 3v6l-6 3-6-3V5z"/><line x1="8" y1="2" x2="8" y2="14"/><polyline points="2 5 8 8 14 5"/></svg>`,
+  inventory:   `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5l6-3 6 3v6l-6 3-6-3V5z"/><line x1="8" y1="2" x2="8" y2="14"/><polyline points="2 5 8 8 14 5"/></svg>`,
+  // CRM / contacts
+  crm:         `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 14c0-2.76 2.24-5 5-5s5 2.24 5 5"/><circle cx="12.5" cy="4" r="1.5" fill="currentColor" stroke="none"/><line x1="12.5" y1="2" x2="12.5" y2="2.5"/><line x1="12.5" y1="5.5" x2="12.5" y2="6"/><line x1="11" y1="4" x2="11.5" y2="4"/><line x1="13.5" y1="4" x2="14" y2="4"/></svg>`,
+  // Settings / config
+  settings:    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>`,
+  // Calendar / schedule
+  calendar:    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="12" rx="1"/><line x1="2" y1="7" x2="14" y2="7"/><line x1="5" y1="1" x2="5" y2="5"/><line x1="11" y1="1" x2="11" y2="5"/></svg>`,
+  // Reports / clipboard
+  reports:     `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="10" height="12" rx="1"/><path d="M6 3V2a2 2 0 0 1 4 0v1"/><line x1="5.5" y1="7" x2="10.5" y2="7"/><line x1="5.5" y1="10" x2="8.5" y2="10"/></svg>`,
+  // Mail / communication
+  mail:        `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1"/><polyline points="1 3 8 9.5 15 3"/></svg>`,
+  // Payments / card
+  card:        `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="14" height="9" rx="1"/><line x1="1" y1="8" x2="15" y2="8"/><line x1="4" y1="11.5" x2="6" y2="11.5"/></svg>`,
+  payments:    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="14" height="9" rx="1"/><line x1="1" y1="8" x2="15" y2="8"/><line x1="4" y1="11.5" x2="6" y2="11.5"/></svg>`,
+  // Integrations / link
+  integrations:`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5a3.54 3.54 0 0 0 5 0l2-2a3.54 3.54 0 0 0-5-5L7 4"/><path d="M9.5 6.5a3.54 3.54 0 0 0-5 0l-2 2a3.54 3.54 0 0 0 5 5L9 12"/></svg>`,
+  // Security / shield
+  security:    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1l6 2.5V8c0 3.5-2.5 5.8-6 7-3.5-1.2-6-3.5-6-7V3.5L8 1z"/><polyline points="5.5 8 7.5 10 10.5 6"/></svg>`,
+  // Star / feature highlight
+  star:        `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.5 11.5 10 12.5 15 8 12.5 3.5 15 4.5 10 1 6.5 6 6"/></svg>`,
+  // Lightning / speed
+  lightning:   `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 1 5 9 8.5 9 7 15 11 7 7.5 7"/></svg>`,
+  // Grid / dashboard
+  dashboard:   `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>`,
+  // Ticket / support
+  ticket:      `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h14v2a2 2 0 0 0 0 4v2H1v-2a2 2 0 0 1 0-4V5z"/><line x1="6" y1="5" x2="6" y2="11" stroke-dasharray="1.5 1.5"/></svg>`,
+  // Default fallback: simple circle with dot
+  default:     `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/></svg>`,
+}
+
+/** Resolves an icon field: named key → built-in SVG, inline SVG → pass-through, else default */
+function resolveNfdIcon(icon: string): string {
+  if (!icon) return NFD_ICONS.default
+  if (icon.trim().startsWith('<')) return icon  // already SVG markup
+  const key = icon.toLowerCase().replace(/[^a-z]/g, '')
+  return NFD_ICONS[key] ?? NFD_ICONS.default
+}
+
 function renderNavFeatureDropdown(data: Record<string, unknown>): string {
   const triggerLabel = String(data.triggerLabel ?? 'Funzionalità')
   const items = (data.items as Array<Record<string, unknown>> | undefined) ?? []
@@ -163,37 +218,102 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     const href = String(it.href ?? '#')
     const icon = it.icon ? String(it.icon) : ''
     const badge = it.badge ? String(it.badge) : ''
-    const badgeClass = badge.toLowerCase() === 'nuevo' || badge.toLowerCase() === 'new' || badge.toLowerCase() === 'nuovo'
-      ? 'comp-nfd-badge-new'
-      : 'comp-nfd-badge-top'
-    return `<a href="${href}" class="comp-nfd-item">
-      ${icon ? `<span class="comp-nfd-icon" aria-hidden="true">${icon}</span>` : '<span class="comp-nfd-icon" aria-hidden="true"></span>'}
+    const isNew = /^(new|nuevo|nuovo|beta|soon)$/i.test(badge)
+    const badgeClass = isNew ? 'comp-nfd-badge-new' : 'comp-nfd-badge-top'
+    return `<a href="${href}" class="comp-nfd-item" role="menuitem">
+      <span class="comp-nfd-icon" aria-hidden="true">${resolveNfdIcon(icon)}</span>
       <span class="comp-nfd-label">${label}</span>
       ${badge ? `<span class="comp-nfd-badge ${badgeClass}">${badge}</span>` : ''}
     </a>`
   }).join('\n      ')
 
+  // CSS variables with fallbacks covering both naming conventions used across sites:
+  // --font / --font-body, --text / --color-text, --surface / --color-bg,
+  // --border-light / --border, --accent / --color-accent, --radius-card / --radius
   return `<li class="comp-nfd" data-comp="nav-feature-dropdown">
   <style>
     .comp-nfd{position:relative;list-style:none;}
-    .comp-nfd-trigger{background:none;border:none;padding:0.5rem 0.75rem;font:inherit;font-weight:500;color:var(--color-text,#1a1a1a);cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:inherit;}
-    .comp-nfd-trigger svg{width:12px;height:12px;transition:transform .2s;opacity:0.5;flex-shrink:0;}
-    .comp-nfd[data-open="true"] .comp-nfd-trigger svg{transform:rotate(180deg);}
-    .comp-nfd-panel{position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:0.75rem;padding-top:calc(0.75rem + 8px);box-shadow:0 8px 32px rgba(0,0,0,0.10);display:none;min-width:440px;z-index:100;}
-    .comp-nfd[data-open="true"] .comp-nfd-panel{display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:2px;}
-    .comp-nfd-item{display:flex;align-items:center;gap:0.6rem;padding:0.55rem 0.65rem;border-radius:8px;color:var(--color-text,#1a1a1a);text-decoration:none;transition:background .12s;font-size:0.875rem;}
-    .comp-nfd-item:hover{background:#f4f6f8;}
-    .comp-nfd-icon{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:0.8rem;flex-shrink:0;opacity:0.6;}
-    .comp-nfd-label{flex:1;font-weight:500;color:var(--color-text,#1a1a1a);}
-    .comp-nfd-badge{font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0;}
-    .comp-nfd-badge-top{background:#f1f5f9;color:#64748b;}
-    .comp-nfd-badge-new{background:#eff6ff;color:#2563eb;}
+    /* Trigger inherits nav link styles — font, size, weight come from parent nav */
+    .comp-nfd-trigger{
+      background:none;border:none;cursor:pointer;
+      display:inline-flex;align-items:center;gap:5px;
+      font-family:var(--font,var(--font-body,inherit));
+      font-size:inherit;font-weight:inherit;
+      color:var(--text,var(--color-text,inherit));
+      padding:0;line-height:inherit;letter-spacing:inherit;
+      transition:color .15s;
+    }
+    .comp-nfd-trigger:hover{opacity:0.75;}
+    .comp-nfd-chevron{width:11px;height:11px;transition:transform .2s;opacity:0.55;flex-shrink:0;margin-top:1px;}
+    .comp-nfd[data-open="true"] .comp-nfd-chevron{transform:rotate(180deg);}
+    /* Panel */
+    .comp-nfd-panel{
+      position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);
+      background:var(--surface,var(--color-bg,#fff));
+      border:1px solid var(--border,var(--border-light,#e5e7eb));
+      border-radius:var(--radius-card,var(--radius,4px));
+      padding:6px;
+      box-shadow:0 4px 24px rgba(0,0,0,0.09),0 1px 4px rgba(0,0,0,0.05);
+      display:none;min-width:420px;z-index:500;
+    }
+    .comp-nfd[data-open="true"] .comp-nfd-panel{
+      display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:2px;
+    }
+    /* Items */
+    .comp-nfd-item{
+      display:flex;align-items:center;gap:10px;
+      padding:9px 12px;
+      border-radius:calc(var(--radius-card,var(--radius,4px)) - 2px);
+      color:var(--text,var(--color-text,#1a1a1a));
+      text-decoration:none;
+      transition:background .12s;
+      font-family:var(--font,var(--font-body,inherit));
+      font-size:0.875rem;
+    }
+    .comp-nfd-item:hover{
+      background:var(--surface-alt,var(--color-bg-alt,#f4f6f8));
+    }
+    /* Icon box — square, accent-tinted bg, inherits site colors */
+    .comp-nfd-icon{
+      width:32px;height:32px;flex-shrink:0;
+      display:flex;align-items:center;justify-content:center;
+      border-radius:calc(var(--radius-card,var(--radius,4px)) - 2px);
+      background:color-mix(in srgb,var(--accent,var(--color-accent,#2563eb)) 10%,transparent);
+      color:var(--accent,var(--color-accent,#2563eb));
+    }
+    .comp-nfd-icon svg{width:16px;height:16px;}
+    .comp-nfd-label{flex:1;font-weight:500;color:var(--text,var(--color-text,#1a1a1a));}
+    /* Badges */
+    .comp-nfd-badge{
+      font-size:0.6rem;font-weight:700;padding:2px 7px;
+      border-radius:calc(var(--radius-btn,var(--radius,4px)));
+      text-transform:uppercase;letter-spacing:0.06em;flex-shrink:0;
+    }
+    .comp-nfd-badge-top{
+      background:var(--surface-alt,#f1f5f9);
+      color:var(--text-muted,#64748b);
+      border:1px solid var(--border-light,#e2e8f0);
+    }
+    .comp-nfd-badge-new{
+      background:color-mix(in srgb,var(--accent,#2563eb) 12%,transparent);
+      color:var(--accent,#2563eb);
+      border:1px solid color-mix(in srgb,var(--accent,#2563eb) 25%,transparent);
+    }
+    /* Mobile: bottom sheet */
     @media(max-width:640px){
-      .comp-nfd-panel{position:fixed;top:auto;bottom:0;left:0;right:0;transform:none;min-width:0;border-radius:14px 14px 0 0;max-height:70vh;overflow-y:auto;}
+      .comp-nfd-panel{
+        position:fixed;top:auto;bottom:0;left:0;right:0;
+        transform:none;min-width:0;
+        border-radius:var(--radius-card,8px) var(--radius-card,8px) 0 0;
+        max-height:70vh;overflow-y:auto;padding:12px;
+      }
       .comp-nfd[data-open="true"] .comp-nfd-panel{grid-template-columns:1fr;}
     }
   </style>
-  <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${id}">${triggerLabel}<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2 4 6 8 10 4"/></svg></button>
+  <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${id}" aria-haspopup="menu">
+    ${triggerLabel}
+    <svg class="comp-nfd-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2 4 6 8 10 4"/></svg>
+  </button>
   <div class="comp-nfd-panel" id="${id}" role="menu">
       ${itemsHtml}
   </div>
@@ -202,10 +322,10 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
       var li=document.currentScript.parentElement;
       var btn=li.querySelector('.comp-nfd-trigger');
       var closeTimer=null;
-      function open(v){li.setAttribute('data-open',v?'true':'false');btn.setAttribute('aria-expanded',v?'true':'false');}
+      function open(v){li.setAttribute('data-open',v?'true':'false');btn.setAttribute('aria-expanded',String(v));}
       btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(closeTimer);open(li.getAttribute('data-open')!=='true');});
       li.addEventListener('mouseenter',function(){if(window.matchMedia('(min-width:641px)').matches){clearTimeout(closeTimer);open(true);}});
-      li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches){closeTimer=setTimeout(function(){open(false);},150);}});
+      li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches){closeTimer=setTimeout(function(){open(false);},180);}});
       document.addEventListener('click',function(e){if(!li.contains(e.target)){clearTimeout(closeTimer);open(false);}});
       document.addEventListener('keydown',function(e){if(e.key==='Escape'){clearTimeout(closeTimer);open(false);}});
     })();
@@ -282,23 +402,27 @@ export const COMPONENT_REGISTRY: Component[] = [
   columns?: 1|2|3|4     // colonne nel pannello (default 2)
   items: Array<{
     label: string       // nome della funzionalità
-    href: string        // URL della pagina, es. "/facturacion"
-    icon?: string       // emoji o singolo carattere, es. "📄"
-    badge?: string      // etichetta opzionale: "TOP", "NUEVO", "BETA", ecc.
+    href: string        // URL della pagina, es. "./facturacion"
+    icon?: string       // nome icona built-in OPPURE SVG inline.
+                        // Icone disponibili: invoice, document, chart, analytics,
+                        // users, team, money, treasury, box, inventory, crm,
+                        // settings, calendar, reports, mail, card, payments,
+                        // integrations, security, star, lightning, dashboard, ticket
+    badge?: string      // etichetta opzionale: "TOP", "NUEVO", "BETA", "NEW", ecc.
   }>
 }`,
     render: renderNavFeatureDropdown,
-    // Preview HTML for the Library UI tab (uses default Italian data)
+    // Preview HTML for the Library UI tab
     html: renderNavFeatureDropdown({
       triggerLabel: 'Funzionalità',
       columns: 2,
       items: [
-        { label: 'Fatturazione', href: '/fatturazione', icon: '📄', badge: 'TOP' },
-        { label: 'Contabilità', href: '/contabilita', icon: '📊', badge: 'TOP' },
-        { label: 'Tesoreria', href: '/tesoreria', icon: '💰' },
-        { label: 'Team', href: '/team', icon: '👥' },
-        { label: 'Magazzino', href: '/magazzino', icon: '📦' },
-        { label: 'CRM', href: '/crm', icon: '❤️' },
+        { label: 'Fatturazione', href: '/fatturazione', icon: 'invoice', badge: 'TOP' },
+        { label: 'Contabilità', href: '/contabilita', icon: 'chart', badge: 'TOP' },
+        { label: 'Tesoreria', href: '/tesoreria', icon: 'treasury' },
+        { label: 'Team', href: '/team', icon: 'users' },
+        { label: 'Magazzino', href: '/magazzino', icon: 'box' },
+        { label: 'CRM', href: '/crm', icon: 'crm' },
       ],
     }),
   },

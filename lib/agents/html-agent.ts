@@ -682,7 +682,11 @@ Questi componenti sono pre-costruiti e ricevono solo i dati. Risparmiano TANTI t
     columns?: 1|2|3|4            // colonne nel pannello (default 2)
     items: Array<{ label, href, icon?, badge? }>
   }
-  icon = emoji o singolo carattere (es. "📄"); badge = "TOP" | "NUEVO" | ecc.
+  icon = nome icona built-in (stringa) — NON usare emoji. Icone disponibili:
+    invoice, document, chart, analytics, users, team, money, treasury,
+    box, inventory, crm, settings, calendar, reports, mail, card, payments,
+    integrations, security, star, lightning, dashboard, ticket
+  badge = "TOP" | "NUEVO" | "NEW" | "BETA" | ecc.
 
 ▸ feature-grid — Sezione full-width con griglia di cards funzionalità.
   Caso d'uso tipico: pagina /funcionalidades che lista tutti i prodotti.
@@ -704,13 +708,13 @@ insert_component({
     triggerLabel: "Funcionalidades",
     columns: 2,
     items: [
-      {label:"Facturación", href:"/facturacion", icon:"📄", badge:"TOP"},
-      {label:"Contabilidad", href:"/contabilidad", icon:"📊", badge:"TOP"},
-      {label:"Tesorería", href:"/tesoreria", icon:"💰"},
-      {label:"Equipo", href:"/equipo", icon:"👥"},
-      {label:"Inventario", href:"/inventario", icon:"📦"},
-      {label:"CRM", href:"/crm", icon:"❤️"},
-      {label:"Proyectos", href:"/proyectos", icon:"📁"}
+      {label:"Facturación", href:"./facturacion", icon:"invoice", badge:"TOP"},
+      {label:"Contabilidad", href:"./contabilidad", icon:"chart", badge:"TOP"},
+      {label:"Tesorería", href:"./tesoreria", icon:"treasury"},
+      {label:"Equipo", href:"./equipo", icon:"users"},
+      {label:"Inventario", href:"./inventario", icon:"box"},
+      {label:"CRM", href:"./crm", icon:"crm"},
+      {label:"Proyectos", href:"./proyectos", icon:"dashboard"}
     ]
   },
   summary: "Aggiunto mega-menu Funcionalidades su tutte le pagine"
