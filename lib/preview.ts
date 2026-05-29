@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { InjectPoints } from './blog-serve'
+import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
 
 type Page = {
   slug: string
@@ -16,7 +17,6 @@ type SiteConfig = {
   shared_css?: string
   shared_nav_html?: string
   shared_footer_html?: string
-  shared_nav_css?: string
   favicon_url?: string
   blog_header_html?: string
   blog_sidebar_banner?: { url: string; link?: string }
@@ -75,7 +75,7 @@ function applySharedCss(html: string, sharedCss: string): string {
 
   if (isSelfContained) {
     // Sync only the :root token block from shared_css into the page.
-    // Nav/footer-specific CSS is injected separately via shared_nav_css (see prepareHtml)
+    // Nav/footer-specific CSS is injected separately via buildSharedFrameCss (see prepareHtml)
     // with higher cascade priority so it wins over the page's own generic rules.
     const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
     if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
@@ -138,8 +138,12 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, sharedNavCss?: string): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string): string {
   const baseTag = `<base href="${base}">`
+
+  // Canonical header/footer stylesheet — extracted from the home CSS, injected AFTER
+  // the page's own styles so the shared frame renders identically on every page.
+  const frameCss = sharedCss ? buildSharedFrameCss(sharedNav ?? '', sharedFooter ?? '', sharedCss) : ''
 
   // Step 0a: apply shared_css if available (replaces page-level <style> blocks)
   if (sharedCss) html = applySharedCss(html, sharedCss)
@@ -176,11 +180,13 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     }
   }
 
-  // Inject nav/footer CSS override — AFTER the page's own styles so it wins in cascade.
-  // This ensures nav link fonts, button styles, etc. always match the home page exactly,
-  // even on self-contained pages whose own CSS has generic rules (e.g. `a { font-weight: 500 }`).
-  if (sharedNavCss && /<\/head>/i.test(result)) {
-    result = result.replace(/<\/head>/i, `<style id="nfd-nav-css">${sharedNavCss}</style>\n</head>`)
+  // Inject canonical header/footer CSS + global layout fix — AFTER the page's own styles
+  // so it wins in cascade. This makes the shared nav/footer render identically on every
+  // page, even self-contained pages whose own <style> diverges (different button padding,
+  // font-weight, missing line-height, etc.).
+  if (/<\/head>/i.test(result)) {
+    const frameStyle = `<style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style id="nfd-frame-css">${frameCss}</style>` : ''}`
+    result = result.replace(/<\/head>/i, `${frameStyle}\n</head>`)
   }
 
   // Inject slot: head (before </head>)
@@ -252,9 +258,8 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const sharedCss = config?.shared_css
   const sharedNav = config?.shared_nav_html
   const sharedFooter = config?.shared_footer_html
-  const sharedNavCss = config?.shared_nav_css
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, sharedNavCss), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -295,9 +300,8 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedCss = config.shared_css
   const sharedNav = config.shared_nav_html
   const sharedFooter = config.shared_footer_html
-  const sharedNavCss = config.shared_nav_css
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, sharedNavCss), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })

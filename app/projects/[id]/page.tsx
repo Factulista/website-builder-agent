@@ -12,6 +12,7 @@ import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
+import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById } from '../../../lib/components/index'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
@@ -924,55 +925,6 @@ function reorderNavLinks(pages: Page[]): Page[] {
 }
 
 /**
- * Extracts from shared_css only the CSS rules relevant to nav/header/footer elements.
- * Uses the actual class names present in navHtml to find matching rules, plus element
- * selectors (nav, header) and common button/menu patterns.
- *
- * The result is stored as shared_nav_css and injected AFTER page CSS at serve time,
- * giving it higher cascade priority than the page's own generic rules (e.g. `a { font-weight: 500 }`).
- */
-function extractNavCssForPage(navHtml: string, css: string): string {
-  // Collect all class names used in the nav HTML
-  const navClasses = new Set<string>()
-  for (const m of navHtml.matchAll(/class=["']([^"']+)["']/g)) {
-    m[1].split(/\s+/).forEach(c => c && navClasses.add(c))
-  }
-
-  const result: string[] = []
-
-  // Always include :root (design tokens referenced by nav vars)
-  const rootMatch = css.match(/:root\s*\{[\s\S]*?\}/i)
-  if (rootMatch) result.push(rootMatch[0])
-
-  // Walk top-level CSS blocks and collect those that touch nav/header elements
-  // or match a class that appears in the nav HTML.
-  let i = 0, depth = 0, blockStart = -1, selectorStart = 0
-  while (i < css.length) {
-    const ch = css[i]
-    if (ch === '{') {
-      if (depth === 0) blockStart = i
-      depth++
-    } else if (ch === '}') {
-      depth--
-      if (depth === 0 && blockStart !== -1) {
-        const selector = css.slice(selectorStart, blockStart).trim()
-        const block = css.slice(selectorStart, i + 1)
-        if (!/^:root/.test(selector)) {
-          const isNavElement = /\bnav\b|header|hamburger|dropdown|mega[-_]|\.menu/i.test(selector)
-          const matchesNavClass = navClasses.size > 0 && [...navClasses].some(c => selector.includes(`.${c}`))
-          if (isNavElement || matchesNavClass) result.push(block.trim())
-        }
-        selectorStart = i + 1
-        blockStart = -1
-      }
-    }
-    i++
-  }
-
-  return result.join('\n')
-}
-
-/**
  * Merge shared_css into a page's HTML — MUST mirror applySharedCss in lib/preview.ts.
  * - Self-contained pages (own component CSS) → only sync the :root token block,
  *   keep their component styling (prevents the "pagina sballata" bug).
@@ -1058,7 +1010,7 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedNavCss?: string): string {
+function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string): string {
   let clean = stripEditorArtifacts(html)
 
   // Inject shared nav/footer so the editor preview matches the served site.
@@ -1081,24 +1033,22 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
   // data-fact-editor marks these tags as editor-only so triggerSave() removes them before saving
   const baseTag = `<base data-fact-editor href="/preview/${projectSlug}/">`
   const inject = `${baseTag}\n${EDITOR_FONTS_INJECT}`
-  // Nav CSS override — injected just before </head> (AFTER page styles) so it wins in cascade.
-  // Mirrors the shared_nav_css injection in lib/preview.ts prepareHtml().
-  const navCssTag = sharedNavCss
-    ? `<style data-fact-editor id="nfd-nav-css">${sharedNavCss}</style>`
-    : ''
+  // Canonical header/footer CSS + global layout fix — injected just before </head>
+  // (AFTER page styles) so the shared frame wins in cascade. Mirrors lib/preview.ts.
+  const frameCss = sharedCss ? buildSharedFrameCss(sharedNav ?? '', sharedFooter ?? '', sharedCss) : ''
+  const frameTag = `<style data-fact-editor id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style data-fact-editor id="nfd-frame-css">${frameCss}</style>` : ''}`
   if (/<\/body>/i.test(clean)) {
-    let result = clean
+    return clean
       .replace(/<head[^>]*>/i, (m) => `${m}\n${inject}`)
       .replace(/<\/body>/i, `${SCROLL_LISTENER}</body>`)
-    if (navCssTag) result = result.replace(/<\/head>/i, `${navCssTag}\n</head>`)
-    return result
+      .replace(/<\/head>/i, `${frameTag}\n</head>`)
   }
   if (/<head[^>]*>/i.test(clean)) {
-    let result = clean.replace(/<head[^>]*>/i, (m) => `${m}\n${inject}`)
-    if (navCssTag) result = result.replace(/<\/head>/i, `${navCssTag}\n</head>`)
-    return result
+    return clean
+      .replace(/<head[^>]*>/i, (m) => `${m}\n${inject}`)
+      .replace(/<\/head>/i, `${frameTag}\n</head>`)
   }
-  return inject + (navCssTag ? `\n${navCssTag}` : '') + clean
+  return inject + `\n${frameTag}` + clean
 }
 
 // ── Design System Types ────────────────────────────────────────────────────
@@ -1362,7 +1312,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const sharedCssRef = useRef<string>('')
   const sharedNavHtmlRef = useRef<string>('')
   const sharedFooterHtmlRef = useRef<string>('')
-  const sharedNavCssRef = useRef<string>('')
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -1458,7 +1407,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (viewMode === 'edit' && activePage && projectSlug) {
       editBaseHtmlRef.current = activePage.html
-      setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedNavCssRef.current || undefined))
+      setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined))
       setEditSaving('idle')
       setEditOutdated(false)
     }
@@ -1860,9 +1809,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if ((config as any)?.shared_footer_html) {
         sharedFooterHtmlRef.current = (config as any).shared_footer_html as string
       }
-      if ((config as any)?.shared_nav_css) {
-        sharedNavCssRef.current = (config as any).shared_nav_css as string
-      }
       if (!((config as any)?.shared_nav_html) && loadedPages.length > 0) {
         const homeForNav = loadedPages.find(p => p.slug === 'home') ?? loadedPages[0]
         const navMatch = homeForNav.html.match(/<nav[\s\S]*?<\/nav>/i)
@@ -1967,13 +1913,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (navMatch) {
         cfg.shared_nav_html = navMatch[0]
         sharedNavHtmlRef.current = navMatch[0]
-        // Also extract the CSS rules that apply to nav elements — stored separately
-        // so they can be injected AFTER page CSS at serve time (higher cascade priority).
-        if (css) {
-          const navCss = extractNavCssForPage(navMatch[0], css)
-          cfg.shared_nav_css = navCss
-          sharedNavCssRef.current = navCss
-        }
       }
       const footerMatch = homePage.html.match(/<footer[\s\S]*?<\/footer>/i)
       if (footerMatch) {
@@ -4539,7 +4478,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   onClick={() => {
                     if (!activePage) return
                     editBaseHtmlRef.current = activePage.html
-                    setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedNavCssRef.current || undefined))
+                    setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined))
                     setEditOutdated(false)
                   }}
                   style={{
@@ -6238,7 +6177,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               {activePage ? (
                 <iframe
                   ref={previewIframeRef}
-                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedNavCssRef.current || undefined)}
+                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined)}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"
                   sandbox="allow-scripts allow-same-origin"
