@@ -67,6 +67,43 @@ function renderLogoHtml(logo: LogoDefinition, href = './'): string {
 }
 
 /**
+ * Builds a compact Section Index for the LLM: a short list of structural
+ * landmarks (header, nav, main, footer, section, article, plus divs with id/class)
+ * with their CSS-like selectors. ~150 tokens for a typical page.
+ *
+ * Format example:
+ *   header.site-header
+ *   nav#main-nav
+ *   section#hero.hero-section
+ *   section#features
+ *   section#pricing.pricing-section
+ *   footer.site-footer
+ *
+ * The agent uses these selectors in the "operations" field of edit_page
+ * (insert_after / insert_before / replace) instead of fragile find strings.
+ */
+function buildSectionIndex(html: string): string {
+  const lines: string[] = []
+  const re = /<(header|nav|main|footer|section|article|div)(\s[^>]*)?>/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    const tag = m[1].toLowerCase()
+    const attrs = m[2] ?? ''
+    const idM   = attrs.match(/id=["']([^"']+)["']/)
+    const clsM  = attrs.match(/class=["']([^"']+)["']/)
+    // Skip bare <div> without any id/class — too generic
+    if (tag === 'div' && !idM && !clsM) continue
+    let selector = tag
+    if (idM)  selector += `#${idM[1]}`
+    if (clsM) selector += `.${clsM[1].split(' ')[0]}`  // first class only
+    lines.push(`  ${selector}`)
+  }
+  // Deduplicate preserving order
+  const seen = new Set<string>()
+  return lines.filter(l => { if (seen.has(l)) return false; seen.add(l); return true }).join('\n')
+}
+
+/**
  * Builds a compact HTML skeleton for the LLM context:
  * - Optionally keeps or omits <style> blocks
  * - Removes HTML comments
@@ -178,17 +215,31 @@ const HTML_TOOLS = [
   },
   {
     name: 'edit_page',
-    description: 'Modifica UNA pagina specifica del sito con find/replace mirati.',
+    description: 'Modifica UNA pagina specifica del sito. USA "operations" per inserire o sostituire intere sezioni (più affidabile, immune al troncamento). USA "edits" solo per modifiche chirurgiche: attributi CSS, src immagine, testi brevi univoci.',
     input_schema: {
       type: 'object' as const,
       properties: {
         pageSlug: { type: 'string' },
-        edits: {
+        operations: {
           type: 'array',
+          description: 'Operazioni selector-based per inserire/sostituire interi blocchi. PREFERISCI queste a "edits" quando devi aggiungere o rimpiazzare sezioni intere.',
           items: {
             type: 'object',
             properties: {
-              find: { type: 'string' },
+              op:     { type: 'string', enum: ['insert_after', 'insert_before', 'replace'], description: 'insert_after: inserisce newHtml dopo la sezione target. insert_before: inserisce prima. replace: sostituisce l\'intera sezione.' },
+              target: { type: 'string', description: 'Selettore CSS dell\'elemento target dal SECTION INDEX (es: "section#pricing", "footer.site-footer", "header"). Sintassi: tag, tag#id, tag.class, tag#id.class.' },
+              html:   { type: 'string', description: 'HTML completo da inserire o con cui sostituire la sezione.' },
+            },
+            required: ['op', 'target', 'html'],
+          },
+        },
+        edits: {
+          type: 'array',
+          description: 'Find/replace chirurgici. Usa SOLO per: cambi CSS, src immagine, testi brevi univoci, singoli attributi. NON per inserire o sostituire blocchi interi (usa operations).',
+          items: {
+            type: 'object',
+            properties: {
+              find:    { type: 'string' },
               replace: { type: 'string' },
             },
             required: ['find', 'replace'],
@@ -196,7 +247,7 @@ const HTML_TOOLS = [
         },
         summary: { type: 'string' },
       },
-      required: ['pageSlug', 'edits', 'summary'],
+      required: ['pageSlug', 'summary'],
     },
   },
   {
@@ -552,10 +603,14 @@ export async function runHtmlAgent(
     const isMentioned = mentionedPages.some(mp => mp.slug === p.slug)
 
     if (isActive) {
+      const sectionIndex = buildSectionIndex(p.html)
       if (colorRequest) {
         // Color/style request: provide palette summary + full skeleton with CSS
         const palette = extractColorPalette(p.html)
         return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
+SECTION INDEX (usa questi selettori nel campo "target" delle operations):
+${sectionIndex}
+
 PALETTE COLORI RILEVATA (usa questi valori esatti per trovare e replicare i colori):
 ${palette}
 
@@ -565,7 +620,10 @@ ${buildHtmlSkeleton(p.html, true)}
 \`\`\``
       }
       return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
-HTML ATTUALE (struttura — CSS omesso per brevità, il find/replace si applica sull'HTML completo):
+SECTION INDEX (usa questi selettori nel campo "target" delle operations):
+${sectionIndex}
+
+HTML STRUTTURA (testi lunghi troncati — usa "operations" per sezioni intere, "edits" solo per attributi/CSS/src):
 \`\`\`html
 ${buildHtmlSkeleton(p.html)}
 \`\`\``
@@ -620,17 +678,27 @@ COLORI E SFONDI — REGOLE CRITICHE:
   5. Se il background è inline (style="background:#fff"): trova l'elemento corretto nell'HTML e sostituisci solo l'attributo background nella stringa style.
   6. Se non riesci a trovare il colore esatto, segnalalo nella summary e usa il colore più simile che vedi nella palette.
 
-FIND/REPLACE — REGOLE CRITICHE:
-- Le stringhe "find" devono corrispondere ESATTAMENTE al testo nell'HTML originale completo (il CSS è presente anche se non mostrato qui).
-- L'HTML che vedi nel contesto è uno SCHELETRO SEMPLIFICATO: i testi lunghi sono troncati e il CSS è omesso. NON usare MAI testo visibile (contenuto di paragrafi, titoli, ecc.) come stringa "find" — potrebbe essere troncato. Usa SEMPRE ancore strutturali: tag di chiusura, attributi id="...", class="...", o pattern univoci del markup.
-- INSERIRE UNA NUOVA SEZIONE (dopo o prima di un blocco esistente): usa SEMPRE come "find" la stringa \`</main>\` oppure \`</body>\` e come "replace" la nuova sezione + il tag di chiusura. Es:
-  find: '</main>'   replace: '<section class="nuova">…</section>\n</main>'
-  MAI cercare di trovare il </section> di un blocco specifico — ci sono troppi </section> e il testo attorno potrebbe essere troncato.
-- MODIFICARE UNA SEZIONE ESISTENTE: usa come "find" l'attributo id="..." univoco della sezione, oppure un class="..." sufficientemente unico. Es: find: 'id="pricing"' → replace: 'id="pricing" data-updated="1"' (poi includi l'intera sezione nel replace). Oppure usa la classe più specifica del contenitore.
-- Per sostituire un'immagine usa SEMPRE find/replace SOLO sull'attributo src, non sull'intero tag <img>:
-  CORRETTO:  find: 'src="https://vecchio-url.com/foto.jpg"'  replace: 'src="https://nuovo-url.com/foto.jpg"'
-  SBAGLIATO: find: '<img src="..." class="..." style="...">' (troppo fragile, fallirà)
-- Stessa regola per background-image: find: "url('vecchio-url')"  replace: "url('nuovo-url')"
+COME MODIFICARE UNA PAGINA — SCEGLI IL MODO GIUSTO:
+
+▸ INSERIRE O SOSTITUIRE UNA SEZIONE INTERA → usa "operations" in edit_page (SEMPRE preferibile):
+  - Il campo "target" accetta selettori CSS dal SECTION INDEX mostrato nel contesto della pagina.
+  - Selettore: "tag#id.class" — es: "section#pricing", "footer.site-footer", "header", "section.features"
+  - op="insert_after": aggiunge la sezione dopo il blocco target
+  - op="insert_before": aggiunge prima del blocco target
+  - op="replace": sostituisce l'intero blocco target col nuovo HTML
+  - Esempio: aggiungere sezione moduli dopo pricing →
+    { op: "insert_after", target: "section#pricing", html: "<section id='modules'>…</section>" }
+  - VANTAGGIO: immune al troncamento — funziona sempre, non importa quanto sia lungo il testo.
+
+▸ MODIFICHE CHIRURGICHE (CSS, src immagine, attributo, testo breve univoco) → usa "edits":
+  - Le stringhe "find" si applicano sull'HTML originale COMPLETO (non sullo skeleton troncato).
+  - NON usare MAI testo visibile (paragrafi, titoli) come "find" — potrebbe essere troncato. Usa ancore strutturali: attributi id="...", class="...", src="...", o tag di chiusura.
+  - Per immagini: trova/sostituisci SOLO il src → find: 'src="vecchio.jpg"' replace: 'src="nuovo.jpg"'
+  - Per CSS: trova la regola CSS esatta → find: 'background: #fff' replace: 'background: #f5f5f5'
+  - Fallback "inserisci prima di </main>": SOLO se non esiste un selettore valido nel section index →
+    find: '</main>'  replace: '<section class="nuova">…</section>\n</main>'
+
+▸ REGOLA RIASSUNTIVA: operations > edits. Usa edits solo quando stai modificando un attributo, un valore CSS, o un testo di pochi caratteri sicuramente univoco nell'HTML.
 
 LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a href="./chi-siamo">Chi Siamo</a>
 

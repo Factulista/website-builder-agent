@@ -2640,6 +2640,71 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return [html, false]
   }
 
+  /**
+   * Applies a selector-based section operation to an HTML page.
+   * The selector syntax mirrors the SECTION INDEX format: tag#id.firstClass
+   * Supports op: 'insert_after' | 'insert_before' | 'replace'
+   */
+  const applySectionOp = (
+    html: string,
+    op: 'insert_after' | 'insert_before' | 'replace',
+    target: string,
+    newHtml: string
+  ): [string, boolean] => {
+    // Parse selector → tag, id, firstClass
+    // Examples: "section#pricing", "footer.site-footer", "header", "section#hero.hero-section"
+    const selectorRe = /^([a-z][a-z0-9]*)?(?:#([^.#\s]+))?(?:\.([^\s#]+))?$/i
+    const sm = target.trim().match(selectorRe)
+    if (!sm) return [html, false]
+    const tagM   = sm[1] || ''
+    const idM    = sm[2] || ''
+    const classM = sm[3] ? sm[3].split('.')[0] : ''  // first class segment
+
+    // Build opening-tag regex
+    // Must match the opening tag that contains id and/or class
+    const tagPat = tagM || '[a-z][a-z0-9]*'
+    const parts: string[] = [`<(${tagPat})`]
+    if (idM)    parts.push(`(?=[^>]*id=["']${idM}["'])`)
+    if (classM) parts.push(`(?=[^>]*class=["'][^"']*(?:^|\\s)${classM}(?:\\s|[^"'$])[^"']*["'])`)
+    parts.push('[^>]*>')
+    const openRe = new RegExp(parts.join(''), 'i')
+
+    const openMatch = html.match(openRe)
+    if (!openMatch || openMatch.index === undefined) return [html, false]
+
+    // Determine actual tag name from the match (handles wildcard case)
+    const actualTag = openMatch[1]?.toLowerCase() || tagM.toLowerCase()
+    if (!actualTag) return [html, false]
+
+    const start = openMatch.index
+
+    // Depth-aware walk to find matching closing tag
+    const scan  = html.slice(start)
+    let d = 0, pos = 0, end = -1
+    const openStr  = `<${actualTag}`
+    const closeStr = `</${actualTag}>`
+    while (pos < scan.length) {
+      const nextOpen  = scan.indexOf(openStr,  pos)
+      const nextClose = scan.indexOf(closeStr, pos)
+      if (nextClose === -1) break
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        d++; pos = nextOpen + 1
+      } else {
+        d--; pos = nextClose + closeStr.length
+        if (d === 0) { end = start + pos; break }
+      }
+    }
+    if (end === -1) return [html, false]
+
+    if (op === 'replace') {
+      return [html.slice(0, start) + newHtml + html.slice(end), true]
+    } else if (op === 'insert_before') {
+      return [html.slice(0, start) + newHtml + '\n' + html.slice(start), true]
+    } else {  // insert_after
+      return [html.slice(0, end) + '\n' + newHtml + html.slice(end), true]
+    }
+  }
+
   const handleSend = async (e: React.FormEvent, retryOverride?: { input: string; images: string[] }) => {
     e.preventDefault()
     const effectiveInput = retryOverride?.input ?? input
@@ -2879,11 +2944,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }
     } else if (result.tool === 'edit_page') {
       const targetSlug = result.input.pageSlug as string
-      const edits = result.input.edits as { find: string; replace: string }[]
+      const operations = (result.input.operations ?? []) as { op: 'insert_after' | 'insert_before' | 'replace'; target: string; html: string }[]
+      const edits = (result.input.edits ?? []) as { find: string; replace: string }[]
+      const failedOps: string[] = []
       const failedFinds: string[] = []
       newPages = pages.map(p => {
         if (p.slug !== targetSlug) return p
         let html = p.html
+        // 1. Selector-based operations first (more reliable)
+        for (const op of operations) {
+          const [next, applied] = applySectionOp(html, op.op, op.target, op.html)
+          if (applied) html = next
+          else { failedOps.push(`${op.op}:${op.target}`); console.warn('[applySectionOp] FAILED target:', op.target) }
+        }
+        // 2. Surgical find/replace edits
         for (const edit of edits) {
           const [next, applied] = applyEdit(html, edit.find, edit.replace)
           if (applied) html = next
@@ -2891,7 +2965,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
         return { ...p, html }
       })
-      summary = `✏️ ${result.input.summary}${failedFinds.length ? ` ⚠️ ${failedFinds.length} edit non applicate` : ''}`
+      const totalFailed = failedOps.length + failedFinds.length
+      summary = `✏️ ${result.input.summary}${totalFailed ? ` ⚠️ ${totalFailed} edit non applicate` : ''}`
       newActiveSlug = targetSlug
     } else if (result.tool === 'add_page') {
       const newPage: Page = { slug: result.input.slug, name: result.input.name, html: result.input.html }
