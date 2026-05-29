@@ -209,10 +209,10 @@ function resolveNfdIcon(icon: string): string {
 function renderNavFeatureDropdown(data: Record<string, unknown>): string {
   const triggerLabel = String(data.triggerLabel ?? 'Funzionalità')
   const items = (data.items as Array<Record<string, unknown>> | undefined) ?? []
-  const columnsRaw = Number(data.columns ?? 2)
-  const columns = columnsRaw >= 1 && columnsRaw <= 4 ? columnsRaw : 2
   const id = `nfd-${Math.random().toString(36).slice(2, 8)}`
 
+  // Items rendered as compact tags: [icon] Label [badge]
+  // No big icon box — icon is inline at 14px, same line as label text
   const itemsHtml = items.map(it => {
     const label = String(it.label ?? '')
     const href = String(it.href ?? '#')
@@ -221,78 +221,71 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     const isNew = /^(new|nuevo|nuovo|beta|soon)$/i.test(badge)
     const badgeClass = isNew ? 'comp-nfd-badge-new' : 'comp-nfd-badge-top'
     return `<a href="${href}" class="comp-nfd-item" role="menuitem">
-      <span class="comp-nfd-icon" aria-hidden="true">${resolveNfdIcon(icon)}</span>
+      ${icon ? `<span class="comp-nfd-icon" aria-hidden="true">${resolveNfdIcon(icon)}</span>` : ''}
       <span class="comp-nfd-label">${label}</span>
       ${badge ? `<span class="comp-nfd-badge ${badgeClass}">${badge}</span>` : ''}
     </a>`
   }).join('\n      ')
 
-  // CSS variables with fallbacks covering both naming conventions used across sites:
-  // --font / --font-body, --text / --color-text, --surface / --color-bg,
-  // --border-light / --border, --accent / --color-accent, --radius-card / --radius
   return `<li class="comp-nfd" data-comp="nav-feature-dropdown">
   <style>
     .comp-nfd{position:relative;list-style:none;}
-    /* Trigger inherits nav link styles — font, size, weight come from parent nav */
+    /* Trigger: inherits everything from parent nav — font, size, weight, color */
     .comp-nfd-trigger{
       background:none;border:none;cursor:pointer;
       display:inline-flex;align-items:center;gap:5px;
-      font-family:var(--font,var(--font-body,inherit));
-      font-size:inherit;font-weight:inherit;
-      color:var(--text,var(--color-text,inherit));
-      padding:0;line-height:inherit;letter-spacing:inherit;
-      transition:color .15s;
+      font-family:inherit;font-size:inherit;font-weight:inherit;
+      color:inherit;padding:0;line-height:inherit;letter-spacing:inherit;
     }
     .comp-nfd-trigger:hover{opacity:0.75;}
-    .comp-nfd-chevron{width:11px;height:11px;transition:transform .2s;opacity:0.55;flex-shrink:0;margin-top:1px;}
+    .comp-nfd-chevron{width:10px;height:10px;transition:transform .2s;opacity:0.5;flex-shrink:0;margin-top:1px;}
     .comp-nfd[data-open="true"] .comp-nfd-chevron{transform:rotate(180deg);}
-    /* Panel */
+    /* Panel: width driven by content (2 col of tags), no fixed min-width */
     .comp-nfd-panel{
-      position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);
+      position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
+      width:max-content;max-width:min(92vw,560px);
       background:var(--surface,var(--color-bg,#fff));
-      border:1px solid var(--border,var(--border-light,#e5e7eb));
+      border:1px solid var(--border,var(--border-light,var(--border-color,#e5e7eb)));
       border-radius:var(--radius-card,var(--radius,4px));
       padding:6px;
-      box-shadow:0 4px 24px rgba(0,0,0,0.09),0 1px 4px rgba(0,0,0,0.05);
-      display:none;min-width:420px;z-index:500;
+      box-shadow:0 4px 20px rgba(0,0,0,0.08),0 1px 3px rgba(0,0,0,0.04);
+      display:none;z-index:500;
     }
     .comp-nfd[data-open="true"] .comp-nfd-panel{
-      display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:2px;
+      display:grid;grid-template-columns:repeat(2,auto);gap:2px;
     }
-    /* Items */
+    /* Tag-style items: compact, single-line, icon inline */
     .comp-nfd-item{
-      display:flex;align-items:center;gap:10px;
-      padding:9px 12px;
+      display:inline-flex;align-items:center;gap:7px;
+      padding:7px 12px;
       border-radius:calc(var(--radius-card,var(--radius,4px)) - 2px);
-      color:var(--text,var(--color-text,#1a1a1a));
-      text-decoration:none;
+      color:var(--text,var(--color-text,inherit));
+      text-decoration:none;white-space:nowrap;
       transition:background .12s;
       font-family:var(--font,var(--font-body,inherit));
-      font-size:0.875rem;
+      font-size:0.875rem;font-weight:500;
     }
     .comp-nfd-item:hover{
-      background:var(--surface-alt,var(--color-bg-alt,#f4f6f8));
+      background:var(--surface-alt,var(--color-surface-alt,#f4f6f8));
     }
-    /* Icon box — square, accent-tinted bg, inherits site colors */
+    /* Icon: inline, small, accent-colored — no box, no background */
     .comp-nfd-icon{
-      width:32px;height:32px;flex-shrink:0;
-      display:flex;align-items:center;justify-content:center;
-      border-radius:calc(var(--radius-card,var(--radius,4px)) - 2px);
-      background:color-mix(in srgb,var(--accent,var(--color-accent,#2563eb)) 10%,transparent);
+      display:inline-flex;align-items:center;justify-content:center;
       color:var(--accent,var(--color-accent,#2563eb));
+      opacity:0.85;flex-shrink:0;
     }
-    .comp-nfd-icon svg{width:16px;height:16px;}
-    .comp-nfd-label{flex:1;font-weight:500;color:var(--text,var(--color-text,#1a1a1a));}
+    .comp-nfd-icon svg{width:14px;height:14px;}
+    .comp-nfd-label{color:var(--text,var(--color-text,inherit));}
     /* Badges */
     .comp-nfd-badge{
-      font-size:0.6rem;font-weight:700;padding:2px 7px;
-      border-radius:calc(var(--radius-btn,var(--radius,4px)));
+      font-size:0.58rem;font-weight:700;padding:1px 6px;
+      border-radius:var(--radius-btn,var(--radius,4px));
       text-transform:uppercase;letter-spacing:0.06em;flex-shrink:0;
     }
     .comp-nfd-badge-top{
       background:var(--surface-alt,#f1f5f9);
       color:var(--text-muted,#64748b);
-      border:1px solid var(--border-light,#e2e8f0);
+      border:1px solid var(--border-light,var(--border-color,#e2e8f0));
     }
     .comp-nfd-badge-new{
       background:color-mix(in srgb,var(--accent,#2563eb) 12%,transparent);
@@ -303,16 +296,15 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     @media(max-width:640px){
       .comp-nfd-panel{
         position:fixed;top:auto;bottom:0;left:0;right:0;
-        transform:none;min-width:0;
+        transform:none;width:auto;max-width:none;
         border-radius:var(--radius-card,8px) var(--radius-card,8px) 0 0;
-        max-height:70vh;overflow-y:auto;padding:12px;
+        max-height:70vh;overflow-y:auto;padding:10px;
       }
       .comp-nfd[data-open="true"] .comp-nfd-panel{grid-template-columns:1fr;}
     }
   </style>
   <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${id}" aria-haspopup="menu">
-    ${triggerLabel}
-    <svg class="comp-nfd-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2 4 6 8 10 4"/></svg>
+    ${triggerLabel}<svg class="comp-nfd-chevron" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 3.5 5 7 8.5 3.5"/></svg>
   </button>
   <div class="comp-nfd-panel" id="${id}" role="menu">
       ${itemsHtml}
@@ -321,13 +313,13 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     (function(){
       var li=document.currentScript.parentElement;
       var btn=li.querySelector('.comp-nfd-trigger');
-      var closeTimer=null;
+      var t=null;
       function open(v){li.setAttribute('data-open',v?'true':'false');btn.setAttribute('aria-expanded',String(v));}
-      btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(closeTimer);open(li.getAttribute('data-open')!=='true');});
-      li.addEventListener('mouseenter',function(){if(window.matchMedia('(min-width:641px)').matches){clearTimeout(closeTimer);open(true);}});
-      li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches){closeTimer=setTimeout(function(){open(false);},180);}});
-      document.addEventListener('click',function(e){if(!li.contains(e.target)){clearTimeout(closeTimer);open(false);}});
-      document.addEventListener('keydown',function(e){if(e.key==='Escape'){clearTimeout(closeTimer);open(false);}});
+      btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(t);open(li.getAttribute('data-open')!=='true');});
+      li.addEventListener('mouseenter',function(){if(window.matchMedia('(min-width:641px)').matches){clearTimeout(t);open(true);}});
+      li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches){t=setTimeout(function(){open(false);},180);}});
+      document.addEventListener('click',function(e){if(!li.contains(e.target)){clearTimeout(t);open(false);}});
+      document.addEventListener('keydown',function(e){if(e.key==='Escape'){clearTimeout(t);open(false);}});
     })();
   </script>
 </li>`
