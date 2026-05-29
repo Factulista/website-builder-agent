@@ -1,3 +1,5 @@
+import { FRAME_GLOBAL_FIX } from './shared-frame'
+
 /**
  * Named injection slots — points in the rendered HTML where arbitrary content
  * can be injected without touching page HTML directly.
@@ -375,6 +377,7 @@ export function buildBlogListPage(
     .blog-page-link.active{background:var(--color-accent,#2563eb);border-color:var(--color-accent,#2563eb);color:#fff;font-weight:700;pointer-events:none}
     .blog-page-link.disabled{opacity:.4;pointer-events:none}
   </style>
+  <style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>
 </head>
 <body>
   ${fixedNav}
@@ -483,6 +486,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   ${injectPoints?.head ?? ''}
   ${siteStyle}
   <style>${BLOG_POST_CONTENT_CSS}</style>
+  <style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>
 </head>
 <body>
   ${fixedNav}
