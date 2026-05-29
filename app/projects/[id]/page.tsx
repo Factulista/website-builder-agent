@@ -1013,12 +1013,20 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
   let clean = stripEditorArtifacts(html)
 
   // Inject shared nav/footer so the editor preview matches the served site.
-  // Home page is the source of truth — other pages get its nav/footer injected here too.
-  if (sharedNav && /<nav[\s\S]*?<\/nav>/i.test(clean)) {
-    clean = clean.replace(/<nav[\s\S]*?<\/nav>/i, sharedNav)
+  // Home page is source of truth — replaces page nav/footer, or inserts if absent.
+  if (sharedNav) {
+    if (/<nav[\s\S]*?<\/nav>/i.test(clean)) {
+      clean = clean.replace(/<nav[\s\S]*?<\/nav>/i, sharedNav)
+    } else if (/<body[^>]*>/i.test(clean)) {
+      clean = clean.replace(/<body([^>]*)>/i, `<body$1>\n${sharedNav}`)
+    }
   }
-  if (sharedFooter && /<footer[\s\S]*?<\/footer>/i.test(clean)) {
-    clean = clean.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooter)
+  if (sharedFooter) {
+    if (/<footer[\s\S]*?<\/footer>/i.test(clean)) {
+      clean = clean.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooter)
+    } else if (/<\/body>/i.test(clean)) {
+      clean = clean.replace(/<\/body>/i, `${sharedFooter}\n</body>`)
+    }
   }
 
   // data-fact-editor marks the <base> as editor-only so triggerSave() removes it before saving
@@ -1785,9 +1793,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       injectPointsRef.current = existingIp
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
-      // Load shared nav / footer refs for editor preview injection
-      if ((config as any)?.shared_nav_html) sharedNavHtmlRef.current = (config as any).shared_nav_html as string
-      if ((config as any)?.shared_footer_html) sharedFooterHtmlRef.current = (config as any).shared_footer_html as string
+      // Load shared nav / footer refs for editor preview injection.
+      // One-time migration: if missing, extract from home page and persist immediately.
+      if ((config as any)?.shared_nav_html) {
+        sharedNavHtmlRef.current = (config as any).shared_nav_html as string
+      }
+      if ((config as any)?.shared_footer_html) {
+        sharedFooterHtmlRef.current = (config as any).shared_footer_html as string
+      }
+      if (!((config as any)?.shared_nav_html) && loadedPages.length > 0) {
+        const homeForNav = loadedPages.find(p => p.slug === 'home') ?? loadedPages[0]
+        const navMatch = homeForNav.html.match(/<nav[\s\S]*?<\/nav>/i)
+        const footerMatch = homeForNav.html.match(/<footer[\s\S]*?<\/footer>/i)
+        if (navMatch || footerMatch) {
+          if (navMatch) sharedNavHtmlRef.current = navMatch[0]
+          if (footerMatch) sharedFooterHtmlRef.current = footerMatch[0]
+          supabase.from('projects').update({
+            site_config: {
+              ...(config ?? {}),
+              ...(navMatch ? { shared_nav_html: navMatch[0] } : {}),
+              ...(footerMatch ? { shared_footer_html: footerMatch[0] } : {}),
+            },
+          }).eq('id', id).then(() => console.log('[shared_nav/footer] migrated from home page'))
+        }
+      }
 
       if ((config as any)?.shared_css) {
         sharedCssRef.current = (config as any).shared_css as string
@@ -2805,7 +2834,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         summary = `📝 Blog collegato (sistema dinamico attivo)`
         newActiveSlug = activeSlug
       } else {
+        // syncNavigation: adds new page link to home's nav and propagates to all pages
         newPages = syncNavigation([...pages, newPage], 'add', newPage.slug)
+        // Inject home's footer into the new page (nav is handled by syncNavigation).
+        // The new page is generated without nav/footer — we add them from home here
+        // so the editor preview is immediately correct (serve-time injection handles prod).
+        const homeForInject = newPages.find(p => p.slug === 'home')
+        const sharedFooterForNewPage = homeForInject?.html.match(/<footer[\s\S]*?<\/footer>/i)?.[0]
+        if (sharedFooterForNewPage) {
+          newPages = newPages.map(p => {
+            if (p.slug !== newPage.slug) return p
+            if (/<footer[\s\S]*?<\/footer>/i.test(p.html)) {
+              return { ...p, html: p.html.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooterForNewPage) }
+            }
+            // Page has no footer yet — insert before </body>
+            if (/<\/body>/i.test(p.html)) {
+              return { ...p, html: p.html.replace(/<\/body>/i, `${sharedFooterForNewPage}\n</body>`) }
+            }
+            return p
+          })
+        }
         summary = `➕ ${result.input.summary}`
         newActiveSlug = newPage.slug
       }

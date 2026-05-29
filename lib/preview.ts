@@ -108,11 +108,21 @@ function applySharedCss(html: string, sharedCss: string): string {
  */
 function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?: string): string {
   let result = html
-  if (sharedNav && /<nav[\s\S]*?<\/nav>/i.test(result)) {
-    result = result.replace(/<nav[\s\S]*?<\/nav>/i, sharedNav)
+  if (sharedNav) {
+    if (/<nav[\s\S]*?<\/nav>/i.test(result)) {
+      result = result.replace(/<nav[\s\S]*?<\/nav>/i, sharedNav)
+    } else if (/<body[^>]*>/i.test(result)) {
+      // Page has no <nav> (content-only page) — insert after <body>
+      result = result.replace(/<body([^>]*)>/i, `<body$1>\n${sharedNav}`)
+    }
   }
-  if (sharedFooter && /<footer[\s\S]*?<\/footer>/i.test(result)) {
-    result = result.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooter)
+  if (sharedFooter) {
+    if (/<footer[\s\S]*?<\/footer>/i.test(result)) {
+      result = result.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooter)
+    } else if (/<\/body>/i.test(result)) {
+      // Page has no <footer> — insert before </body>
+      result = result.replace(/<\/body>/i, `${sharedFooter}\n</body>`)
+    }
   }
   return result
 }
