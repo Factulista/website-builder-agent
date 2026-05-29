@@ -104,6 +104,80 @@ function buildSectionIndex(html: string): string {
 }
 
 /**
+ * Maps user message keywords to a section selector from the section index.
+ * Returns the best matching selector (e.g. "section#pricing") or null.
+ */
+function identifyTargetSection(userMsg: string, sectionIndex: string): string | null {
+  const msg = userMsg.toLowerCase()
+  const selectors = sectionIndex.split('\n').map(l => l.trim()).filter(Boolean)
+
+  // Keyword → section label hints (order matters: more specific first)
+  const hints: [RegExp, string[]][] = [
+    [/\b(pricing|precios?|prezzi|plan|piani|tariff)/i,          ['pricing', 'precios', 'prezzi', 'plan']],
+    [/\b(hero|headline|banner|above.the.fold|portada)/i,        ['hero', 'banner', 'portada']],
+    [/\b(features?|funcionalidades?|caratteristiche|funzion)/i, ['features', 'funcionalidades', 'caratteristiche']],
+    [/\b(contact|contatto|contacto|formulario|form)/i,          ['contact', 'contatto', 'contacto']],
+    [/\b(footer|pie de página|piè di pagina)/i,                 ['footer']],
+    [/\b(header|nav|menú|menu|navbar|navigation)/i,             ['header', 'nav', 'navbar']],
+    [/\b(testimonial|recensioni|review|cliente)/i,              ['testimonial', 'review', 'client']],
+    [/\b(faq|domande|preguntas|accordion)/i,                    ['faq']],
+    [/\b(cta|call.to.action|call to action)/i,                  ['cta']],
+    [/\b(blog|articoli|articulos|post)/i,                       ['blog']],
+  ]
+
+  for (const [pattern, keywords] of hints) {
+    if (!pattern.test(msg)) continue
+    // Find a selector in the index that contains one of the keywords
+    const match = selectors.find(sel =>
+      keywords.some(kw => sel.toLowerCase().includes(kw))
+    )
+    if (match) return match
+  }
+  return null
+}
+
+/**
+ * Extracts the full HTML of a single section identified by a CSS-like selector.
+ * Uses the same depth-aware tag matching as applySectionOp.
+ * Returns null if the selector doesn't match anything.
+ */
+function extractSectionHtml(html: string, selector: string): string | null {
+  const selectorRe = /^([a-z][a-z0-9]*)?(?:#([^.#\s]+))?(?:\.([^\s#]+))?$/i
+  const sm = selector.trim().match(selectorRe)
+  if (!sm) return null
+  const tagM   = sm[1] || ''
+  const idM    = sm[2] || ''
+  const classM = sm[3] ? sm[3].split('.')[0] : ''
+
+  const tagPat = tagM || '[a-z][a-z0-9]*'
+  const parts: string[] = [`<(${tagPat})`]
+  if (idM)    parts.push(`(?=[^>]*id=["']${idM}["'])`)
+  if (classM) parts.push(`(?=[^>]*class=["'][^"']*${classM}[^"']*["'])`)
+  parts.push('[^>]*>')
+  const openRe = new RegExp(parts.join(''), 'i')
+
+  const openMatch = html.match(openRe)
+  if (!openMatch || openMatch.index === undefined) return null
+
+  const actualTag = openMatch[1]?.toLowerCase() || tagM.toLowerCase()
+  if (!actualTag) return null
+
+  const start   = openMatch.index
+  const scan    = html.slice(start)
+  const openStr  = `<${actualTag}`
+  const closeStr = `</${actualTag}>`
+  let d = 0, pos = 0, end = -1
+  while (pos < scan.length) {
+    const nextOpen  = scan.indexOf(openStr,  pos)
+    const nextClose = scan.indexOf(closeStr, pos)
+    if (nextClose === -1) break
+    if (nextOpen !== -1 && nextOpen < nextClose) { d++; pos = nextOpen + 1 }
+    else { d--; pos = nextClose + closeStr.length; if (d === 0) { end = start + pos; break } }
+  }
+  return end === -1 ? null : html.slice(start, end)
+}
+
+/**
  * Builds a compact HTML skeleton for the LLM context:
  * - Optionally keeps or omits <style> blocks
  * - Removes HTML comments
@@ -580,6 +654,22 @@ export async function runHtmlAgent(
   // Fix 2: word-boundary match — slug/name must appear as a whole word in the message,
   // not as a substring (prevents "Funcionalidades-Factulista" matching slug="funcionalidades")
   const isDeleteRequest = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(userMsg)
+
+  // Fix 7: micro-edit — targeted single-section edits (delete, round corners, single property change)
+  // Identified by: delete keyword OR single-element style tweak with no image and no new section creation
+  const isSingleStyleTweak = /\b(bordes?\s+redondeados?|border.radius|arrotonda|rendi\s+tondo|rounded|bold|grassetto|sottolineato|underline|font.size|dimensione\s+testo)\b/i.test(userMsg)
+  const isMicroEdit = (isDeleteRequest || isSingleStyleTweak) && !hasAttachedImagesInMsg(userMsg)
+
+  /** Returns true when the message contains an attached image URL (not a logo/asset replacement URL) */
+  function hasAttachedImagesInMsg(msg: string): boolean {
+    return /Immagine allegata:\s*https?:\/\//i.test(msg)
+  }
+
+  // Fix 4: asset-replacement detection — direct image URL + replacement verb = Haiku, no vision
+  // (logo replacement runs were using Sonnet + 33k tokens; Haiku + find/replace src is enough)
+  const isAssetReplacement = /\b(reemplaza|sostituisci|usa.*logo|logo.*usa|replace.*logo|logo.*replace|usa questa|usa questo|use this|usa il logo|usa l'immagine)\b/i.test(userMsg)
+    && /https?:\/\/[^\s]+\.(png|jpg|jpeg|webp|gif|svg)/i.test(userMsg)
+
   const mentionedPages = isDeleteRequest ? [] : pages.filter(p => {
     const slug = p.slug.toLowerCase()
     const name = p.name.toLowerCase()
@@ -624,21 +714,44 @@ export async function runHtmlAgent(
 
     if (isActive) {
       const sectionIndex = buildSectionIndex(p.html)
+
+      // Fix 5: colorRequest no longer includes full CSS in skeleton.
+      // Palette (compact color summary) + CSS vars in designSystemBlock are sufficient.
       if (colorRequest) {
-        // Color/style request: provide palette summary + full skeleton with CSS
         const palette = extractColorPalette(p.html)
         return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
 SECTION INDEX (usa questi selettori nel campo "target" delle operations):
 ${sectionIndex}
 
-PALETTE COLORI RILEVATA (usa questi valori esatti per trovare e replicare i colori):
+PALETTE COLORI RILEVATA (usa questi valori esatti — il CSS completo è nelle variabili sopra):
 ${palette}
 
-HTML COMPLETO (struttura + CSS incluso — la richiesta riguarda colori/sfondi):
+HTML STRUTTURA:
 \`\`\`html
-${buildHtmlSkeleton(p.html, true)}
+${buildHtmlSkeleton(p.html)}
 \`\`\``
       }
+
+      // Fix 7: micro-edit mode — for delete/simple tasks send only the targeted section HTML
+      // instead of the full page skeleton (saves 60-80% of context tokens).
+      if (isMicroEdit) {
+        const targetSelector = identifyTargetSection(userMsg, sectionIndex)
+        if (targetSelector) {
+          const sectionHtml = extractSectionHtml(p.html, targetSelector)
+          if (sectionHtml) {
+            return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
+SECTION INDEX (tutte le sezioni della pagina):
+${sectionIndex}
+
+SEZIONE TARGET "${targetSelector}" — HTML completo (opera solo qui):
+\`\`\`html
+${sectionHtml}
+\`\`\`
+Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edits su questa sezione.`
+          }
+        }
+      }
+
       return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
 SECTION INDEX (usa questi selettori nel campo "target" delle operations):
 ${sectionIndex}
@@ -851,6 +964,11 @@ LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il ca
       const attachedUrls = extractImageUrls(m.content)
       if (attachedUrls.length === 0) return { role: m.role, content: m.content }
 
+      // Fix 4: asset-replacement tasks (logo/image URL already in message + replacement verb)
+      // don't need vision — skip base64 fetch, keep text-only → Haiku instead of Sonnet.
+      // Saves ~30k tokens and ~$0.05 per run on logo-replacement requests.
+      if (isAssetReplacement) return { role: m.role, content: m.content }
+
       const fetched = await Promise.all(attachedUrls.map(fetchImageAsBase64))
       const validImages = fetched.filter((img): img is NonNullable<typeof img> => img !== null)
       if (validImages.length === 0) return { role: m.role, content: m.content }
@@ -867,7 +985,8 @@ LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il ca
     })
   )
 
-  // Use Sonnet when images are attached (better vision/OCR than Haiku)
+  // Use Sonnet when images are attached (better vision/OCR than Haiku).
+  // Asset-replacement tasks already skipped base64 above → will use Haiku.
   const hasImages = apiMessages.some(m => Array.isArray(m.content))
   const model = hasImages ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001'
 

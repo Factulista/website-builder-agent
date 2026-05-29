@@ -2968,6 +2968,37 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const totalFailed = failedOps.length + failedFinds.length
       summary = `✏️ ${result.input.summary}${totalFailed ? ` ⚠️ ${totalFailed} edit non applicate` : ''}`
       newActiveSlug = targetSlug
+
+      // Fix 9: auto-sync nav and footer from home to all other pages after home is edited.
+      // Prevents the "navbar/footer out-of-sync" pattern where users have to manually ask
+      // "aggiorna la navbar di X copiandola dalla home".
+      if (targetSlug === 'home') {
+        const oldHome = pages.find(p => p.slug === 'home')
+        const newHome = newPages.find(p => p.slug === 'home')
+        if (oldHome && newHome) {
+          const extractNav    = (h: string) => h.match(/<nav[\s\S]*?<\/nav>/i)?.[0] ?? ''
+          const extractFooter = (h: string) => h.match(/<footer[\s\S]*?<\/footer>/i)?.[0] ?? ''
+          const oldNav    = extractNav(oldHome.html)
+          const newNav    = extractNav(newHome.html)
+          const oldFooter = extractFooter(oldHome.html)
+          const newFooter = extractFooter(newHome.html)
+          const navChanged    = oldNav    !== newNav    && newNav.length > 0
+          const footerChanged = oldFooter !== newFooter && newFooter.length > 0
+          if (navChanged || footerChanged) {
+            newPages = newPages.map(p => {
+              if (p.slug === 'home') return p
+              let html = p.html
+              if (navChanged    && /<nav[\s\S]*?<\/nav>/i.test(html))
+                html = html.replace(/<nav[\s\S]*?<\/nav>/i, newNav)
+              if (footerChanged && /<footer[\s\S]*?<\/footer>/i.test(html))
+                html = html.replace(/<footer[\s\S]*?<\/footer>/i, newFooter)
+              return { ...p, html }
+            })
+            const synced = [navChanged && 'nav', footerChanged && 'footer'].filter(Boolean).join('+')
+            summary += ` · ${synced} sincronizzato su tutte le pagine`
+          }
+        }
+      }
     } else if (result.tool === 'add_page') {
       const newPage: Page = { slug: result.input.slug, name: result.input.name, html: result.input.html }
       if (newPage.slug === 'blog') {
