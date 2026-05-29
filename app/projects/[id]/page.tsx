@@ -2665,7 +2665,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const tagPat = tagM || '[a-z][a-z0-9]*'
     const parts: string[] = [`<(${tagPat})`]
     if (idM)    parts.push(`(?=[^>]*id=["']${idM}["'])`)
-    if (classM) parts.push(`(?=[^>]*class=["'][^"']*(?:^|\\s)${classM}(?:\\s|[^"'$])[^"']*["'])`)
+    if (classM) parts.push(`(?=[^>]*class=["'][^"']*${classM}[^"']*["'])`)
     parts.push('[^>]*>')
     const openRe = new RegExp(parts.join(''), 'i')
 
