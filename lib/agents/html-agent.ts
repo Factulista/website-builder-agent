@@ -577,11 +577,15 @@ export async function runHtmlAgent(
   // Detect if the request is about colors/backgrounds → include CSS in active page context
   const colorRequest = isColorOrStyleRequest(userMsg)
 
-  // Detect pages mentioned in the user's message (by slug or name) so we can provide their CSS
-  const mentionedPages = pages.filter(p => {
+  // Fix 2: word-boundary match — slug/name must appear as a whole word in the message,
+  // not as a substring (prevents "Funcionalidades-Factulista" matching slug="funcionalidades")
+  const isDeleteRequest = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(userMsg)
+  const mentionedPages = isDeleteRequest ? [] : pages.filter(p => {
     const slug = p.slug.toLowerCase()
     const name = p.name.toLowerCase()
-    return userMsg.includes(slug) || userMsg.includes(name)
+    // Require word boundaries: slug/name surrounded by non-alphanumeric chars or start/end
+    const wordBound = (term: string) => new RegExp(`(?<![a-z0-9])${term.replace(/[-]/g, '[\\-]')}(?![a-z0-9])`, 'i').test(userMsg)
+    return wordBound(slug) || wordBound(name)
   })
 
   // Extract <style> block from a page's HTML
@@ -590,11 +594,27 @@ export async function runHtmlAgent(
     return match ? match[0] : ''
   }
 
-  // Provide home CSS as design system reference for color/style context
+  // Fix 1: extract only :root CSS variables for non-color requests (~20 lines vs full CSS)
+  // Full CSS only for: color/style requests, or add_page-type requests (need design reference)
+  const isAddPageRequest = /\b(add_page|nuova pagina|nueva página|new page|aggiungi pagina|añade página)\b/i.test(userMsg)
+  const needsFullCss = colorRequest || isAddPageRequest
+
+  const extractCssVariables = (html: string): string => {
+    const styleMatch = html.match(/<style[\s\S]*?<\/style>/i)
+    if (!styleMatch) return ''
+    const rootMatch = styleMatch[0].match(/:root\s*\{([^}]+)\}/)
+    if (!rootMatch) return ''
+    return `:root {\n${rootMatch[1].trim()}\n}`
+  }
+
   const homePage = pages.find(p => p.slug === 'home') ?? pages[0] ?? null
-  const homeStyle = homePage ? extractStyle(homePage.html) : ''
+  const homeStyle = homePage
+    ? (needsFullCss ? extractStyle(homePage.html) : extractCssVariables(homePage.html))
+    : ''
   const designSystemBlock = homeStyle
-    ? `\nDESIGN SYSTEM (CSS della home page — usa come riferimento per stili, variabili CSS e classi comuni. Per add_page: usa le variabili var(--...) invece di colori hardcoded, e copia navbar/footer dalla home):\n\`\`\`css\n${homeStyle}\n\`\`\``
+    ? needsFullCss
+      ? `\nDESIGN SYSTEM (CSS completo home page):\n\`\`\`css\n${homeStyle}\n\`\`\``
+      : `\nDESIGN SYSTEM (variabili CSS — usa var(--...) per colori e font coerenti):\n\`\`\`css\n${homeStyle}\n\`\`\``
     : ''
 
   // Build per-page context blocks

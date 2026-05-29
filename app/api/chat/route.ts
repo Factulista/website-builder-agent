@@ -460,8 +460,11 @@ export async function POST(req: NextRequest) {
       emit('✏️ Elaborando la modifica…')
       const contextLogo = context.design?.tokens?.logo
 
-      // Enrich messages with component HTML if user referenced a library component
-      const matchedComponent = findComponentByKeywords(lastUserMessage)
+      // Enrich messages with component HTML if user referenced a library component.
+      // Fix 3: skip on delete/remove requests — the keyword match fires on the subject
+      // of deletion (e.g. "elimina Funcionalidades" → matches mega-menu component tag)
+      const isDeleteMsg = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(lastUserMessage)
+      const matchedComponent = isDeleteMsg ? null : findComponentByKeywords(lastUserMessage)
       const agentMessages = matchedComponent
         ? messages.map((m, i) => i === messages.length - 1
             ? {
