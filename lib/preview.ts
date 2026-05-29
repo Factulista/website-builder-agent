@@ -16,6 +16,7 @@ type SiteConfig = {
   shared_css?: string
   shared_nav_html?: string
   shared_footer_html?: string
+  shared_nav_css?: string
   favicon_url?: string
   blog_header_html?: string
   blog_sidebar_banner?: { url: string; link?: string }
@@ -73,32 +74,20 @@ function applySharedCss(html: string, sharedCss: string): string {
   const isSelfContained = remainder.length > 300
 
   if (isSelfContained) {
-    // Self-contained pages keep their own component CSS, but need shared_css available
-    // so that injected nav/footer elements (which use home-page CSS classes) render correctly.
-    //
-    // Strategy:
-    //  1. Inject full shared_css inside a @layer (lowest priority) — nav/footer classes are now
-    //     available without overriding the page's own component styles (unlayered CSS always
-    //     beats layered CSS per CSS Cascade Level 5).
-    //  2. Sync the :root token block so colors/fonts stay consistent.
+    // Sync only the :root token block from shared_css into the page.
+    // Nav/footer-specific CSS is injected separately via shared_nav_css (see prepareHtml)
+    // with higher cascade priority so it wins over the page's own generic rules.
     const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
-    // Build the base layer tag — wrap shared_css in @layer so it never wins against
-    // the page's own unlayered CSS.
-    const layerTag = `<style id="nfd-shared-base">@layer nfd-shared{${sharedCss}}</style>`
-
-    // Sync :root tokens into the page's own :root (they need to be in unlayered scope
-    // so they have the same specificity as the rest of the page tokens).
-    let result = html
+    if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
+      return html.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
+    }
+    // Page has component CSS but no :root — prepend shared tokens, keep page CSS.
     if (sharedRoot) {
-      if (/:root\s*\{[\s\S]*?\}/i.test(result)) {
-        result = result.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
-      }
+      const styleTag = `<style>${sharedRoot}</style>`
+      if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${styleTag}\n</head>`)
+      return styleTag + html
     }
-    // Inject the shared base layer BEFORE the page's own <style> blocks so the page CSS wins.
-    if (/<head[^>]*>/i.test(result)) {
-      return result.replace(/<head[^>]*>/i, (m) => `${m}\n${layerTag}`)
-    }
-    return layerTag + result
+    return html // nothing safe to do — leave the page intact
   }
 
   // Token-only page: strip the (minimal) page styles, inject the full shared_css.
@@ -149,7 +138,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, sharedNavCss?: string): string {
   const baseTag = `<base href="${base}">`
 
   // Step 0a: apply shared_css if available (replaces page-level <style> blocks)
@@ -185,6 +174,13 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     if (ogImageUrl && !/<meta[^>]+property=["']og:image["']/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<meta property="og:image" content="${ogImageUrl}">`)
     }
+  }
+
+  // Inject nav/footer CSS override — AFTER the page's own styles so it wins in cascade.
+  // This ensures nav link fonts, button styles, etc. always match the home page exactly,
+  // even on self-contained pages whose own CSS has generic rules (e.g. `a { font-weight: 500 }`).
+  if (sharedNavCss && /<\/head>/i.test(result)) {
+    result = result.replace(/<\/head>/i, `<style id="nfd-nav-css">${sharedNavCss}</style>\n</head>`)
   }
 
   // Inject slot: head (before </head>)
@@ -256,8 +252,9 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const sharedCss = config?.shared_css
   const sharedNav = config?.shared_nav_html
   const sharedFooter = config?.shared_footer_html
+  const sharedNavCss = config?.shared_nav_css
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, sharedNavCss), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -298,8 +295,9 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedCss = config.shared_css
   const sharedNav = config.shared_nav_html
   const sharedFooter = config.shared_footer_html
+  const sharedNavCss = config.shared_nav_css
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, sharedNavCss), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
