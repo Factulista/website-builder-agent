@@ -171,9 +171,12 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // Inject favicon and OG image if provided
   if (/<head[^>]*>/i.test(result)) {
     if (faviconUrl) {
-      // Always use the user's favicon — remove any existing <link rel="icon|shortcut icon"> first
-      result = result.replace(/<link[^>]+rel=["'](?:shortcut icon|icon)["'][^>]*\/?>/gi, '')
-      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" href="${faviconUrl}">`)
+      // Always use the user's favicon — remove any existing icon links first
+      result = result.replace(/<link[^>]+rel=["'](?:shortcut icon|icon|apple-touch-icon)["'][^>]*\/?>/gi, '')
+      const ext = faviconUrl.split('?')[0].split('.').pop()?.toLowerCase() ?? 'png'
+      const mimeMap: Record<string, string> = { ico: 'image/x-icon', svg: 'image/svg+xml', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg' }
+      const type = mimeMap[ext] ?? 'image/png'
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" type="${type}" href="${faviconUrl}">\n<link rel="apple-touch-icon" href="${faviconUrl}">`)
     }
     if (ogImageUrl && !/<meta[^>]+property=["']og:image["']/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<meta property="og:image" content="${ogImageUrl}">`)

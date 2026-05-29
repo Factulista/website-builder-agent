@@ -1010,7 +1010,7 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string): string {
+function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string, faviconUrl?: string): string {
   let clean = stripEditorArtifacts(html)
 
   // Inject shared nav/footer so the editor preview matches the served site.
@@ -1032,6 +1032,11 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
 
   // data-fact-editor marks these tags as editor-only so triggerSave() removes them before saving
   const baseTag = `<base data-fact-editor href="/preview/${projectSlug}/">`
+  // Favicon: remove any existing icon link, inject user's favicon if set
+  if (faviconUrl && /<head[^>]*>/i.test(clean)) {
+    clean = clean.replace(/<link[^>]+rel=["'](?:shortcut icon|icon|apple-touch-icon)["'][^>]*\/?>/gi, '')
+    clean = clean.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" type="image/png" href="${faviconUrl}" data-fact-editor>`)
+  }
   const inject = `${baseTag}\n${EDITOR_FONTS_INJECT}`
   // Canonical header/footer CSS + global layout fix — injected just before </head>
   // (AFTER page styles) so the shared frame wins in cascade. Mirrors lib/preview.ts.
@@ -1443,7 +1448,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (viewMode === 'edit' && activePage && projectSlug) {
       editBaseHtmlRef.current = activePage.html
-      setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined))
+      setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined))
       setEditSaving('idle')
       setEditOutdated(false)
     }
@@ -4660,7 +4665,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   onClick={() => {
                     if (!activePage) return
                     editBaseHtmlRef.current = activePage.html
-                    setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined))
+                    setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined))
                     setEditOutdated(false)
                   }}
                   style={{
@@ -6359,7 +6364,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               {activePage ? (
                 <iframe
                   ref={previewIframeRef}
-                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined)}
+                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined)}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"
                   sandbox="allow-scripts allow-same-origin"
