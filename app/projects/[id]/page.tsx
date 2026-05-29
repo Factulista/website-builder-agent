@@ -2966,7 +2966,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         return { ...p, html }
       })
       const totalFailed = failedOps.length + failedFinds.length
-      summary = `✏️ ${result.input.summary}${totalFailed ? ` ⚠️ ${totalFailed} edit non applicate` : ''}`
+      // Fix 1: detect zero-change edits — all ops/edits failed → nothing applied to page
+      const targetPageOriginal = pages.find(p => p.slug === targetSlug)
+      const targetPageNew = newPages.find(p => p.slug === targetSlug)
+      const htmlUnchanged = targetPageOriginal && targetPageNew && targetPageOriginal.html === targetPageNew.html
+      const hadOpsOrEdits = operations.length > 0 || edits.length > 0
+      if (htmlUnchanged && hadOpsOrEdits) {
+        // Nothing was actually applied — surface this as a retryable failure
+        setMessages(prev => prev.map(m => m.id === assistantId
+          ? { ...m, content: `⚠️ Nessuna modifica applicata — le istruzioni non hanno trovato il punto esatto nella pagina. Riprova con una descrizione più precisa, o clicca "Riprova" per un nuovo tentativo.`, failed: true, retryInput: retrySnapshot.input, retryImages: retrySnapshot.images }
+          : m))
+        await supabase.from('projects').update({
+          site_config: await buildSiteConfig(pages, [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }], versions, mediaMeta),
+          updated_at: new Date().toISOString(),
+        }).eq('id', id)
+        setLoading(false)
+        return
+      }
+      summary = `✏️ ${result.input.summary}${totalFailed ? ` ⚠️ ${totalFailed} edit parziali non applicate` : ''}`
       newActiveSlug = targetSlug
 
       // Fix 9: auto-sync nav and footer from home to all other pages after home is edited.
@@ -3017,14 +3034,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (sharedFooterForNewPage) {
           newPages = newPages.map(p => {
             if (p.slug !== newPage.slug) return p
-            if (/<footer[\s\S]*?<\/footer>/i.test(p.html)) {
-              return { ...p, html: p.html.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooterForNewPage) }
+            // Fix 2: strip ALL existing footers first (agent may have generated one, injection adds another)
+            // then inject home's footer exactly once before </body>
+            const strippedHtml = p.html.replace(/<footer[\s\S]*?<\/footer>/gi, '')
+            if (/<\/body>/i.test(strippedHtml)) {
+              return { ...p, html: strippedHtml.replace(/<\/body>/i, `${sharedFooterForNewPage}\n</body>`) }
             }
-            // Page has no footer yet — insert before </body>
-            if (/<\/body>/i.test(p.html)) {
-              return { ...p, html: p.html.replace(/<\/body>/i, `${sharedFooterForNewPage}\n</body>`) }
-            }
-            return p
+            return { ...p, html: strippedHtml + `\n${sharedFooterForNewPage}` }
           })
         }
         summary = `➕ ${result.input.summary}`

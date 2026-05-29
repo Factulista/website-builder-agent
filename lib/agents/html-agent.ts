@@ -777,7 +777,18 @@ ${styleBlock}
     }
   }).join('\n')
 
-  const system = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
+  // Fix 6: micro-edit mode — condensed system prompt for delete/simple-tweak tasks.
+  // Omits component library docs, parametric components, and verbose rules that waste
+  // tokens when the agent only needs to apply a small targeted change.
+  const microEditPrefix = `Sei un esperto web designer. Modifichi pagine HTML esistenti con chirurgia minima.
+
+REGOLE:
+- Usa SEMPRE edit_page (non create_site, non add_page).
+- Preferisci "operations" (selector-based) per sezioni intere; usa "edits" (find/replace) per CSS/attributi/testi brevi.
+- Tocca SOLO l'elemento richiesto — non riscrivere HTML non coinvolto.
+- summary in ${langName(userLang)}.`
+
+  const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
 REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
@@ -945,6 +956,31 @@ PAGINE DEL SITO:
 ${pageContextBlocks}
 
 LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`summary\` di OGNI tool DEVE essere in ${langName(userLang)}. Non usare un'altra lingua anche se il sito è in una lingua diversa.`
+
+  // Fix 6: micro-edit system prompt — much shorter, omits component library & verbose rules.
+  // Used when isMicroEdit===true (delete / simple style tweak without images).
+  const microSystem = `${microEditPrefix}
+
+COME MODIFICARE — scegli il modo giusto:
+
+▸ SEZIONE INTERA (elimina elemento, sostituisci blocco) → usa "operations" in edit_page:
+  target: selettore CSS dal SECTION INDEX (es: "nav", "section#pricing", "footer.site-footer")
+  op: "replace" per sostituire, "insert_after"/"insert_before" per aggiungere.
+  Usa op="replace" con html="" per ELIMINARE una sezione.
+  ⚠️ Per eliminare un singolo link/item DENTRO una sezione (es: voce di menu), usa "edits" find/replace su quell'elemento specifico — non replace dell'intera sezione.
+
+▸ ELEMENTO SINGOLO (voce menu, link, attributo, CSS) → usa "edits" (find/replace):
+  find: usa ancore strutturali (href, class, id, src) — mai testo lungo che potrebbe essere troncato.
+  Esempio elimina link menu: find '<a href="./pagina">Testo</a>' replace ''
+
+${designSystemBlock}
+
+PAGINE DEL SITO:
+${pageContextBlocks}
+
+LINGUA: ${langName(userLang)}. Il campo \`summary\` DEVE essere in ${langName(userLang)}.`
+
+  const system = isMicroEdit ? microSystem : fullPrefix
 
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)
