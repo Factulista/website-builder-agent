@@ -14,6 +14,8 @@ type SiteConfig = {
   pages?: Page[]
   published_pages?: Page[]
   shared_css?: string
+  shared_nav_html?: string
+  shared_footer_html?: string
   favicon_url?: string
   blog_header_html?: string
   blog_sidebar_banner?: { url: string; link?: string }
@@ -95,6 +97,27 @@ function applySharedCss(html: string, sharedCss: string): string {
 }
 
 /**
+ * Injects shared nav and footer into a page, replacing its own copies.
+ * This ensures every served page has identical header/footer regardless
+ * of what's stored per-page — the home page is the single source of truth.
+ *
+ * Nav:    replaces <nav>...</nav>
+ * Footer: replaces <footer>...</footer>
+ *
+ * Skips silently if the page has no matching tag (e.g. bare fragment pages).
+ */
+function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?: string): string {
+  let result = html
+  if (sharedNav && /<nav[\s\S]*?<\/nav>/i.test(result)) {
+    result = result.replace(/<nav[\s\S]*?<\/nav>/i, sharedNav)
+  }
+  if (sharedFooter && /<footer[\s\S]*?<\/footer>/i.test(result)) {
+    result = result.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooter)
+  }
+  return result
+}
+
+/**
  * Prepares page HTML for serving:
  * 1. Normalises root-relative internal links (href="/blog" → href="./blog").
  * 2. Injects <base href> so all relative links (./blog, ./contact …) resolve correctly.
@@ -102,11 +125,14 @@ function applySharedCss(html: string, sharedCss: string): string {
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string): string {
   const baseTag = `<base href="${base}">`
 
-  // Step 0: apply shared_css if available (replaces page-level <style> blocks)
+  // Step 0a: apply shared_css if available (replaces page-level <style> blocks)
   if (sharedCss) html = applySharedCss(html, sharedCss)
+
+  // Step 0b: inject shared nav and footer — single source of truth for header/footer
+  if (sharedNav || sharedFooter) html = injectSharedComponents(html, sharedNav, sharedFooter)
 
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
@@ -204,8 +230,10 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const ogImageUrl = page?.og_image
   const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
   const sharedCss = config?.shared_css
+  const sharedNav = config?.shared_nav_html
+  const sharedFooter = config?.shared_footer_html
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })
@@ -244,8 +272,10 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const ogImageUrl = page.og_image
   const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
   const sharedCss = config.shared_css
+  const sharedNav = config.shared_nav_html
+  const sharedFooter = config.shared_footer_html
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300' },
   })

@@ -1009,8 +1009,18 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-function injectBase(html: string, projectSlug: string): string {
-  const clean = stripEditorArtifacts(html)
+function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string): string {
+  let clean = stripEditorArtifacts(html)
+
+  // Inject shared nav/footer so the editor preview matches the served site.
+  // Home page is the source of truth — other pages get its nav/footer injected here too.
+  if (sharedNav && /<nav[\s\S]*?<\/nav>/i.test(clean)) {
+    clean = clean.replace(/<nav[\s\S]*?<\/nav>/i, sharedNav)
+  }
+  if (sharedFooter && /<footer[\s\S]*?<\/footer>/i.test(clean)) {
+    clean = clean.replace(/<footer[\s\S]*?<\/footer>/i, sharedFooter)
+  }
+
   // data-fact-editor marks the <base> as editor-only so triggerSave() removes it before saving
   const baseTag = `<base data-fact-editor href="/preview/${projectSlug}/">`
   const inject = `${baseTag}\n${EDITOR_FONTS_INJECT}`
@@ -1284,6 +1294,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const blogSidebarBannerLinkRef = useRef<string>('')
   const projectContextRef = useRef<{ businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }>({})
   const sharedCssRef = useRef<string>('')
+  const sharedNavHtmlRef = useRef<string>('')
+  const sharedFooterHtmlRef = useRef<string>('')
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -1379,7 +1391,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (viewMode === 'edit' && activePage && projectSlug) {
       editBaseHtmlRef.current = activePage.html
-      setEditSrcDoc(injectBase(activePage.html, projectSlug))
+      setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined))
       setEditSaving('idle')
       setEditOutdated(false)
     }
@@ -1773,6 +1785,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       injectPointsRef.current = existingIp
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
+      // Load shared nav / footer refs for editor preview injection
+      if ((config as any)?.shared_nav_html) sharedNavHtmlRef.current = (config as any).shared_nav_html as string
+      if ((config as any)?.shared_footer_html) sharedFooterHtmlRef.current = (config as any).shared_footer_html as string
+
       if ((config as any)?.shared_css) {
         sharedCssRef.current = (config as any).shared_css as string
       } else if (loadedPages.length > 0) {
@@ -1849,6 +1865,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (ctx && Object.keys(ctx).length > 0) cfg.context = ctx
     const css = sharedCssRef.current
     if (css) cfg.shared_css = css
+
+    // ── Shared nav + footer: extract from home page, store as single source of truth.
+    // At serve time (preview.ts) these are injected into every page, replacing
+    // their per-page copies — so editing nav/footer on home propagates everywhere
+    // automatically without any per-page sync loop.
+    const homePage = newPages.find(p => p.slug === 'home') ?? newPages[0]
+    if (homePage?.html) {
+      const navMatch = homePage.html.match(/<nav[\s\S]*?<\/nav>/i)
+      if (navMatch) {
+        cfg.shared_nav_html = navMatch[0]
+        sharedNavHtmlRef.current = navMatch[0]
+      }
+      const footerMatch = homePage.html.match(/<footer[\s\S]*?<\/footer>/i)
+      if (footerMatch) {
+        cfg.shared_footer_html = footerMatch[0]
+        sharedFooterHtmlRef.current = footerMatch[0]
+      }
+    }
+
     return cfg
   }
 
@@ -4387,7 +4422,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   onClick={() => {
                     if (!activePage) return
                     editBaseHtmlRef.current = activePage.html
-                    setEditSrcDoc(injectBase(activePage.html, projectSlug))
+                    setEditSrcDoc(injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined))
                     setEditOutdated(false)
                   }}
                   style={{
@@ -6086,7 +6121,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               {activePage ? (
                 <iframe
                   ref={previewIframeRef}
-                  srcDoc={injectBase(activePage.html, projectSlug)}
+                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined)}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"
                   sandbox="allow-scripts allow-same-origin"
