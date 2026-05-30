@@ -1182,7 +1182,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const CHAT_MORE = 15
   const [visibleMsgCount, setVisibleMsgCount] = useState(CHAT_INITIAL)
   const chatListRef = useRef<HTMLDivElement>(null)
+  const topSentinelRef = useRef<HTMLDivElement>(null)
   const chatScrollAnchor = useRef<{ height: number; top: number } | null>(null)
+  const sentinelReadyRef = useRef(false) // prevent firing during initial load
   // Typing animation for new assistant messages
   const [typingContent, setTypingContent] = useState<Record<string, string>>({})
   const typingTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
@@ -1711,6 +1713,33 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       chatScrollAnchor.current = null
     }
   }, [visibleMsgCount])
+
+  // IntersectionObserver: load older messages when user scrolls up to the sentinel
+  useEffect(() => {
+    const sentinel = topSentinelRef.current
+    const container = chatListRef.current
+    if (!sentinel || !container) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && sentinelReadyRef.current && visibleMsgCount < messages.length) {
+          chatScrollAnchor.current = { height: container.scrollHeight, top: container.scrollTop }
+          setVisibleMsgCount(c => c + CHAT_MORE)
+        }
+      },
+      { root: container, threshold: 0 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [visibleMsgCount, messages.length])
+
+  // Enable the observer only after initial scroll-to-bottom (300ms delay)
+  useEffect(() => {
+    if (messages.length === 0) return
+    sentinelReadyRef.current = false
+    const t = setTimeout(() => { sentinelReadyRef.current = true }, 300)
+    return () => clearTimeout(t)
+  }, [messages.length === 0]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const ROOT_DOMAIN = 'factulista.com'
   const publicBaseUrl = (() => {
@@ -3513,14 +3542,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         <div
           ref={chatListRef}
           style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}
-          onScroll={(e) => {
-            const el = e.currentTarget
-            // Only trigger when the user has actually scrolled and is near the top
-            if (el.scrollTop < 80 && el.scrollHeight > el.clientHeight + 40 && visibleMsgCount < messages.length) {
-              chatScrollAnchor.current = { height: el.scrollHeight, top: el.scrollTop }
-              setVisibleMsgCount(c => c + CHAT_MORE)
-            }
-          }}
         >
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', paddingTop: '3rem' }}>
@@ -3529,19 +3550,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
-          {/* Clickable "load older messages" button — works regardless of scroll state */}
-          {messages.length > visibleMsgCount && (
-            <button
-              onClick={() => {
-                if (!chatListRef.current) return
-                chatScrollAnchor.current = { height: chatListRef.current.scrollHeight, top: chatListRef.current.scrollTop }
-                setVisibleMsgCount(c => c + CHAT_MORE)
-              }}
-              style={{ alignSelf: 'center', background: 'none', border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 14px', fontSize: '0.72rem', color: C.textFaint, cursor: 'pointer', fontFamily: 'inherit' }}
-            >
-              ↑ {messages.length - visibleMsgCount} messaggi precedenti
-            </button>
-          )}
+          {/* Sentinel observed by IntersectionObserver — load older messages when visible */}
+          <div ref={topSentinelRef} style={{ height: '1px', flexShrink: 0 }} />
 
           {messages.slice(-visibleMsgCount).map((msg) =>
             msg.role === 'user' ? (
