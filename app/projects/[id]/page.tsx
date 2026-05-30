@@ -1354,11 +1354,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => { blogSidebarBannerLinkRef.current = blogSidebarBannerLink }, [blogSidebarBannerLink])
   useEffect(() => { projectContextRef.current = projectContext }, [projectContext])
 
-  // On mount: mark all existing messages as already typed (no animation for history)
-  useEffect(() => {
-    messages.forEach(m => typedMsgIds.current.add(m.id))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
   // Typing animation: animate new assistant messages character-by-character
   useEffect(() => {
     messages.forEach(msg => {
@@ -1827,7 +1822,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }
       setPages(loadedPages)
       if (loadedPages.length > 0) setActiveSlug(loadedPages[0].slug)
-      if (config?.messages) setMessages(config.messages)
+      if (config?.messages) {
+        // Mark all historical messages as already typed — no animation for history
+        ;(config.messages as Message[]).forEach((m: Message) => typedMsgIds.current.add(m.id))
+        setMessages(config.messages)
+      }
       if (config?.versions) setVersions(config.versions)
       if (config?.media) setMediaMeta(config.media)
       if ((config as any)?.favicon_url) setFaviconUrl((config as any).favicon_url as string)
