@@ -1,12 +1,19 @@
 'use client'
 
 import React, { useState, use, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
 import { EditorSidebar } from '../../../components/EditorSidebar'
 import { HtmlCodeEditor } from '../../../components/HtmlCodeEditor'
-import { ComponentCanvas } from '../../../components/ComponentCanvas'
+
+// Dynamic import — ComponentCanvas viene scaricato solo quando l'utente clicca "⊞ Blocco"
+// Questo evita di aggiungere il suo peso al bundle iniziale della pagina (già 450 kB)
+const ComponentCanvas = dynamic(
+  () => import('../../../components/ComponentCanvas').then(m => ({ default: m.ComponentCanvas })),
+  { ssr: false, loading: () => null }
+)
 import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
 import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
