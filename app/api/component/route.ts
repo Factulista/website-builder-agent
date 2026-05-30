@@ -59,18 +59,27 @@ export async function POST(req: NextRequest) {
     // Extract the <style> block from the generated component and persist it.
     // Next time the user generates a component, the agent will reference this
     // style to maintain visual consistency across all components of the project.
+    //
+    // ⚠️  Race-condition guard: we must do a FRESH read immediately before the
+    // write so we don't overwrite any chat messages saved by a concurrent
+    // handleSend/saveState while the component agent was running.
+    // The read and write are as close together as possible (no await between them
+    // except the supabase round-trip itself) to minimise the window.
     const newComponentStyle = extractComponentStyle(result.html)
     if (newComponentStyle) {
       // Fire-and-forget — don't block the response
-      const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-      const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
-      const freshContext = (freshConfig.context as Record<string, unknown>) ?? {}
-      void supabase.from('projects').update({
-        site_config: {
-          ...freshConfig,
-          context: { ...freshContext, canvasComponentStyle: newComponentStyle },
-        },
-      }).eq('id', projectId)
+      ;(async () => {
+        const { data: latest } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+        if (!latest?.site_config) return
+        const latestConfig = latest.site_config as Record<string, unknown>
+        const latestContext = (latestConfig.context as Record<string, unknown>) ?? {}
+        await supabase.from('projects').update({
+          site_config: {
+            ...latestConfig,                                   // freshest possible snapshot
+            context: { ...latestContext, canvasComponentStyle: newComponentStyle },
+          },
+        }).eq('id', projectId)
+      })().catch(e => console.error('[component] style-memory save error:', e))
     }
 
     return Response.json({

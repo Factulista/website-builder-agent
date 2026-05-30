@@ -1281,6 +1281,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const blogIframeRef = useRef<HTMLIFrameElement>(null)
 
   const [projectContext, setProjectContext] = useState<{ businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }>({})
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [seoAnalyses, setSeoAnalyses] = useState<PageAnalysis[]>([])
   const [seoPageSlug, setSeoPageSlug] = useState<string>('all')
   const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
@@ -2066,16 +2067,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const vers = newVersions ?? versions
     const med = newMedia ?? mediaMeta
     const merged = await buildSiteConfig(newPages, newMessages, vers, med)
-    const { error } = await supabase.from('projects').update({
-      site_config: merged,
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
-    if (error) {
-      console.error('[saveState] supabase error:', error.message)
-      return false
+
+    // Retry up to 3 times with exponential back-off (1s, 2s) so transient
+    // Supabase timeouts don't silently lose messages.
+    const MAX_ATTEMPTS = 3
+    let lastErr: string | null = null
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const { error } = await supabase.from('projects').update({
+        site_config: merged,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+      if (!error) {
+        if (attempt > 1) console.log(`[saveState] ok on attempt ${attempt}`)
+        console.log('[saveState] ok', newPages.length, 'pages,', newMessages.length, 'msgs')
+        return true
+      }
+      lastErr = error.message
+      console.error(`[saveState] supabase error (attempt ${attempt}/${MAX_ATTEMPTS}):`, lastErr)
+      if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, attempt * 1000))
     }
-    console.log('[saveState] ok', newPages.length, 'pages,', newMessages.length, 'msgs')
-    return true
+    // All attempts failed — show a visible warning so the user knows to retry
+    console.error('[saveState] all attempts failed:', lastErr)
+    setSaveError('⚠️ Salvataggio non riuscito — riprova o ricarica la pagina')
+    return false
   }
 
   // Force any pending blog autosave to fire NOW.
@@ -3606,6 +3620,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             />
           </div>
         </div>
+
+        {/* Save error banner — shown when saveState fails after all retries */}
+        {saveError && (
+          <div style={{
+            background: '#fef2f2', borderBottom: '1px solid #fecaca',
+            padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: '8px', flexShrink: 0,
+          }}>
+            <span style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: 500 }}>{saveError}</span>
+            <button onClick={() => setSaveError(null)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', color: '#b91c1c',
+              fontSize: '1rem', lineHeight: 1, padding: '0 4px',
+            }}>×</button>
+          </div>
+        )}
 
         {/* Messages */}
         <div
