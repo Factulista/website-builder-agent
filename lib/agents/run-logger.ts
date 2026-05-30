@@ -22,7 +22,47 @@
  * CREATE INDEX agent_runs_agent_type_idx ON agent_runs (agent_type);
  * CREATE INDEX agent_runs_status_idx ON agent_runs (status);
  * CREATE INDEX agent_runs_project_id_idx ON agent_runs (project_id);
+ *
+ * -- Migration v2: structured debug data
+ * ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS input_data JSONB;
+ * ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS output_data JSONB;
  */
+
+/**
+ * Structured input context logged at run start.
+ * Lets you reconstruct exactly what the agent received.
+ */
+export type RunInputData = {
+  user_message: string                           // full untruncated message
+  pages_context: Array<{                         // pages sent to agent
+    slug: string
+    token_estimate: number                       // rough: html.length / 4
+    mode: 'active_full' | 'active_skeleton' | 'active_micro' | 'mentioned' | 'listed'
+  }>
+  micro_edit: boolean
+  has_image: boolean
+  is_delete: boolean
+  is_color_request: boolean
+  is_add_page: boolean
+  component_matched: string | null              // library component injected
+  agent_routed: string
+}
+
+/**
+ * Structured output logged at run completion.
+ * Lets you see exactly what the agent decided to do.
+ */
+export type RunOutputData = {
+  tool: string                                  // edit_page | create_site | add_page | etc.
+  page_slug?: string                            // target page (edit_page / add_page)
+  operations_count?: number                     // selector-based ops
+  edits_count?: number                          // find/replace edits
+  operations_failed?: number
+  edits_failed?: number
+  html_changed?: boolean                        // false = zero-change edit (new fix 1)
+  pages_affected?: string[]                     // slugs touched
+  summary?: string                              // tool summary text
+}
 
 import { createClient } from '@supabase/supabase-js'
 import { computeCost } from './cost'
@@ -53,6 +93,8 @@ export type AgentRun = {
   created_at: string
   completed_at: string | null
   cost_usd: number
+  input_data: RunInputData | null
+  output_data: RunOutputData | null
 }
 
 export async function startRun(opts: {
@@ -61,6 +103,7 @@ export async function startRun(opts: {
   agent_type: string
   input_summary?: string
   model?: string
+  input_data?: RunInputData
 }): Promise<string> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -72,6 +115,7 @@ export async function startRun(opts: {
       status: 'running',
       input_summary: opts.input_summary ?? null,
       model: opts.model ?? null,
+      input_data: opts.input_data ?? null,
     })
     .select('id')
     .single()
@@ -93,6 +137,7 @@ export async function completeRun(
     output_tokens?: number
     cache_read_tokens?: number
     duration_ms?: number
+    output_data?: RunOutputData
   }
 ): Promise<void> {
   const supabase = getClient()
@@ -106,6 +151,7 @@ export async function completeRun(
       cache_read_tokens: opts.cache_read_tokens ?? 0,
       duration_ms: opts.duration_ms ?? null,
       completed_at: new Date().toISOString(),
+      output_data: opts.output_data ?? null,
     })
     .eq('id', runId)
 }

@@ -246,6 +246,29 @@ export async function POST(req: NextRequest) {
     // Logging setup — non-blocking
     runStartTime = Date.now()
     const agentModel = dbConfigs.find(c => c.name === agent)?.model ?? AGENT_CONFIGS[agent]?.model ?? ''
+
+    // Build structured input_data for debugging
+    const isDeleteMsg = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(lastUserMessage)
+    const isMicroEditMsg = isDeleteMsg || /\b(bordes?\s+redondeados?|border.radius|arrotonda|rounded|bold|grassetto|sottolineato|underline|font.size)\b/i.test(lastUserMessage)
+    const isColorMsg = /\b(color|colou?r|sfondo|background|tint|palette|gradiente|gradient|rgba?|hex|#[0-9a-f]{3,6})\b/i.test(lastUserMessage)
+    const isAddPageMsg = /\b(add_page|nuova pagina|nueva página|new page|aggiungi pagina|añade página)\b/i.test(lastUserMessage)
+    const hasImageInMsg = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
+    const isDeleteMsgForComponent = isDeleteMsg
+    const matchedComponentForLog = isDeleteMsgForComponent ? null : findComponentByKeywords(lastUserMessage)
+
+    const activePage = (pages ?? []).find(p => p.slug === activePageSlug) ?? (pages ?? [])[0] ?? null
+    const pagesContextLog = (pages ?? []).map(p => {
+      const isActive = p.slug === activePage?.slug
+      let mode: 'active_full' | 'active_skeleton' | 'active_micro' | 'mentioned' | 'listed' = 'listed'
+      if (isActive) {
+        mode = isMicroEditMsg && !hasImageInMsg ? 'active_micro' : isColorMsg ? 'active_full' : 'active_skeleton'
+      } else {
+        const wordBound = (term: string) => new RegExp(`(?<![a-z0-9])${term.replace(/[-]/g, '[\\-]')}(?![a-z0-9])`, 'i').test(lastUserMessage)
+        if (!isDeleteMsg && (wordBound(p.slug) || wordBound(p.name))) mode = 'mentioned'
+      }
+      return { slug: p.slug, token_estimate: Math.round(p.html.length / 4), mode }
+    })
+
     try {
       runId = await startRun({
         project_id: projectId,
@@ -253,6 +276,17 @@ export async function POST(req: NextRequest) {
         agent_type: agent,
         input_summary: lastUserMessage.slice(0, 300),
         model: agentModel,
+        input_data: {
+          user_message: lastUserMessage,
+          pages_context: pagesContextLog,
+          micro_edit: isMicroEditMsg && !hasImageInMsg,
+          has_image: hasImageInMsg,
+          is_delete: isDeleteMsg,
+          is_color_request: isColorMsg,
+          is_add_page: isAddPageMsg,
+          component_matched: matchedComponentForLog?.name ?? null,
+          agent_routed: agent,
+        },
       })
     } catch (runErr) {
       console.error('[run-logger] startRun failed:', String(runErr))
@@ -316,6 +350,11 @@ export async function POST(req: NextRequest) {
               output_tokens: pipelineUsage?.output_tokens ?? 0,
               cache_read_tokens: pipelineUsage?.cache_read_input_tokens ?? 0,
               duration_ms: Date.now() - runStartTime,
+              output_data: {
+                tool: result.tool ?? 'pipeline',
+                pages_affected: ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug),
+                summary: result.input?.summary as string ?? undefined,
+              },
             }).catch(() => null)
           }
           // Normalize internal links before sending to client
@@ -372,6 +411,10 @@ export async function POST(req: NextRequest) {
             output_tokens: duUsage?.output_tokens ?? 0,
             cache_read_tokens: duUsage?.cache_read_input_tokens ?? 0,
             duration_ms: Date.now() - runStartTime,
+            output_data: {
+              tool: result.tool ?? 'update_shared_css',
+              summary: result.input?.summary as string ?? undefined,
+            },
           }).catch(() => null)
         }
         return result
@@ -392,6 +435,11 @@ export async function POST(req: NextRequest) {
             output_tokens: cuUsage?.output_tokens ?? 0,
             cache_read_tokens: cuUsage?.cache_read_input_tokens ?? 0,
             duration_ms: Date.now() - runStartTime,
+            output_data: {
+              tool: result.tool ?? 'content_update',
+              pages_affected: ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug),
+              summary: result.input?.summary as string ?? undefined,
+            },
           }).catch(() => null)
         }
         return result
@@ -445,6 +493,11 @@ export async function POST(req: NextRequest) {
             output_tokens: (seoUsage?.output_tokens ?? 0) + (blogSeoUsage?.output_tokens ?? 0),
             cache_read_tokens: (seoUsage?.cache_read_input_tokens ?? 0) + (blogSeoUsage?.cache_read_input_tokens ?? 0),
             duration_ms: Date.now() - runStartTime,
+            output_data: {
+              tool: result.tool ?? 'seo',
+              pages_affected: pages?.map(p => p.slug) ?? [],
+              summary: result.input?.summary as string ?? undefined,
+            },
           }).catch(() => null)
         }
 
@@ -496,6 +549,18 @@ export async function POST(req: NextRequest) {
           output_tokens: htmlUsage?.output_tokens ?? 0,
           cache_read_tokens: htmlUsage?.cache_read_input_tokens ?? 0,
           duration_ms: Date.now() - runStartTime,
+          output_data: {
+            tool: result.tool ?? 'edit_page',
+            page_slug: result.input?.pageSlug as string ?? undefined,
+            operations_count: (result.input?.operations as unknown[])?.length,
+            edits_count: (result.input?.edits as unknown[])?.length,
+            summary: result.input?.summary as string ?? undefined,
+            pages_affected: result.tool === 'create_site'
+              ? ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug)
+              : result.input?.pageSlug
+                ? [result.input.pageSlug as string]
+                : undefined,
+          },
         }).catch(() => null)
       }
 
