@@ -621,7 +621,8 @@ export async function runHtmlAgent(
   projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = [],
   contextLogo?: LogoDefinition,
   injectPoints?: Record<string, string>,
-  userLang = 'it'
+  userLang = 'it',
+  siteLang = 'it'
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -967,7 +968,8 @@ ${designSystemBlock}
 PAGINE DEL SITO:
 ${pageContextBlocks}
 
-LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`summary\` di OGNI tool DEVE essere in ${langName(userLang)}. Non usare un'altra lingua anche se il sito è in una lingua diversa.`
+⚠️ LINGUA DEL SITO: il sito è in **${langName(siteLang)}**. TUTTI i testi HTML (nav, sezioni, pulsanti, etichette, titoli) devono SEMPRE restare in ${langName(siteLang)}. NON tradurre mai testi esistenti anche se l'utente scrive in un'altra lingua. Se aggiungi nuovi contenuti HTML, scrivili in ${langName(siteLang)}.
+LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`summary\` DEVE essere in ${langName(userLang)} — ma l'HTML del sito rimane sempre in ${langName(siteLang)}.`
 
   // Fix 6: micro-edit system prompt — much shorter, omits component library & verbose rules.
   // Used when isMicroEdit===true (delete / simple style tweak without images).
@@ -990,7 +992,7 @@ ${designSystemBlock}
 PAGINE DEL SITO:
 ${pageContextBlocks}
 
-LINGUA: ${langName(userLang)}. Il campo \`summary\` DEVE essere in ${langName(userLang)}.`
+⚠️ LINGUA DEL SITO: ${langName(siteLang)}. NON tradurre testi HTML esistenti anche se l'utente scrive in ${langName(userLang)}. Nuovi contenuti HTML → in ${langName(siteLang)}. Campo \`summary\` → in ${langName(userLang)}.`
 
   const system = isMicroEdit ? microSystem : fullPrefix
 

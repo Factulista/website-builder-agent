@@ -199,6 +199,8 @@ export async function POST(req: NextRequest) {
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content ?? ''
     // Detect the language the user is writing in RIGHT NOW (per-message, not accumulated)
     const userLang = detectLangFromText(lastUserMessage)
+    // Site language: stored in project context — never changes based on user's input language
+    const siteLang = (context.language as string | undefined) ?? userLang
 
     // Se il contesto ha un URL di ispirazione in sospeso e il messaggio contiene immagini,
     // forza il pipeline agent per gestire Round 2 (analisi screenshot + generazione template)
@@ -529,7 +531,7 @@ export async function POST(req: NextRequest) {
         : messages
 
       const injectPoints = (siteConfig.inject_points ?? {}) as Record<string, string>
-      const result = await runHtmlAgent(agentMessages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo, injectPoints, userLang)
+      const result = await runHtmlAgent(agentMessages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo, injectPoints, userLang, siteLang)
 
       // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
       if (result.tool === 'create_site' && result.input?.pages) {
