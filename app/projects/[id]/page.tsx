@@ -1710,20 +1710,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }, [isDragging])
 
-  // Scroll to bottom only when a genuinely new message arrives (not on history bulk-load)
+  // Scroll to bottom whenever new messages arrive during an active session.
+  // NOTE: React 19 automatic batching means that when handleSend fires, both
+  // the user message AND the assistant placeholder are batched into a single
+  // render — so messages.length can jump by 2 at once. The old `=== 1` check
+  // was therefore never true and the chat stopped auto-scrolling. Fixed: scroll
+  // whenever messages.length grows and we already had messages (prev > 0).
   const prevMsgLenRef = useRef(0)
   useEffect(() => {
     const prev = prevMsgLenRef.current
     prevMsgLenRef.current = messages.length
     if (messages.length === 0) return
-    const isNewSingleMessage = messages.length - prev === 1
-    if (isNewSingleMessage) {
-      // New message: keep visibleMsgCount stable (slice(-N) already includes it),
-      // just scroll to bottom so it's visible
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    } else if (prev === 0 && messages.length > 0) {
-      // Initial history load: scroll to bottom instantly, reset sentinel guard
+    if (prev === 0) {
+      // Initial history load: scroll to bottom instantly
       messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
+    } else if (messages.length > prev) {
+      // New message(s) added during active session: smooth scroll to bottom
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
