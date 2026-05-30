@@ -1178,13 +1178,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const loadingStartRef = useRef<number>(0)
   // Chat lazy loading — show only the last N messages, load more on scroll-up
-  const CHAT_INITIAL = 5
-  const CHAT_MORE = 15
+  const CHAT_INITIAL = 3
+  const CHAT_MORE = 8
   const [visibleMsgCount, setVisibleMsgCount] = useState(CHAT_INITIAL)
   const chatListRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
   const chatScrollAnchor = useRef<{ height: number; top: number } | null>(null)
-  const sentinelReadyRef = useRef(false) // prevent firing during initial load
+  const sentinelReadyRef = useRef(false)
   // Typing animation for new assistant messages
   const [typingContent, setTypingContent] = useState<Record<string, string>>({})
   const typingTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
@@ -1697,11 +1697,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     const prev = prevMsgLenRef.current
     prevMsgLenRef.current = messages.length
-    // Bulk load (history) → skip auto-scroll; single new message → scroll to bottom
-    if (messages.length - prev <= 2 && messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: prev === 0 ? 'instant' as ScrollBehavior : 'smooth' })
-      // Ensure the new message is in the visible slice
-      setVisibleMsgCount(c => Math.max(c, messages.length))
+    if (messages.length === 0) return
+    const isNewSingleMessage = messages.length - prev === 1
+    if (isNewSingleMessage) {
+      // New message: keep visibleMsgCount stable (slice(-N) already includes it),
+      // just scroll to bottom so it's visible
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    } else if (prev === 0 && messages.length > 0) {
+      // Initial history load: scroll to bottom instantly, reset sentinel guard
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
     }
   }, [messages.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1714,32 +1718,34 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }, [visibleMsgCount])
 
-  // IntersectionObserver: load older messages when user scrolls up to the sentinel
+  // IntersectionObserver: load older messages progressively when user scrolls to top sentinel
   useEffect(() => {
     const sentinel = topSentinelRef.current
     const container = chatListRef.current
     if (!sentinel || !container) return
+    if (visibleMsgCount >= messages.length) return // nothing more to load
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && sentinelReadyRef.current && visibleMsgCount < messages.length) {
+        if (entry.isIntersecting && sentinelReadyRef.current) {
+          // Save anchor so scroll position doesn't jump when prepending messages
           chatScrollAnchor.current = { height: container.scrollHeight, top: container.scrollTop }
-          setVisibleMsgCount(c => c + CHAT_MORE)
+          setVisibleMsgCount(c => Math.min(c + CHAT_MORE, messages.length))
         }
       },
-      { root: container, threshold: 0 }
+      { root: container, rootMargin: '0px', threshold: 0.1 }
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [visibleMsgCount, messages.length])
 
-  // Enable the observer only after initial scroll-to-bottom (300ms delay)
+  // Re-arm sentinel guard after initial load (500ms) so the observer
+  // doesn't fire while the page is still scrolling to the bottom
   useEffect(() => {
-    if (messages.length === 0) return
     sentinelReadyRef.current = false
-    const t = setTimeout(() => { sentinelReadyRef.current = true }, 300)
+    const t = setTimeout(() => { sentinelReadyRef.current = true }, 500)
     return () => clearTimeout(t)
-  }, [messages.length === 0]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [messages.length]) // re-arm on every messages change
 
   const ROOT_DOMAIN = 'factulista.com'
   const publicBaseUrl = (() => {
