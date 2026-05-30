@@ -1359,7 +1359,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       } catch { /* ignore */ }
     }
     refresh()
-    const interval = setInterval(refresh, 30000)
+    // Poll every 60s (was 30s) — saves ~50% API calls on long sessions
+    const interval = setInterval(() => {
+      // Skip polling when tab is hidden — browser may throttle anyway, and we
+      // refresh on visibility change below.
+      if (document.visibilityState === 'hidden') return
+      refresh()
+    }, 60000)
     const onVis = () => { if (document.visibilityState === 'visible') refresh() }
     document.addEventListener('visibilitychange', onVis)
     return () => { cancelled = true; clearInterval(interval); document.removeEventListener('visibilitychange', onVis) }
@@ -1401,8 +1407,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Re-analyze SEO whenever pages or blog posts change or the SEO tab is opened.
   // Blog posts are rendered to their published HTML form (same builder used by the
   // /preview and custom-domain routes) so the SEO checks see exactly what Google sees.
+  // Guard: skip expensive regex parsing unless the user is actually on the SEO tab.
   useEffect(() => {
     if (pages.length === 0) return
+    if (viewMode !== 'seo') return
     // Build "virtual pages" for blog posts using the same renderer as the live site
     const homePage = pages.find(p => p.slug === 'home')
     const homeHtml = homePage?.html ?? ''
@@ -1444,7 +1452,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       })
 
     setSeoAnalyses(analyzeAllPages([...pages, ...blogPagesForSeo]))
-  }, [pages, viewMode, blogPosts, projectSlug, projectContext, blogSidebarBannerUrl, blogSidebarBannerLink, activeSlug])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, viewMode, blogPosts, projectSlug, projectContext, blogSidebarBannerUrl, blogSidebarBannerLink])
 
   // Elapsed-seconds timer — ticks every second while an agent is running
   useEffect(() => {
