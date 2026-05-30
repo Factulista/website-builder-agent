@@ -1717,13 +1717,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // was therefore never true and the chat stopped auto-scrolling. Fixed: scroll
   // whenever messages.length grows and we already had messages (prev > 0).
   const prevMsgLenRef = useRef(0)
+  // Reset prevMsgLenRef whenever the project changes (or on mount / Strict Mode remount)
+  // so the initial-history scroll always fires correctly.
+  useEffect(() => { prevMsgLenRef.current = 0 }, [id])
   useEffect(() => {
     const prev = prevMsgLenRef.current
     prevMsgLenRef.current = messages.length
     if (messages.length === 0) return
     if (prev === 0) {
-      // Initial history load: scroll to bottom instantly
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
+      // Initial history load: scroll directly on the container (more reliable than
+      // scrollIntoView) and defer one frame so images/content have a chance to render.
+      // A second deferred scroll at 300ms catches images that load after the first frame.
+      const el = chatListRef.current
+      if (el) {
+        requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+        setTimeout(() => { el.scrollTop = el.scrollHeight }, 300)
+      }
     } else if (messages.length > prev) {
       // New message(s) added during active session: smooth scroll to bottom
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
