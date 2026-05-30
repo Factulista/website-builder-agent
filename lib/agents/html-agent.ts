@@ -972,6 +972,8 @@ ${designSystemBlock}
 PAGINE DEL SITO:
 ${pageContextBlocks}
 
+HTML COMPATTO: non inserire mai righe vuote nell'HTML. Ogni riga deve avere contenuto — nessuna riga blank tra tag o sezioni.
+
 ⚠️ LINGUA DEL SITO: il sito è in **${langName(siteLang)}**. TUTTI i testi HTML (nav, sezioni, pulsanti, etichette, titoli) devono SEMPRE restare in ${langName(siteLang)}. NON tradurre mai testi esistenti anche se l'utente scrive in un'altra lingua. Se aggiungi nuovi contenuti HTML, scrivili in ${langName(siteLang)}.
 LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`summary\` DEVE essere in ${langName(userLang)} — ma l'HTML del sito rimane sempre in ${langName(siteLang)}.`
 
@@ -998,6 +1000,7 @@ ${designSystemBlock}
 PAGINE DEL SITO:
 ${pageContextBlocks}
 
+HTML COMPATTO: nessuna riga vuota nell'HTML.
 ⚠️ LINGUA DEL SITO: ${langName(siteLang)}. NON tradurre testi HTML esistenti anche se l'utente scrive in ${langName(userLang)}. Nuovi contenuti HTML → in ${langName(siteLang)}. Campo \`summary\` → in ${langName(userLang)}.`
 
   const system = isMicroEdit ? microSystem : fullPrefix
@@ -1067,5 +1070,32 @@ ${pageContextBlocks}
   const data = await res.json()
   const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
   if (!toolUse) throw new Error('No tool use in response')
-  return { tool: toolUse.name, input: toolUse.input, usage: data.usage }
+
+  // Strip blank lines from all HTML outputs before returning
+  const inp = toolUse.input as Record<string, unknown>
+  if (typeof inp.html === 'string') inp.html = stripBlankLines(inp.html)
+  if (Array.isArray(inp.pages)) {
+    inp.pages = (inp.pages as Array<Record<string, unknown>>).map(p =>
+      typeof p.html === 'string' ? { ...p, html: stripBlankLines(p.html) } : p
+    )
+  }
+  if (Array.isArray(inp.edits)) {
+    inp.edits = (inp.edits as Array<Record<string, unknown>>).map(e => ({
+      ...e,
+      ...(typeof e.replace === 'string' ? { replace: stripBlankLines(e.replace) } : {}),
+    }))
+  }
+  if (Array.isArray(inp.operations)) {
+    inp.operations = (inp.operations as Array<Record<string, unknown>>).map(op => ({
+      ...op,
+      ...(typeof op.html === 'string' ? { html: stripBlankLines(op.html) } : {}),
+    }))
+  }
+
+  return { tool: toolUse.name, input: inp, usage: data.usage }
+}
+
+/** Remove blank lines from HTML — keeps output compact and readable in the DB. */
+function stripBlankLines(html: string): string {
+  return html.replace(/\n[ \t]*\n[ \t]*\n/g, '\n\n').replace(/\n{3,}/g, '\n\n')
 }
