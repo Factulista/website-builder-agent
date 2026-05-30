@@ -202,13 +202,19 @@ export async function POST(req: NextRequest) {
     // Site language: stored in project context — never changes based on user's input language
     const siteLang = (context.language as string | undefined) ?? userLang
 
+    // Cleanup zombie runs older than 10 min (fire-and-forget, non-blocking)
+    void supabase.from('agent_runs')
+      .update({ status: 'error', error_message: 'Timeout: run non completata entro 10 minuti' })
+      .eq('status', 'running')
+      .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+
     // Se il contesto ha un URL di ispirazione in sospeso e il messaggio contiene immagini,
     // forza il pipeline agent per gestire Round 2 (analisi screenshot + generazione template)
     const hasInspiration = !!context.lastInspirationUrl
     const hasAttachedImages = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
     const agent = (hasInspiration && hasAttachedImages)
       ? ('pipeline' as const)
-      : classify(lastUserMessage, pages?.length > 0)
+      : classify(lastUserMessage, pages?.length > 0, hasAttachedImages)
 
     // Clarifier — runs before any agent if the request is ambiguous
     const clarifierConfig = dbConfigs.find(c => c.name === 'clarifier')
@@ -255,8 +261,8 @@ export async function POST(req: NextRequest) {
     const isColorMsg = /\b(color|colou?r|sfondo|background|tint|palette|gradiente|gradient|rgba?|hex|#[0-9a-f]{3,6})\b/i.test(lastUserMessage)
     const isAddPageMsg = /\b(add_page|nuova pagina|nueva página|new page|aggiungi pagina|añade página)\b/i.test(lastUserMessage)
     const hasImageInMsg = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
-    const isDeleteMsgForComponent = isDeleteMsg
-    const matchedComponentForLog = isDeleteMsgForComponent ? null : findComponentByKeywords(lastUserMessage)
+    const isTranslateMsgForLog = /\b(traduci|translate|traduzione|in italiano|in inglese|in spagnolo|in español|in english|in tedesco|in francese|in portoghese)\b/i.test(lastUserMessage)
+    const matchedComponentForLog = (isDeleteMsg || isTranslateMsgForLog) ? null : findComponentByKeywords(lastUserMessage)
 
     const activePage = (pages ?? []).find(p => p.slug === activePageSlug) ?? (pages ?? [])[0] ?? null
     const pagesContextLog = (pages ?? []).map(p => {
@@ -516,10 +522,13 @@ export async function POST(req: NextRequest) {
       const contextLogo = context.design?.tokens?.logo
 
       // Enrich messages with component HTML if user referenced a library component.
-      // Fix 3: skip on delete/remove requests — the keyword match fires on the subject
-      // of deletion (e.g. "elimina Funcionalidades" → matches mega-menu component tag)
+      // Skip on delete/remove requests: keyword fires on subject of deletion
+      // (e.g. "elimina Funcionalidades" → matches mega-menu component tag)
+      // Skip on translate requests: "traduci in italiano" should not inject component HTML
+      // Skip on rename/text-change-only requests that mention nav items by name
       const isDeleteMsg = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(lastUserMessage)
-      const matchedComponent = isDeleteMsg ? null : findComponentByKeywords(lastUserMessage)
+      const isTranslateMsg = /\b(traduci|translate|traduzione|in italiano|in inglese|in spagnolo|in español|in english|in tedesco|in francese|in portoghese|in francese)\b/i.test(lastUserMessage)
+      const matchedComponent = (isDeleteMsg || isTranslateMsg) ? null : findComponentByKeywords(lastUserMessage)
       const agentMessages = matchedComponent
         ? messages.map((m, i) => i === messages.length - 1
             ? {

@@ -1117,9 +1117,31 @@ export const SMART_COMPONENTS: Component[] = COMPONENT_REGISTRY.filter(c => type
  * (no token cost — pure server-side rendering).
  * Throws if the component doesn't exist or isn't smart.
  */
-export function renderComponentById(componentId: string, data: Record<string, unknown>): string {
+/**
+ * Wraps component HTML with a `<style>` block containing the project's design tokens.
+ * Use ONLY for isolated preview contexts (iframe, back-office, canvas).
+ * Do NOT use when injecting into an existing page — the page's own :root already
+ * defines the tokens and a second :root block would risk overriding them.
+ */
+export function themeComponent(html: string, designTokensCss: string): string {
+  if (!designTokensCss.trim()) return html
+  return `<style>${designTokensCss}</style>\n${html}`
+}
+
+/**
+ * Renders a parametric component by ID with optional design token theming.
+ *
+ * @param designTokensCss - CSS :root vars from the site (pass ONLY for isolated previews).
+ *   When injecting into a real page, omit this — the page's own :root takes care of it.
+ */
+export function renderComponentById(
+  componentId: string,
+  data: Record<string, unknown>,
+  designTokensCss?: string
+): string {
   const comp = COMPONENT_REGISTRY.find(c => c.id === componentId)
   if (!comp) throw new Error(`Component "${componentId}" not found`)
   if (!comp.render) throw new Error(`Component "${componentId}" doesn't support parametric rendering`)
-  return comp.render(data)
+  const html = comp.render(data)
+  return designTokensCss ? themeComponent(html, designTokensCss) : html
 }

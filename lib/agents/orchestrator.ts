@@ -50,8 +50,14 @@ export function detectLanguage(userRequest: string): string | null {
 }
 
 const SEO_KEYWORDS = [
-  'seo', 'meta', 'title tag', 'keywords', 'sitemap', 'robots', 'canonical',
-  'og:', 'open graph', 'indicizzazione', 'posizionamento', 'ottimizza seo', 'migliora seo',
+  // Termini espliciti di SEO tecnica — NON parole singole generiche ('seo', 'meta', 'robots')
+  // che matchano richieste di contenuto tipo "testi seo-friendly" o "posizionamento del logo"
+  'meta description', 'meta tag', 'title tag', 'meta title',
+  'sitemap', 'robots.txt', 'canonical',
+  'og:', 'open graph', 'schema.org', 'structured data', 'dati strutturati',
+  'ottimizza seo', 'migliora seo', 'ottimizza per seo', 'fai seo', 'analisi seo', 'audit seo',
+  'posizionamento google', 'posizionamento sui motori', 'indicizzazione google',
+  'google search console',
 ]
 
 const CREATE_KEYWORDS = [
@@ -98,14 +104,23 @@ const CONTENT_UPDATE_KEYWORDS = [
   'aggiorna i testi', 'cambia i testi', 'traduci', 'in inglese', 'in italiano',
 ]
 
+// Parole chiave per images agent: solo ottimizzazione/alt-text esplicita.
+// NON parole generiche come "immagine", "foto" che matchano quando l'utente
+// descrive un'immagine allegata come riferimento di design.
 const IMAGES_KEYWORDS = [
-  'immagini', 'foto', 'picture', 'image', 'visual', 'grafica',
-  'immagine', 'fotografia', 'illustrazione', 'icone', 'copertina',
-  'ottimizza immagini', 'migliora immagini', 'cambia foto', 'crea immagini',
-  'genera immagini', 'aggiorna foto', 'alt text', 'alt tag', 'didascalia',
+  'ottimizza immagini', 'migliora immagini', 'comprimi immagini',
+  'alt text', 'alt tag', 'testo alternativo', 'didascalia',
+  'webp', 'srcset', 'lazy load', 'ottimizza foto',
 ]
 
-export function classify(userMessage: string, hasPages: boolean): AgentType {
+// Parole chiave che indicano una richiesta puramente visuale/html (non ottimizzazione immagini)
+// Usate per NON attivare images agent quando l'utente allega una foto come riferimento di design
+const IMAGE_AS_REFERENCE_KEYWORDS = [
+  'immagine allegata', 'questa immagine', 'questa foto', 'questo stile',
+  'come questa', 'simile a questa', 'ispirato a', 'come nell',
+]
+
+export function classify(userMessage: string, hasPages: boolean, hasAttachedImage = false): AgentType {
   const lower = userMessage.toLowerCase()
   // Nessun sito esistente → pipeline sempre
   if (!hasPages) return 'pipeline'
@@ -116,7 +131,9 @@ export function classify(userMessage: string, hasPages: boolean): AgentType {
   // Sito esistente → pipeline SOLO se la richiesta è esplicitamente di creazione/aggiunta pagina
   if (CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
   // Modifica sito — classifica ulteriormente quale tipo
-  if (IMAGES_KEYWORDS.some(k => lower.includes(k))) return 'images'
+  // Images agent: solo per ottimizzazione esplicita, NON quando l'utente allega
+  // un'immagine come riferimento di design (in quel caso → html agent)
+  if (!hasAttachedImage && IMAGES_KEYWORDS.some(k => lower.includes(k))) return 'images'
   if (SEO_KEYWORDS.some(k => lower.includes(k))) return 'seo'
   if (DESIGN_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'design-update'
   if (CONTENT_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'content-update'

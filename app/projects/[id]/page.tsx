@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState, use, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import React, { useState, use, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
 import { EditorSidebar } from '../../../components/EditorSidebar'
 import { HtmlCodeEditor } from '../../../components/HtmlCodeEditor'
+import { ComponentCanvas } from '../../../components/ComponentCanvas'
 import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
 import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
@@ -1173,6 +1174,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const { id } = use(params)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [showComponentCanvas, setShowComponentCanvas] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingMsgId, setLoadingMsgId] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
@@ -2784,6 +2786,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
+  // Extract CSS custom properties (:root vars) from home page — used by ComponentCanvas
+  // to give the component agent the site's design tokens.
+  const designTokensCss = useMemo(() => {
+    const home = pages.find(p => p.slug === 'home') ?? pages[0]
+    if (!home) return ''
+    const styleMatch = home.html.match(/<style[\s\S]*?<\/style>/i)
+    if (!styleMatch) return ''
+    const rootMatch = styleMatch[0].match(/:root\s*\{([^}]+)\}/)
+    if (!rootMatch) return ''
+    return `:root {\n${rootMatch[1].trim()}\n}`
+  }, [pages])
+
+  // Ref that will be wired to handleSend after it's defined (avoids hoisting issue)
+  const handleSendRef = useRef<((e: React.FormEvent, retryOverride?: { input: string; images: string[] }) => void) | null>(null)
+
+  // Called by ComponentCanvas when user clicks "Inserisci in pagina".
+  // Pre-fills the main chat with the component HTML and auto-submits.
+  const handleInsertComponent = useCallback((html: string) => {
+    const pageName = (pages.find(p => p.slug === activeSlug) ?? pages[0])?.name ?? 'home'
+    const msg = `Inserisci questo blocco HTML nella pagina "${pageName}", prima del footer:\n\`\`\`html\n${html}\n\`\`\``
+    const fakeEvent = { preventDefault: () => {} } as React.FormEvent
+    handleSendRef.current?.(fakeEvent, { input: msg, images: [] })
+    setShowComponentCanvas(false)
+  }, [pages, activeSlug])
+
   const handleSend = async (e: React.FormEvent, retryOverride?: { input: string; images: string[] }) => {
     e.preventDefault()
     const effectiveInput = retryOverride?.input ?? input
@@ -3299,6 +3326,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     await saveState(finalMessages, newPages, newVersions)
     setLoading(false)
   }
+  // Wire the ref so handleInsertComponent can call handleSend without circular deps
+  handleSendRef.current = handleSend
 
   const handleDuplicatePage = async (slug: string) => {
     const source = pages.find(p => p.slug === slug)
@@ -3807,6 +3836,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     }}
                   >
                     {uploading ? '⏳' : `@ ${t('project.imageButton' as const, language as any)}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowComponentCanvas(true)}
+                    disabled={loading}
+                    title="Crea un blocco isolato e inseriscilo nel sito"
+                    style={{
+                      background: 'transparent', color: C.textFaint, border: `1px solid ${C.border}`,
+                      padding: '4px 9px', fontSize: '0.78rem', borderRadius: '6px', cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    ⊞ Blocco
                   </button>
                 </div>
                 <button
@@ -6761,6 +6803,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Component Canvas drawer ── */}
+      {showComponentCanvas && (
+        <ComponentCanvas
+          projectId={id}
+          designTokensCss={designTokensCss}
+          onInsert={handleInsertComponent}
+          onClose={() => setShowComponentCanvas(false)}
+        />
       )}
     </main>
   )

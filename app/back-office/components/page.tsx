@@ -4,6 +4,37 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { COMPONENT_REGISTRY, SMART_COMPONENTS, type Component } from '../../../lib/components/index'
 
+// ── Design token presets ──────────────────────────────────────────────────────
+// Simula l'aspetto dei componenti con diversi design system.
+// In produzione i componenti ereditano il vero :root del progetto via CSS vars.
+const THEME_PRESETS: Record<string, { label: string; emoji: string; css: string }> = {
+  blue: {
+    label: 'Blu (default)',
+    emoji: '🔵',
+    css: `:root{--color-accent:#2563eb;--color-bg:#ffffff;--color-text:#1a1a1a;--color-secondary:#f8faff;--font-body:system-ui,sans-serif;--font-heading:system-ui,sans-serif;--radius:10px;--btn-radius:8px;}`,
+  },
+  green: {
+    label: 'Verde',
+    emoji: '🟢',
+    css: `:root{--color-accent:#16a34a;--color-bg:#ffffff;--color-text:#1a1a1a;--color-secondary:#f0fdf4;--font-body:'Inter',system-ui,sans-serif;--font-heading:'Inter',system-ui,sans-serif;--radius:8px;--btn-radius:6px;}`,
+  },
+  orange: {
+    label: 'Arancio',
+    emoji: '🟠',
+    css: `:root{--color-accent:#e05a2b;--color-bg:#faf9f7;--color-text:#1a1a1a;--color-secondary:#fff7f5;--font-body:'Georgia',serif;--font-heading:'Georgia',serif;--radius:6px;--btn-radius:4px;}`,
+  },
+  dark: {
+    label: 'Scuro',
+    emoji: '⚫',
+    css: `:root{--color-accent:#818cf8;--color-bg:#0f172a;--color-text:#f1f5f9;--color-secondary:#1e293b;--font-body:'Segoe UI',sans-serif;--font-heading:'Segoe UI',sans-serif;--radius:12px;--btn-radius:8px;}`,
+  },
+  warm: {
+    label: 'Warm',
+    emoji: '🟡',
+    css: `:root{--color-accent:#b45309;--color-bg:#fefce8;--color-text:#292524;--color-secondary:#fef9c3;--font-body:'Palatino',Georgia,serif;--font-heading:'Palatino',Georgia,serif;--radius:4px;--btn-radius:2px;}`,
+  },
+}
+
 const C = {
   bg: '#faf9f7',
   text: '#1a1a1a',
@@ -38,17 +69,17 @@ function categoryColor(cat: string) {
   return CATEGORY_COLORS[cat] ?? C.textMuted
 }
 
-function iframeDoc(html: string): string {
+function iframeDoc(html: string, designTokensCss: string): string {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-  body{margin:0;padding:1.5rem;font-family:system-ui,sans-serif;background:#fff;}
-  :root{--color-accent:#2563eb;--font-body:system-ui,sans-serif;--color-text:#1a1a1a;--color-bg:#ffffff;--radius:10px;}
+  ${designTokensCss}
+  body{margin:0;padding:1.5rem;font-family:var(--font-body,system-ui,sans-serif);background:var(--color-bg,#fff);}
 </style></head><body>${html}</body></html>`
 }
 
 type View = 'table' | 'grid'
 
 /* ── Preview Modal ─────────────────────────────────────────────────── */
-function PreviewModal({ comp, onClose }: { comp: Component; onClose: () => void }) {
+function PreviewModal({ comp, onClose, designTokensCss }: { comp: Component; onClose: () => void; designTokensCss: string }) {
   const smartComp = SMART_COMPONENTS.find(c => c.id === comp.id)
   return (
     <div
@@ -133,9 +164,9 @@ function PreviewModal({ comp, onClose }: { comp: Component; onClose: () => void 
         </div>
 
         {/* iframe — full width, tall */}
-        <div style={{ flex: 1, overflow: 'hidden', background: '#f8fafc', minHeight: '420px' }}>
+        <div style={{ flex: 1, overflow: 'hidden', minHeight: '420px' }}>
           <iframe
-            srcDoc={iframeDoc(comp.html)}
+            srcDoc={iframeDoc(comp.html, designTokensCss)}
             style={{ width: '100%', height: '100%', border: 'none', minHeight: '420px' }}
             title={`Preview: ${comp.name}`}
             sandbox="allow-scripts"
@@ -151,6 +182,9 @@ export default function ComponentsPage() {
   const [view, setView] = useState<View>('table')
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [filterCat, setFilterCat] = useState<string>('all')
+  const [themeKey, setThemeKey] = useState<string>('blue')
+
+  const activeThemeCss = THEME_PRESETS[themeKey]?.css ?? THEME_PRESETS.blue.css
 
   const smartIds = new Set(SMART_COMPONENTS.map(c => c.id))
   const categories = ['all', ...Array.from(new Set(COMPONENT_REGISTRY.map(c => c.category)))]
@@ -162,7 +196,7 @@ export default function ComponentsPage() {
 
       {/* Preview Modal */}
       {previewComponent && (
-        <PreviewModal comp={previewComponent} onClose={() => setPreviewId(null)} />
+        <PreviewModal comp={previewComponent} onClose={() => setPreviewId(null)} designTokensCss={activeThemeCss} />
       )}
 
       {/* Header */}
@@ -208,6 +242,29 @@ export default function ComponentsPage() {
             </button>
           ))}
         </div>
+
+        {/* Theme picker — mostra come i componenti si adattano a diversi design system */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: C.textFaint, fontWeight: 500 }}>Tema anteprima:</span>
+          {Object.entries(THEME_PRESETS).map(([key, preset]) => (
+            <button
+              key={key}
+              onClick={() => setThemeKey(key)}
+              style={{
+                padding: '3px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 500,
+                border: `1px solid ${themeKey === key ? C.text : C.border}`,
+                background: themeKey === key ? C.text : C.white,
+                color: themeKey === key ? C.white : C.textMuted,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              {preset.emoji} {preset.label}
+            </button>
+          ))}
+          <span style={{ fontSize: '0.7rem', color: C.textFaint, marginLeft: '4px' }}>
+            — in produzione i componenti ereditano il :root del sito
+          </span>
+        </div>
       </div>
 
       {/* ── TABLE VIEW ──────────────────────────────────────────────────── */}
@@ -247,7 +304,7 @@ export default function ComponentsPage() {
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = C.border; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
                     >
                       <iframe
-                        srcDoc={iframeDoc(comp.html)}
+                        srcDoc={iframeDoc(comp.html, activeThemeCss)}
                         style={{ width: '352px', height: '224px', border: 'none', transform: 'scale(0.25)', transformOrigin: 'top left', pointerEvents: 'none' }}
                         title={comp.name}
                         sandbox="allow-scripts"
@@ -341,7 +398,7 @@ export default function ComponentsPage() {
                 title="Clicca per preview"
               >
                 <iframe
-                  srcDoc={iframeDoc(comp.html)}
+                  srcDoc={iframeDoc(comp.html, activeThemeCss)}
                   style={{ width: '200%', height: '360px', border: 'none', transform: 'scale(0.5)', transformOrigin: 'top left', pointerEvents: 'none' }}
                   title={comp.name}
                   sandbox="allow-scripts"

@@ -673,6 +673,11 @@ export async function runHtmlAgent(
   const isAssetReplacement = /\b(reemplaza|sostituisci|usa.*logo|logo.*usa|replace.*logo|logo.*replace|usa questa|usa questo|use this|usa il logo|usa l'immagine)\b/i.test(userMsg)
     && /https?:\/\/[^\s]+\.(png|jpg|jpeg|webp|gif|svg)/i.test(userMsg)
 
+  // Vision from mockup: user attached an image showing a UI design/component to reproduce.
+  // In this mode: strip non-active page skeletons (noise), only show section index of active page,
+  // and let the model focus on the image to generate the block HTML.
+  const isDesignFromMockup = hasAttachedImagesInMsg(userMsg) && !isAssetReplacement
+
   const mentionedPages = isDeleteRequest ? [] : pages.filter(p => {
     const slug = p.slug.toLowerCase()
     const name = p.name.toLowerCase()
@@ -717,6 +722,15 @@ export async function runHtmlAgent(
 
     if (isActive) {
       const sectionIndex = buildSectionIndex(p.html)
+
+      // Vision from mockup: only show section index so the model knows WHERE to inject.
+      // No HTML skeleton — the image IS the reference; skeleton only adds noise.
+      if (isDesignFromMockup) {
+        return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
+SECTION INDEX (usa questi selettori per posizionare il nuovo blocco con insert_after/insert_before):
+${sectionIndex}
+Nota: l'HTML della pagina non è incluso — concentrati sull'immagine allegata per generare il nuovo blocco.`
+      }
 
       // Fix 5: colorRequest no longer includes full CSS in skeleton.
       // Palette (compact color summary) + CSS vars in designSystemBlock are sufficient.
@@ -880,14 +894,19 @@ PERFORMANCE — REGOLE OBBLIGATORIE (impattano Core Web Vitals e ranking SEO):
 - Nessuna risorsa esterna non necessaria: non caricare librerie JS (jQuery, Bootstrap JS, ecc.) se non strettamente necessarie. CSS inline > CDN esterno.
 
 IMMAGINI ALLEGATE — REGOLA CRITICA:
-Quando l'utente allega un'immagine, hai due comportamenti distinti:
+Quando l'utente allega un'immagine, hai TRE comportamenti distinti:
 A) L'immagine contiene TESTO (screenshot di dati, lista prezzi, articolo, menu, scheda prodotto, tabella, documento):
    → LEGGI tutto il testo visibile nell'immagine e usalo per RIEMPIRE il contenuto HTML (titoli, paragrafi, prezzi, voci, descrizioni).
    → NON usare l'URL dell'immagine come src di <img>. Il testo è il contenuto, non l'immagine.
 B) L'utente chiede ESPLICITAMENTE di inserire/mostrare quell'immagine (es: "metti questa foto", "usa questo logo"):
    → Usa l'URL come src di <img> normalmente.
+C) L'immagine mostra un DESIGN / MOCKUP / COMPONENTE UI (layout, sezione, wireframe, screenshot di sito altrui):
+   → ANALIZZA la struttura visiva: posizionamento elementi, grid/flex layout, proporzioni, gerarchie tipografiche.
+   → RIPRODUCI il design in HTML usando le CSS custom properties del sito (--color-accent, --font-heading, ecc.) per colori e font — NON copiare i colori dell'immagine alla lettera.
+   → Usa edit_page con op="insert_after" o "insert_before" per iniettarlo nella posizione giusta della pagina.
+   → Genera SOLO il blocco HTML richiesto (section, div, card, ecc.) — non riscrivere la pagina intera.
 
-In caso di dubbio: se l'immagine ha testo leggibile → comportamento A (estrai testo).
+In caso di dubbio: se l'immagine ha testo leggibile → A; se l'utente dice "metti/usa questa immagine" → B; altrimenti → C.
 
 IMMAGINI — REGOLE DI PRIORITÀ (importante):
 1. Se l'utente fornisce un URL esplicito nel messaggio → USA QUELL'URL ESATTO.
@@ -972,7 +991,9 @@ ${designSystemBlock}
 PAGINE DEL SITO:
 ${pageContextBlocks}
 
-HTML COMPATTO: non inserire mai righe vuote nell'HTML. Ogni riga deve avere contenuto — nessuna riga blank tra tag o sezioni.
+${isDesignFromMockup ? `⚠️ MOCKUP ALLEGATO: l'immagine mostra un design da riprodurre. Analizza struttura, layout e proporzioni. Riproduci in HTML usando le CSS vars del sito. Usa edit_page con "operations" (insert_after/insert_before) per iniettare il blocco nella pagina. Genera SOLO il nuovo blocco — non riscrivere la pagina.
+
+` : ''}HTML COMPATTO: non inserire mai righe vuote nell'HTML. Ogni riga deve avere contenuto — nessuna riga blank tra tag o sezioni.
 
 ⚠️ LINGUA DEL SITO: il sito è in **${langName(siteLang)}**. TUTTI i testi HTML (nav, sezioni, pulsanti, etichette, titoli) devono SEMPRE restare in ${langName(siteLang)}. NON tradurre mai testi esistenti anche se l'utente scrive in un'altra lingua. Se aggiungi nuovi contenuti HTML, scrivili in ${langName(siteLang)}.
 LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`summary\` DEVE essere in ${langName(userLang)} — ma l'HTML del sito rimane sempre in ${langName(siteLang)}.`
