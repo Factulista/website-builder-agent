@@ -73,6 +73,9 @@ export async function POST(req: NextRequest) {
         if (!latest?.site_config) return
         const latestConfig = latest.site_config as Record<string, unknown>
         const latestContext = (latestConfig.context as Record<string, unknown>) ?? {}
+        // Versions live in the project_versions table now — strip any legacy key so
+        // this write doesn't re-introduce the bloated versions array into site_config.
+        delete latestConfig.versions
         await supabase.from('projects').update({
           site_config: {
             ...latestConfig,                                   // freshest possible snapshot

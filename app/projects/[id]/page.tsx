@@ -24,7 +24,10 @@ import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame
 import { renderComponentById } from '../../../lib/components/index'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[]; timestamp?: string }
-type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
+// Versions live in their own `project_versions` table (not in site_config) to keep
+// the hot-path save payload small. `pages` is loaded lazily — only on restore — so
+// the history list itself stays lightweight.
+type Version = { id: string; timestamp: string; summary: string; pages?: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
 
@@ -1513,8 +1516,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       autoSaveTimer.current = setTimeout(async () => {
         setEditSaving('saving')
         const curPages = latestPagesRef.current
-        const newVersions = createVersion('Modifica inline', curPages, versions)
-        const ok = await saveState(messages, curPages, newVersions)
+        void createVersion('Modifica inline', curPages)
+        const ok = await saveState(messages, curPages)
         if (ok) {
           setEditSaving('saved')
           setTimeout(() => setEditSaving(prev => prev === 'saved' ? 'idle' : prev), 2000)
@@ -1921,7 +1924,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         // Reset visible count so we show last N messages of the loaded history
         setVisibleMsgCount(20)
       }
-      if (config?.versions) setVersions(config.versions)
+      // Versions now live in the project_versions table — load the lightweight
+      // list (no page HTML; that's fetched lazily on restore). Falls back to any
+      // legacy config.versions for projects not yet migrated.
+      void (async () => {
+        const { data: vrows, error: vErr } = await supabase
+          .from('project_versions')
+          .select('id, summary, created_at')
+          .eq('project_id', id)
+          .order('created_at', { ascending: false })
+          .limit(30)
+        if (!vErr && vrows && vrows.length > 0) {
+          setVersions(vrows.map(r => ({ id: r.id, timestamp: r.created_at, summary: r.summary })))
+        } else if (config?.versions) {
+          // Pre-migration fallback (these still carry pages, but that's fine for display)
+          setVersions(config.versions as Version[])
+        }
+      })()
       if (config?.media) setMediaMeta(config.media)
       if ((config as any)?.favicon_url) setFaviconUrl((config as any).favicon_url as string)
       setBlogHeaderHtml(config?.blog_header_html ?? '')
@@ -1993,11 +2012,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     load()
   }, [id])
 
-  const createVersion = (summary: string, currentPages: Page[], currentVersions: Version[]): Version[] => {
-    if (currentPages.length === 0) return currentVersions
-    const v: Version = { id: `v_${Date.now()}`, timestamp: new Date().toISOString(), summary, pages: currentPages }
-    const updated = [v, ...currentVersions].slice(0, 30)
-    setVersions(updated)
+  // Insert a version snapshot into the project_versions table (append-only — does
+  // NOT touch site_config, so it adds zero overhead to the hot save path).
+  // Returns the updated lightweight list (no page HTML) for the history panel.
+  // Fire-and-forget on the DB write so it never blocks the chat/edit flow.
+  const createVersion = async (summary: string, currentPages: Page[]): Promise<Version[]> => {
+    if (currentPages.length === 0) return versions
+    const optimistic: Version = { id: `v_${Date.now()}`, timestamp: new Date().toISOString(), summary }
+    const updated = [optimistic, ...versions].slice(0, 30)
+    setVersions(updated)   // optimistic UI — list shows the new entry immediately
+    try {
+      const { data, error } = await supabase
+        .from('project_versions')
+        .insert({ project_id: id, summary, pages: currentPages })
+        .select('id, summary, created_at')
+        .single()
+      if (error) { console.error('[createVersion] insert error:', error.message); return updated }
+      // Replace the optimistic id with the real DB id (so restore can fetch it)
+      if (data) {
+        setVersions(prev => prev.map(v => v.id === optimistic.id
+          ? { id: data.id, timestamp: data.created_at, summary: data.summary }
+          : v))
+      }
+      // Prune old versions beyond the most-recent 30, server-side
+      void supabase.rpc('prune_project_versions', { p_project_id: id, p_keep: 30 })
+        .then(({ error: pErr }: { error: { message: string } | null }) => {
+          if (pErr) console.warn('[createVersion] prune skipped:', pErr.message)
+        })
+    } catch (e) {
+      console.error('[createVersion] unexpected:', e)
+    }
     return updated
   }
 
@@ -2010,7 +2054,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const buildSiteConfig = async (
     newPages: Page[],
     newMessages: Message[],
-    newVersions: Version[],
     newMedia: Record<string, MediaMeta>,
   ): Promise<Record<string, unknown>> => {
     const { data: existing } = await supabase.from('projects').select('site_config').eq('id', id).single()
@@ -2019,9 +2062,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       ...base,
       pages: newPages,
       messages: newMessages,
-      versions: newVersions,
       media: newMedia,
     }
+    // Versions now live in the project_versions table — never persist them inside
+    // site_config (this is what was bloating the blob and burning Disk IO). Strip
+    // any legacy versions key so pre-migration projects get cleaned on next save.
+    delete cfg.versions
     // Use ref mirrors to avoid stale closures on rapid state updates
     const fav = faviconUrlRef.current
     const bhh = blogHeaderHtmlRef.current
@@ -2058,15 +2104,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return cfg
   }
 
-  const saveState = async (newMessages: Message[], newPages: Page[], newVersions?: Version[], newMedia?: Record<string, MediaMeta>): Promise<boolean> => {
+  // NOTE: `_newVersions` is accepted for backwards-compat with existing call sites
+  // but intentionally ignored — versions are persisted to the project_versions table
+  // by createVersion(), never inside site_config.
+  const saveState = async (newMessages: Message[], newPages: Page[], _newVersions?: Version[], newMedia?: Record<string, MediaMeta>): Promise<boolean> => {
     // Safety guard: never overwrite existing pages with an empty array
     if (!Array.isArray(newPages) || (newPages.length === 0 && latestPagesRef.current.length > 0)) {
       console.warn('saveState: skipping — refusing to overwrite existing pages with empty array')
       return false
     }
-    const vers = newVersions ?? versions
     const med = newMedia ?? mediaMeta
-    const merged = await buildSiteConfig(newPages, newMessages, vers, med)
+    const merged = await buildSiteConfig(newPages, newMessages, med)
 
     // Retry up to 3 times with exponential back-off (1s, 2s) so transient
     // Supabase timeouts don't silently lose messages.
@@ -3015,7 +3063,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: await buildSiteConfig(pages, finalMessages, versions, mediaMeta),
+        site_config: await buildSiteConfig(pages, finalMessages, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -3029,7 +3077,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setPendingRequest(buildApiContent(effectiveInput, effectiveImages))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: await buildSiteConfig(pages, finalMessages, versions, mediaMeta),
+        site_config: await buildSiteConfig(pages, finalMessages, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -3042,7 +3090,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       await supabase.from('projects').update({
-        site_config: await buildSiteConfig(pages, finalMessages, versions, mediaMeta),
+        site_config: await buildSiteConfig(pages, finalMessages, mediaMeta),
         updated_at: new Date().toISOString(),
       }).eq('id', id)
       setLoading(false)
@@ -3132,7 +3180,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           ? { ...m, content: `⚠️ Nessuna modifica applicata — le istruzioni non hanno trovato il punto esatto nella pagina. Riprova con una descrizione più precisa, o clicca "Riprova" per un nuovo tentativo.`, failed: true, retryInput: retrySnapshot.input, retryImages: retrySnapshot.images }
           : m))
         await supabase.from('projects').update({
-          site_config: await buildSiteConfig(pages, [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }], versions, mediaMeta),
+          site_config: await buildSiteConfig(pages, [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }], mediaMeta),
           updated_at: new Date().toISOString(),
         }).eq('id', id)
         setLoading(false)
@@ -3370,8 +3418,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
     const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
-    const newVersions = createVersion(summary.slice(0, 60).replace(/^[✨✏️➕🗑🔍🗺️🎨✍️]\s*/, ''), newPages, versions)
-    await saveState(finalMessages, newPages, newVersions)
+    void createVersion(summary.slice(0, 60).replace(/^[✨✏️➕🗑🔍🗺️🎨✍️]\s*/, ''), newPages)
+    await saveState(finalMessages, newPages)
     setLoading(false)
   }
   // Wire the ref so handleInsertComponent can call handleSend without circular deps
@@ -4221,10 +4269,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               confirmLabel: 'Ripristina',
                             })
                             if (!ok) return
-                            const newVersions = createVersion('Ripristino versione precedente', pages, versions)
-                            setPages(v.pages)
-                            setActiveSlug(v.pages[0]?.slug || 'home')
-                            await saveState(messages, v.pages, newVersions)
+                            // Version pages are stored lazily in project_versions —
+                            // fetch the full snapshot for this version before restoring.
+                            let restorePages = v.pages
+                            if (!restorePages) {
+                              const { data, error } = await supabase
+                                .from('project_versions')
+                                .select('pages')
+                                .eq('id', v.id)
+                                .single()
+                              if (error || !data?.pages) {
+                                await alertDialog({ title: 'Errore', message: 'Impossibile caricare questa versione.', variant: 'danger' })
+                                return
+                              }
+                              restorePages = data.pages as Page[]
+                            }
+                            if (!restorePages || restorePages.length === 0) return
+                            // Snapshot current state as a backup version first
+                            void createVersion('Backup prima del ripristino', pages)
+                            setPages(restorePages)
+                            setActiveSlug(restorePages[0]?.slug || 'home')
+                            await saveState(messages, restorePages)
                             setShowVersionHistory(false)
                           }}
                           style={{
@@ -4918,8 +4983,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   codeAutoSaveTimer.current = setTimeout(async () => {
                     setCodeSaving('saving')
                     const curPages = latestPagesRef.current
-                    const newVersions = createVersion('Modifica HTML manuale', curPages, versions)
-                    await saveState(messages, curPages, newVersions)
+                    void createVersion('Modifica HTML manuale', curPages)
+                    await saveState(messages, curPages)
                     setCodeSaving('saved')
                     setTimeout(() => setCodeSaving('idle'), 2000)
                   }, 2000)
@@ -4929,8 +4994,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: content } : p)
                   setPages(newPages)
                   latestPagesRef.current = newPages
-                  const newVersions = createVersion('Modifica HTML manuale', newPages, versions)
-                  await saveState(messages, newPages, newVersions)
+                  void createVersion('Modifica HTML manuale', newPages)
+                  await saveState(messages, newPages)
                   setCodeSaving('saved')
                   setTimeout(() => setCodeSaving('idle'), 2000)
                 }}
