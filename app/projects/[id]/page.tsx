@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, use, useRef, useEffect, useCallback } from 'react'
+import React, { useState, use, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
@@ -1177,6 +1177,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [loadingMsgId, setLoadingMsgId] = useState<string | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const loadingStartRef = useRef<number>(0)
+  // Chat lazy loading — show only the last N messages, load more on scroll-up
+  const CHAT_INITIAL = 5
+  const CHAT_MORE = 15
+  const [visibleMsgCount, setVisibleMsgCount] = useState(CHAT_INITIAL)
+  const chatListRef = useRef<HTMLDivElement>(null)
+  const chatScrollAnchor = useRef<{ height: number; top: number } | null>(null)
   // Typing animation for new assistant messages
   const [typingContent, setTypingContent] = useState<Record<string, string>>({})
   const typingTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
@@ -1684,7 +1690,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }, [isDragging])
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // Scroll to bottom only when a genuinely new message arrives (not on history bulk-load)
+  const prevMsgLenRef = useRef(0)
+  useEffect(() => {
+    const prev = prevMsgLenRef.current
+    prevMsgLenRef.current = messages.length
+    // Bulk load (history) → skip auto-scroll; single new message → scroll to bottom
+    if (messages.length - prev <= 2 && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: prev === 0 ? 'instant' as ScrollBehavior : 'smooth' })
+      // Ensure the new message is in the visible slice
+      setVisibleMsgCount(c => Math.max(c, messages.length))
+    }
+  }, [messages.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore scroll position after older messages are prepended (fires before paint → no jump)
+  useLayoutEffect(() => {
+    if (chatScrollAnchor.current && chatListRef.current) {
+      const el = chatListRef.current
+      el.scrollTop = el.scrollHeight - chatScrollAnchor.current.height + chatScrollAnchor.current.top
+      chatScrollAnchor.current = null
+    }
+  }, [visibleMsgCount])
 
   const ROOT_DOMAIN = 'factulista.com'
   const publicBaseUrl = (() => {
@@ -1826,6 +1852,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         // Mark all historical messages as already typed — no animation for history
         ;(config.messages as Message[]).forEach((m: Message) => typedMsgIds.current.add(m.id))
         setMessages(config.messages)
+        // Reset visible count so we show last N messages of the loaded history
+        setVisibleMsgCount(CHAT_INITIAL)
       }
       if (config?.versions) setVersions(config.versions)
       if (config?.media) setMediaMeta(config.media)
@@ -3482,7 +3510,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         </div>
 
         {/* Messages */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div
+          ref={chatListRef}
+          style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}
+          onScroll={(e) => {
+            // Load older messages when user scrolls near the top
+            const el = e.currentTarget
+            if (el.scrollTop < 80 && visibleMsgCount < messages.length) {
+              chatScrollAnchor.current = { height: el.scrollHeight, top: el.scrollTop }
+              setVisibleMsgCount(c => c + CHAT_MORE)
+            }
+          }}
+        >
           {messages.length === 0 && (
             <div style={{ textAlign: 'center', paddingTop: '3rem' }}>
               <p style={{ fontSize: '0.9375rem', color: '#57534e', marginBottom: '0.4rem', fontWeight: 500 }}>{t('project.describeWebsite' as const, language as any)}</p>
@@ -3490,7 +3529,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
-          {messages.map((msg) =>
+          {/* "Load more" hint when there are older hidden messages */}
+          {messages.length > visibleMsgCount && (
+            <div style={{ textAlign: 'center', padding: '4px 0 8px', color: C.textFaint, fontSize: '0.72rem' }}>
+              ↑ {messages.length - visibleMsgCount} messaggi precedenti
+            </div>
+          )}
+
+          {messages.slice(-visibleMsgCount).map((msg) =>
             msg.role === 'user' ? (
               <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
                 {/* Timestamp — from explicit field (new msgs) or parsed from id (legacy) */}
