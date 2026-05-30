@@ -531,7 +531,7 @@ export async function POST(req: NextRequest) {
         : messages
 
       const injectPoints = (siteConfig.inject_points ?? {}) as Record<string, string>
-      const result = await runHtmlAgent(agentMessages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo, injectPoints, userLang, siteLang)
+      const result = await runHtmlAgent(agentMessages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo, injectPoints, userLang, siteLang, context)
 
       // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
       if (result.tool === 'create_site' && result.input?.pages) {

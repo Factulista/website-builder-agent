@@ -3514,9 +3514,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           ref={chatListRef}
           style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}
           onScroll={(e) => {
-            // Load older messages when user scrolls near the top
             const el = e.currentTarget
-            if (el.scrollTop < 80 && visibleMsgCount < messages.length) {
+            // Only trigger when the user has actually scrolled and is near the top
+            if (el.scrollTop < 80 && el.scrollHeight > el.clientHeight + 40 && visibleMsgCount < messages.length) {
               chatScrollAnchor.current = { height: el.scrollHeight, top: el.scrollTop }
               setVisibleMsgCount(c => c + CHAT_MORE)
             }
@@ -3529,11 +3529,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
-          {/* "Load more" hint when there are older hidden messages */}
+          {/* Clickable "load older messages" button — works regardless of scroll state */}
           {messages.length > visibleMsgCount && (
-            <div style={{ textAlign: 'center', padding: '4px 0 8px', color: C.textFaint, fontSize: '0.72rem' }}>
+            <button
+              onClick={() => {
+                if (!chatListRef.current) return
+                chatScrollAnchor.current = { height: chatListRef.current.scrollHeight, top: chatListRef.current.scrollTop }
+                setVisibleMsgCount(c => c + CHAT_MORE)
+              }}
+              style={{ alignSelf: 'center', background: 'none', border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 14px', fontSize: '0.72rem', color: C.textFaint, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
               ↑ {messages.length - visibleMsgCount} messaggi precedenti
-            </div>
+            </button>
           )}
 
           {messages.slice(-visibleMsgCount).map((msg) =>

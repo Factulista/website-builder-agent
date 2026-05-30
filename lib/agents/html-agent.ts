@@ -3,6 +3,7 @@ import { fetchWithRetry } from './fetch-retry'
 import { extractImageUrls } from './site-analyzer'
 import type { LogoDefinition } from './design-agent'
 import { langName } from './detect-lang'
+import { buildContextPrompt, type ProjectContext } from './memory-agent'
 
 /** Fetches an image URL and returns it as base64 for multimodal API calls. */
 async function fetchImageAsBase64(url: string): Promise<{ data: string; media_type: string } | null> {
@@ -622,7 +623,8 @@ export async function runHtmlAgent(
   contextLogo?: LogoDefinition,
   injectPoints?: Record<string, string>,
   userLang = 'it',
-  siteLang = 'it'
+  siteLang = 'it',
+  context: ProjectContext = {}
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -963,6 +965,8 @@ ${(() => {
 })()}
 Usa set_inject_point per aggiungere/aggiornare/rimuovere embed, script o iframe in questi slot — senza toccare l'HTML delle pagine.
 
+${buildContextPrompt(context)}
+
 ${designSystemBlock}
 
 PAGINE DEL SITO:
@@ -986,6 +990,8 @@ COME MODIFICARE — scegli il modo giusto:
 ▸ ELEMENTO SINGOLO (voce menu, link, attributo, CSS) → usa "edits" (find/replace):
   find: usa ancore strutturali (href, class, id, src) — mai testo lungo che potrebbe essere troncato.
   Esempio elimina link menu: find '<a href="./pagina">Testo</a>' replace ''
+
+${buildContextPrompt(context)}
 
 ${designSystemBlock}
 
