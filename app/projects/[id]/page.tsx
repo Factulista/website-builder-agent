@@ -1178,8 +1178,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const loadingStartRef = useRef<number>(0)
   // Chat lazy loading — show only the last N messages, load more on scroll-up
-  const CHAT_INITIAL = 3
-  const CHAT_MORE = 8
+  const CHAT_INITIAL = 20
+  const CHAT_MORE = 20
   const [visibleMsgCount, setVisibleMsgCount] = useState(CHAT_INITIAL)
   const chatListRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
@@ -1888,7 +1888,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ;(config.messages as Message[]).forEach((m: Message) => typedMsgIds.current.add(m.id))
         setMessages(config.messages)
         // Reset visible count so we show last N messages of the loaded history
-        setVisibleMsgCount(CHAT_INITIAL)
+        setVisibleMsgCount(20)
       }
       if (config?.versions) setVersions(config.versions)
       if (config?.media) setMediaMeta(config.media)
