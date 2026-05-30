@@ -59,12 +59,12 @@ function ProjectCard({
     <div style={{ borderRadius: '12px', overflow: 'hidden', background: 'white', border: '1px solid #e8e4de', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
       <Link href={`/projects/${project.id}`} style={{ display: 'block', textDecoration: 'none' }}>
         <div style={{ height: '170px', background: '#f4f2ef', overflow: 'hidden', position: 'relative' }}>
-          <iframe
-            src={`/preview/${project.slug}`}
-            style={{ width: '400%', height: '400%', border: 'none', transform: 'scale(0.25)', transformOrigin: 'top left', pointerEvents: 'none' }}
-            sandbox="allow-same-origin"
-            title={project.name}
+          <img
+            src={`https://image.thum.io/get/width/600/crop/450/noanimate/https://myweb.factulista.com/${project.slug}`}
+            alt={project.name}
             loading="lazy"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
           />
         </div>
       </Link>
