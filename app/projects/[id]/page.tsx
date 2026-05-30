@@ -2154,25 +2154,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const loadMedia = async () => {
     setMediaLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setMediaLoading(false); return }
-    const folder = `${session.user.id}/${id}`
-    const { data: files } = await supabase.storage.from('project-assets').list(folder, {
-      sortBy: { column: 'created_at', order: 'desc' },
-      limit: 1000,
-    })
-    if (!files) { setMediaLoading(false); return }
-    const items: MediaItem[] = files
-      .filter(f => f.name && !f.name.endsWith('/') && f.metadata)
-      .map(f => ({
-        path: `${folder}/${f.name}`,
-        name: f.name,
-        size: (f.metadata?.size as number) || 0,
-        createdAt: f.created_at || '',
-        url: supabase.storage.from('project-assets').getPublicUrl(`${folder}/${f.name}`).data.publicUrl,
-      }))
-    setMediaItems(items)
-    setMediaLoading(false)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const folder = `${session.user.id}/${id}`
+      const { data: files, error } = await supabase.storage.from('project-assets').list(folder, {
+        sortBy: { column: 'created_at', order: 'desc' },
+        limit: 1000,
+      })
+      if (error) { console.error('[loadMedia] storage error:', error.message); return }
+      if (!files) return
+      const items: MediaItem[] = files
+        .filter(f => f.name && !f.name.endsWith('/') && f.metadata)
+        .map(f => ({
+          path: `${folder}/${f.name}`,
+          name: f.name,
+          size: (f.metadata?.size as number) || 0,
+          createdAt: f.created_at || '',
+          url: supabase.storage.from('project-assets').getPublicUrl(`${folder}/${f.name}`).data.publicUrl,
+        }))
+      setMediaItems(items)
+    } catch (err) {
+      console.error('[loadMedia] unexpected error:', err)
+    } finally {
+      setMediaLoading(false)
+    }
   }
 
   useEffect(() => {

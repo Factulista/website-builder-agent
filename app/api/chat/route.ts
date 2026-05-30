@@ -180,19 +180,29 @@ export async function POST(req: NextRequest) {
     const mediaMeta = (siteConfig.media ?? {}) as Record<string, { alt?: string; title?: string }>
 
     // List project media so agents can reference user-uploaded images
+    // List project media for agent context — capped at 5s timeout so a slow
+    // Supabase storage response never blocks the chat API from starting.
     let projectMedia: Array<{ url: string; name: string; alt?: string; title?: string }> = []
     if (project?.user_id) {
-      const folder = `${project.user_id}/${projectId}`
-      const { data: files } = await supabase.storage.from('project-assets').list(folder, { limit: 100 })
-      if (files) {
-        projectMedia = files
-          .filter(f => f.name && f.metadata)
-          .map(f => {
-            const path = `${folder}/${f.name}`
-            const url = supabase.storage.from('project-assets').getPublicUrl(path).data.publicUrl
-            const meta = mediaMeta[path] || {}
-            return { url, name: f.name, alt: meta.alt, title: meta.title }
-          })
+      try {
+        const folder = `${project.user_id}/${projectId}`
+        const mediaListPromise = supabase.storage.from('project-assets').list(folder, { limit: 100 })
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
+        const result = await Promise.race([mediaListPromise, timeoutPromise])
+        const files = result && 'data' in result ? result.data : null
+        if (files) {
+          projectMedia = files
+            .filter(f => f.name && f.metadata)
+            .map(f => {
+              const path = `${folder}/${f.name}`
+              const url = supabase.storage.from('project-assets').getPublicUrl(path).data.publicUrl
+              const meta = mediaMeta[path] || {}
+              return { url, name: f.name, alt: meta.alt, title: meta.title }
+            })
+        }
+      } catch {
+        // Storage unavailable — proceed without media list (agent will work without image refs)
+        console.warn('[chat] storage list timed out or failed — continuing without media')
       }
     }
 
