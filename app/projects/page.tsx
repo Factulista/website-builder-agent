@@ -185,7 +185,11 @@ export default function ProjectsPage() {
         .select('id, name, slug, created_at, updated_at, site_config')
         .is('deleted_at', null)
         .order('updated_at', { ascending: false, nullsFirst: false })
-        .then(({ data }) => { setProjects(data ?? []); setLoading(false) })
+        .then(({ data, error }) => {
+          if (error) console.error('[projects] fetch error:', error.message)
+          setProjects(data ?? [])
+          setLoading(false)
+        })
     })
   }, [router])
 
