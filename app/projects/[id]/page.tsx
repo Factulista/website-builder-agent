@@ -15,7 +15,7 @@ import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } 
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById } from '../../../lib/components/index'
 
-type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[] }
+type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[]; timestamp?: string }
 type Version = { id: string; timestamp: string; summary: string; pages: Page[] }
 type MediaMeta = { alt?: string; title?: string; caption?: string; description?: string }
 type MediaItem = { path: string; name: string; size: number; createdAt: string; url: string }
@@ -2742,6 +2742,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       id: `u_${Date.now()}`,
       role: 'user',
       content: effectiveInput.trim() || (effectiveImages.length ? '' : ''),
+      timestamp: new Date().toISOString(),
       ...(effectiveImages.length ? { images: effectiveImages } : {}),
     }
     const updatedMessages = [...messages, userMsg]
@@ -3492,7 +3493,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
           {messages.map((msg) =>
             msg.role === 'user' ? (
-              <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                {/* Timestamp — from explicit field (new msgs) or parsed from id (legacy) */}
+                {(() => {
+                  const ts = msg.timestamp ? new Date(msg.timestamp) : (msg.id.startsWith('u_') ? new Date(parseInt(msg.id.slice(2))) : null)
+                  if (!ts || isNaN(ts.getTime())) return null
+                  const now = new Date()
+                  const isToday = ts.toDateString() === now.toDateString()
+                  const label = isToday
+                    ? ts.toLocaleTimeString(language === 'it' ? 'it-IT' : language === 'es' ? 'es-ES' : 'en-GB', { hour: '2-digit', minute: '2-digit' })
+                    : ts.toLocaleDateString(language === 'it' ? 'it-IT' : language === 'es' ? 'es-ES' : 'en-GB', { day: 'numeric', month: 'short' }) + ', ' + ts.toLocaleTimeString(language === 'it' ? 'it-IT' : language === 'es' ? 'es-ES' : 'en-GB', { hour: '2-digit', minute: '2-digit' })
+                  return <span style={{ fontSize: '0.68rem', color: C.textFaint, paddingRight: '2px' }}>{label}</span>
+                })()}
                 <div style={{
                   maxWidth: '82%', padding: '10px 14px',
                   background: C.userBubble, color: C.text,
