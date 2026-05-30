@@ -18,15 +18,6 @@ type Project = {
   slug: string
   created_at: string
   updated_at?: string
-  site_config?: { html?: string; pages?: Page[] } | null
-}
-
-function getHomeHtml(project: Project): string | undefined {
-  const config = project.site_config
-  if (config?.pages && Array.isArray(config.pages) && config.pages.length > 0) {
-    return config.pages.find(p => p.slug === 'home')?.html ?? config.pages[0].html
-  }
-  return config?.html
 }
 
 function groupByRecency(projects: Project[]) {
@@ -61,7 +52,6 @@ function ProjectCard({
   const [renaming, setRenaming] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const [nameVal, setNameVal] = useState(project.name)
-  const homeHtml = getHomeHtml(project)
   const updatedAt = new Date(project.updated_at ?? project.created_at)
   const timeStr = updatedAt.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 
@@ -69,18 +59,13 @@ function ProjectCard({
     <div style={{ borderRadius: '12px', overflow: 'hidden', background: 'white', border: '1px solid #e8e4de', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
       <Link href={`/projects/${project.id}`} style={{ display: 'block', textDecoration: 'none' }}>
         <div style={{ height: '170px', background: '#f4f2ef', overflow: 'hidden', position: 'relative' }}>
-          {homeHtml ? (
-            <iframe
-              srcDoc={homeHtml}
-              style={{ width: '400%', height: '400%', border: 'none', transform: 'scale(0.25)', transformOrigin: 'top left', pointerEvents: 'none' }}
-              sandbox=""
-              title={project.name}
-            />
-          ) : (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b0aba7', fontSize: '0.8rem' }}>
-              {t('projects.noSiteGenerated' as const, language as any)}
-            </div>
-          )}
+          <iframe
+            src={`/preview/${project.slug}`}
+            style={{ width: '400%', height: '400%', border: 'none', transform: 'scale(0.25)', transformOrigin: 'top left', pointerEvents: 'none' }}
+            sandbox="allow-same-origin"
+            title={project.name}
+            loading="lazy"
+          />
         </div>
       </Link>
 
@@ -182,7 +167,7 @@ export default function ProjectsPage() {
       setUserEmail(session.user.email ?? '')
       supabase
         .from('projects')
-        .select('id, name, slug, created_at, updated_at, site_config')
+        .select('id, name, slug, created_at, updated_at')
         .is('deleted_at', null)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .then(({ data, error }) => {
@@ -225,12 +210,14 @@ export default function ProjectsPage() {
     let counter = 2
     while (existingSlugs.has(newSlug)) { newSlug = `${source.slug}-copia-${counter}`; counter++ }
 
+    // Fetch full site_config only for this one project to duplicate it
+    const { data: fullSource } = await supabase.from('projects').select('site_config').eq('id', id).single()
     const { data: created, error } = await supabase.from('projects').insert({
       name: `${source.name} (copia)`,
       slug: newSlug,
       user_id: session.user.id,
-      site_config: source.site_config ?? null,
-    }).select('id, name, slug, created_at, updated_at, site_config').single()
+      site_config: fullSource?.site_config ?? null,
+    }).select('id, name, slug, created_at, updated_at').single()
 
     if (!error && created) {
       setProjects(prev => [created as Project, ...prev])
