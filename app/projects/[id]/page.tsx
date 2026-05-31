@@ -118,6 +118,12 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       ['#fact-edit-global','#fact-edit-script','#fact-edit-marker','#fact-ctx-menu','#fact-link-overlay'].forEach(function(sel){
         var el=clone.querySelector(sel);if(el)el.remove();
       });
+      // Reset runtime "open" state on interactive widgets (mega-menu / dropdowns /
+      // accordions) before serializing. Otherwise, if a save fires while one is
+      // hovered/open, data-open="true" gets baked into the saved HTML and the
+      // CSS rule [data-open="true"]{display:grid} leaves it stuck open on reload.
+      clone.querySelectorAll('[data-open]').forEach(function(el){el.setAttribute('data-open','false');});
+      clone.querySelectorAll('[aria-expanded="true"]').forEach(function(el){el.setAttribute('aria-expanded','false');});
       var html='<!DOCTYPE html>\\n'+clone.outerHTML;
       var snippet=html.length>300?html.slice(0,300)+'…':html;
       console.log('[iframe] triggerSave sending html-change, length:',html.length,'preview:',snippet);

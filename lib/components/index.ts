@@ -315,6 +315,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
       var btn=li.querySelector('.comp-nfd-trigger');
       var t=null;
       function open(v){li.setAttribute('data-open',v?'true':'false');btn.setAttribute('aria-expanded',String(v));}
+      open(false); // always start closed — clears any stale data-open="true" baked into saved HTML
       btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(t);open(li.getAttribute('data-open')!=='true');});
       li.addEventListener('mouseenter',function(){if(window.matchMedia('(min-width:641px)').matches){clearTimeout(t);open(true);}});
       li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches){t=setTimeout(function(){open(false);},180);}});
