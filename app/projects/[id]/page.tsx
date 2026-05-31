@@ -7,6 +7,7 @@ import { supabase } from '../../../lib/supabase'
 import { confirmDialog, alertDialog } from '../../../lib/dialog'
 import { EditorSidebar } from '../../../components/EditorSidebar'
 import { HtmlCodeEditor } from '../../../components/HtmlCodeEditor'
+import { StructurePanel } from '../../../components/StructurePanel'
 
 // Dynamic import — ComponentCanvas viene scaricato solo quando l'utente clicca "⊞ Blocco"
 // Questo evita di aggiungere il suo peso al bundle iniziale della pagina (già 450 kB)
@@ -1326,6 +1327,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [editSrcDoc, setEditSrcDoc] = useState('')
   const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [editOutdated, setEditOutdated] = useState(false)
+  const [showStructurePanel, setShowStructurePanel] = useState(false)
   const [chatHidden, setChatHidden] = useState(false)
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
   const [pendingRequest, setPendingRequest] = useState<string | null>(null)
@@ -4610,11 +4612,51 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               isBlogActive={false}
               onBlogSelect={() => setViewMode('blog')}
             />
+            {showStructurePanel && (
+              <StructurePanel
+                html={activePage.html}
+                onHtmlChange={(newHtml: string) => {
+                  const newPages = pages.map((p) => p.slug === activePage.slug ? { ...p, html: newHtml } : p)
+                  setPages(newPages)
+                  editBaseHtmlRef.current = newHtml
+                  setEditSrcDoc(injectBase(newHtml, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined))
+                  void createVersion('Modifica struttura', newPages)
+                  void saveState(messages, newPages)
+                }}
+              />
+            )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
-                <span style={{ fontSize: '0.72rem', color: C.textFaint }}>
-                  ✎ Clicca sul testo per modificarlo
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '0.72rem', color: C.textFaint }}>
+                    ✎ Clicca sul testo per modificarlo
+                  </span>
+                  <button
+                    onClick={() => setShowStructurePanel(v => !v)}
+                    title={showStructurePanel ? 'Nascondi struttura' : 'Mostra struttura pagina'}
+                    style={{
+                      background: showStructurePanel ? C.blue : C.bg,
+                      color: showStructurePanel ? 'white' : C.textFaint,
+                      border: `1px solid ${showStructurePanel ? C.blue : C.border}`,
+                      borderRadius: 5,
+                      padding: '2px 8px',
+                      fontSize: '0.68rem',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      fontWeight: 500,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+                      <rect x="1" y="1" width="10" height="3" rx="0.5"/>
+                      <rect x="1" y="5" width="10" height="3" rx="0.5"/>
+                      <rect x="1" y="9" width="6" height="2" rx="0.5"/>
+                    </svg>
+                    Struttura
+                  </button>
+                </div>
                 <span style={{ fontSize: '0.72rem', color: editSaving === 'saving' ? '#f59e0b' : editSaving === 'saved' ? '#10b981' : editSaving === 'failed' ? '#dc2626' : C.textFaint, fontWeight: editSaving === 'failed' ? 600 : 400 }}>
                   {editSaving === 'saving' ? '⏳ Salvataggio...' : editSaving === 'saved' ? '✓ Salvato' : editSaving === 'failed' ? '⚠ Salvataggio fallito — controlla console' : 'Auto-save attivo'}
                 </span>
