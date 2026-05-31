@@ -683,6 +683,284 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
 })();`
 } // end buildInlineEditScriptTemplate
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Structure overlay script — injected into the edit iframe to show visual
+// section outlines with drag-to-reorder, resize handles, and spacing handles.
+// All overlay elements are tagged data-fact-struct-ui so they are stripped
+// before any html-change is sent to the parent.
+// ─────────────────────────────────────────────────────────────────────────────
+function buildStructureOverlayScript(): string { return `
+;(function(){
+'use strict';
+if(window.__factStruct) return;
+window.__factStruct=true;
+
+var SKIP={SCRIPT:1,STYLE:1,NOSCRIPT:1,META:1,LINK:1,BASE:1,HEAD:1};
+var active=false;
+var items=[]; // {el,wrapper,chip,hBadge,resizeBar,reposSection,reposSpacing}
+
+function getSections(){
+  return Array.from(document.body.children).filter(function(el){return !SKIP[el.tagName];});
+}
+
+function getLabel(el){
+  var h=el.querySelector('h1,h2,h3,h4,h5,h6');
+  if(h) return (h.textContent||'').trim().replace(/\\s+/g,' ').slice(0,42);
+  return (el.textContent||'').trim().replace(/\\s+/g,' ').slice(0,42)||el.tagName.toLowerCase();
+}
+
+var BADGE={HEADER:'HDR',NAV:'NAV',MAIN:'MAIN',FOOTER:'FTR',SECTION:'SEC',ARTICLE:'ART',ASIDE:'SID',DIV:'DIV',FORM:'FORM'};
+function getBadge(t){return BADGE[t]||t.slice(0,4);}
+
+// ── Strip overlays and send html-change ──────────────────────────────────
+function structSave(){
+  setTimeout(function(){
+    var clone=document.documentElement.cloneNode(true);
+    clone.querySelectorAll('[data-fact-struct-ui]').forEach(function(n){n.remove();});
+    clone.querySelectorAll('[data-fact-editor]').forEach(function(n){n.remove();});
+    ['#fact-edit-global','#fact-edit-script','#fact-edit-marker','#fact-ctx-menu','#fact-link-overlay','#fact-struct-style'].forEach(function(sel){
+      var n=clone.querySelector(sel);if(n)n.remove();
+    });
+    clone.querySelectorAll('[contenteditable]').forEach(function(n){
+      n.removeAttribute('contenteditable');n.removeAttribute('data-fact-edit');
+      n.style.outline='';n.style.outlineOffset='';n.style.borderRadius='';
+    });
+    clone.querySelectorAll('[data-open]').forEach(function(n){n.setAttribute('data-open','false');});
+    clone.querySelectorAll('[aria-expanded="true"]').forEach(function(n){n.setAttribute('aria-expanded','false');});
+    window.parent.postMessage({type:'html-change',html:'<!DOCTYPE html>\\n'+clone.outerHTML},'*');
+  },80);
+}
+
+// ── Drag to reorder sections ──────────────────────────────────────────────
+function makeDraggable(chip,el){
+  chip.addEventListener('mousedown',function(e){
+    if(e.button!==0) return;
+    e.preventDefault();e.stopPropagation();
+    var r0=el.getBoundingClientRect();
+    var startY=e.clientY;
+
+    var ghost=document.createElement('div');
+    ghost.setAttribute('data-fact-struct-ui','1');
+    ghost.style.cssText='position:fixed;left:'+r0.left+'px;top:'+r0.top+'px;width:'+r0.width+'px;height:'+r0.height+'px;opacity:0.5;pointer-events:none;z-index:1000001;box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow:hidden;border:2px dashed rgba(99,102,241,0.8);border-radius:4px;background:white;';
+    var bg=window.getComputedStyle(el).background;
+    if(bg&&bg!=='none') ghost.style.background=bg;
+    document.body.appendChild(ghost);
+
+    var line=document.createElement('div');
+    line.setAttribute('data-fact-struct-ui','1');
+    line.style.cssText='position:fixed;left:0;width:100%;height:3px;background:#2563eb;z-index:1000002;pointer-events:none;display:none;border-radius:2px;';
+    document.body.appendChild(line);
+
+    el.style.opacity='0.2';
+    items.forEach(function(item){if(item.el===el&&item.wrapper)item.wrapper.style.opacity='0';});
+
+    var targetRef=null;
+
+    function onMove(ev){
+      ghost.style.top=(r0.top+(ev.clientY-startY))+'px';
+      var secs=getSections().filter(function(s){return s!==el;});
+      targetRef=null;
+      var ly=null;
+      for(var i=0;i<secs.length;i++){
+        var r=secs[i].getBoundingClientRect();
+        if(ev.clientY<r.top+r.height/2){targetRef=secs[i];ly=r.top-1;break;}
+      }
+      if(ly===null&&secs.length) ly=secs[secs.length-1].getBoundingClientRect().bottom;
+      if(ly!==null){line.style.display='block';line.style.top=ly+'px';}
+    }
+
+    function onUp(){
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+      ghost.remove();line.remove();
+      el.style.opacity='';
+      if(targetRef) document.body.insertBefore(el,targetRef);
+      else{
+        var footer=document.querySelector('body > footer');
+        if(footer&&footer!==el) document.body.insertBefore(el,footer);
+        else document.body.appendChild(el);
+      }
+      clearOverlays();buildOverlays();structSave();
+    }
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  });
+}
+
+// ── Resize section height ─────────────────────────────────────────────────
+function makeResizable(handle,el,hBadge,wrapper){
+  handle.addEventListener('mousedown',function(e){
+    if(e.button!==0) return;
+    e.preventDefault();e.stopPropagation();
+    var startY=e.clientY;
+    var startH=el.getBoundingClientRect().height;
+    function onMove(ev){
+      var newH=Math.max(40,startH+(ev.clientY-startY));
+      el.style.minHeight=Math.round(newH)+'px';
+      var r=el.getBoundingClientRect();
+      if(hBadge) hBadge.textContent=Math.round(r.height)+'px';
+      if(wrapper){wrapper.style.height=r.height+'px';wrapper.style.top=r.top+'px';}
+      handle.style.top=(r.bottom-14)+'px';
+    }
+    function onUp(){
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+      repositionAll();structSave();
+    }
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  });
+}
+
+// ── Spacing handle between sections ──────────────────────────────────────
+function makeSpacingHandle(el){
+  var handle=document.createElement('div');
+  handle.setAttribute('data-fact-struct-ui','1');
+  handle.style.cssText='position:fixed;display:none;align-items:center;justify-content:center;width:64px;height:10px;background:rgba(37,99,235,0.5);border-radius:5px;cursor:ns-resize;z-index:1000000;';
+  handle.innerHTML='<span style="color:white;font-size:6px;letter-spacing:2px;pointer-events:none">&#x2022; &#x2022; &#x2022;</span>';
+  var gapLbl=document.createElement('span');
+  gapLbl.style.cssText='position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-size:9px;font-family:monospace;color:#1d4ed8;background:white;padding:0 4px;border-radius:2px;pointer-events:none;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
+  handle.appendChild(gapLbl);
+  document.body.appendChild(handle);
+
+  function posHandle(){
+    var r=el.getBoundingClientRect();
+    var next=el.nextElementSibling;
+    if(!next||SKIP[next.tagName]){handle.style.display='none';return;}
+    var r2=next.getBoundingClientRect();
+    var gap=Math.round(r2.top-r.bottom);
+    if(gap<2){handle.style.display='none';return;}
+    handle.style.display='flex';
+    handle.style.top=(r.bottom+gap/2-5)+'px';
+    handle.style.left=(r.left+r.width/2-32)+'px';
+    gapLbl.textContent=gap+'px';
+  }
+  posHandle();
+
+  handle.addEventListener('mousedown',function(e){
+    if(e.button!==0) return;
+    e.preventDefault();e.stopPropagation();
+    var startY=e.clientY;
+    var startMb=parseInt(window.getComputedStyle(el).marginBottom)||0;
+    function onMove(ev){
+      el.style.marginBottom=Math.max(0,Math.round(startMb+(ev.clientY-startY)))+'px';
+      posHandle();repositionAll();
+    }
+    function onUp(){
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+      structSave();
+    }
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  });
+
+  return posHandle;
+}
+
+// ── Build overlays ────────────────────────────────────────────────────────
+function buildOverlays(){
+  // Pointer-events override so handles work despite fact-edit-global *{pointer-events:none}
+  if(!document.getElementById('fact-struct-style')){
+    var st=document.createElement('style');
+    st.id='fact-struct-style';
+    st.textContent='[data-fact-struct-ui],[data-fact-struct-ui] *{pointer-events:auto!important;user-select:none!important;-webkit-user-select:none!important;}';
+    document.head.appendChild(st);
+  }
+
+  getSections().forEach(function(el){
+    var tag=el.tagName;
+    var r=el.getBoundingClientRect();
+
+    // Wrapper border
+    var wrapper=document.createElement('div');
+    wrapper.setAttribute('data-fact-struct-ui','1');
+    wrapper.style.cssText='position:fixed;box-sizing:border-box;pointer-events:none;border:2px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.018);z-index:999997;border-radius:2px;top:'+r.top+'px;left:'+r.left+'px;width:'+r.width+'px;height:'+r.height+'px;';
+    document.body.appendChild(wrapper);
+
+    // Chip (drag handle + badge + label) — placed above the section
+    var chipY=r.top>=32 ? r.top-28 : r.top+6;
+    var chip=document.createElement('div');
+    chip.setAttribute('data-fact-struct-ui','1');
+    chip.style.cssText='position:fixed;display:flex;align-items:center;gap:4px;top:'+chipY+'px;left:'+r.left+'px;height:24px;background:rgba(79,70,229,0.92);color:white;border-radius:4px;padding:0 7px 0 5px;font-size:10px;font-family:monospace;cursor:grab;z-index:999999;max-width:260px;overflow:hidden;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.22);';
+    chip.innerHTML='<span style="font-size:12px;opacity:0.7;pointer-events:none;line-height:1">&#x28BF;</span>'+
+      '<span style="font-size:8px;font-weight:700;background:rgba(255,255,255,0.22);border-radius:2px;padding:0 3px;pointer-events:none">'+getBadge(tag)+'</span>'+
+      '<span style="font-size:9px;opacity:0.92;overflow:hidden;text-overflow:ellipsis;pointer-events:none">'+getLabel(el).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</span>';
+    document.body.appendChild(chip);
+
+    // Height badge (top-right of section)
+    var hBadge=document.createElement('div');
+    hBadge.setAttribute('data-fact-struct-ui','1');
+    hBadge.style.cssText='position:fixed;top:'+(r.top+6)+'px;left:'+(r.left+r.width-54)+'px;background:rgba(0,0,0,0.28);color:white;font-size:9px;font-family:monospace;padding:2px 5px;border-radius:3px;pointer-events:none;z-index:999999;';
+    hBadge.textContent=Math.round(r.height)+'px';
+    document.body.appendChild(hBadge);
+
+    // Resize bar (bottom-center of section)
+    var resizeBar=document.createElement('div');
+    resizeBar.setAttribute('data-fact-struct-ui','1');
+    resizeBar.style.cssText='position:fixed;display:flex;align-items:center;justify-content:center;top:'+(r.bottom-14)+'px;left:'+(r.left+r.width/2-36)+'px;width:72px;height:10px;background:rgba(99,102,241,0.55);border-radius:5px;cursor:ns-resize;z-index:999999;';
+    resizeBar.innerHTML='<span style="color:white;font-size:7px;letter-spacing:3px;pointer-events:none">&#x2022; &#x2022; &#x2022;</span>';
+    document.body.appendChild(resizeBar);
+
+    function reposSection(){
+      var r2=el.getBoundingClientRect();
+      wrapper.style.top=r2.top+'px';wrapper.style.left=r2.left+'px';
+      wrapper.style.width=r2.width+'px';wrapper.style.height=r2.height+'px';
+      var cy=r2.top>=32?r2.top-28:r2.top+6;
+      chip.style.top=cy+'px';chip.style.left=r2.left+'px';
+      hBadge.style.top=(r2.top+6)+'px';hBadge.style.left=(r2.left+r2.width-54)+'px';
+      hBadge.textContent=Math.round(r2.height)+'px';
+      resizeBar.style.top=(r2.bottom-14)+'px';
+      resizeBar.style.left=(r2.left+r2.width/2-36)+'px';
+    }
+
+    var reposSpacing=makeSpacingHandle(el);
+
+    items.push({el:el,wrapper:wrapper,chip:chip,hBadge:hBadge,resizeBar:resizeBar,reposSection:reposSection,reposSpacing:reposSpacing});
+
+    makeDraggable(chip,el);
+    makeResizable(resizeBar,el,hBadge,wrapper);
+  });
+}
+
+function clearOverlays(){
+  document.querySelectorAll('[data-fact-struct-ui]').forEach(function(n){n.remove();});
+  var st=document.getElementById('fact-struct-style');if(st)st.remove();
+  items=[];
+}
+
+function repositionAll(){
+  items.forEach(function(item){item.reposSection();if(item.reposSpacing)item.reposSpacing();});
+}
+
+function activate(){
+  if(active) return;
+  active=true;
+  buildOverlays();
+  window.addEventListener('scroll',repositionAll,{passive:true});
+  window.addEventListener('resize',repositionAll,{passive:true});
+  window.parent.postMessage({type:'fact-structure-state',active:true},'*');
+}
+
+function deactivate(){
+  if(!active) return;
+  active=false;
+  clearOverlays();
+  window.removeEventListener('scroll',repositionAll);
+  window.removeEventListener('resize',repositionAll);
+  window.parent.postMessage({type:'fact-structure-state',active:false},'*');
+}
+
+window.addEventListener('message',function(e){
+  if(!e.data) return;
+  if(e.data.type==='fact-structure-on') activate();
+  else if(e.data.type==='fact-structure-off') deactivate();
+  else if(e.data.type==='fact-structure-toggle'){active?deactivate():activate();}
+});
+
+})();
+`}
+
 function stripHtmlFromChat(content: string, language: string): string {
   if (!content) return ''
   const codeMatch = content.indexOf('```')
@@ -1503,6 +1781,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (viewMode !== 'edit') return
     const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'fact-structure-state') {
+        setShowStructurePanel(e.data.active === true)
+        return
+      }
       if (e.data?.type === 'fact-block') {
         setInlineActiveBlock(e.data.tag ?? '')
         return
@@ -2685,6 +2967,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     script.id = 'fact-edit-script'
     script.textContent = buildInlineEditScript(pages.map(p => ({ slug: p.slug, name: p.name })))
     iframe.contentDocument.body.appendChild(script)
+    // Inject structure overlay script (activates on demand via postMessage)
+    const structScript = iframe.contentDocument.createElement('script')
+    structScript.id = 'fact-struct-script'
+    structScript.textContent = buildStructureOverlayScript()
+    iframe.contentDocument.body.appendChild(structScript)
   }
 
   const FRIENDLY_ERROR = 'Qualcosa è andato storto durante l\'elaborazione. Le tue modifiche al sito sono al sicuro — puoi riprovare con lo stesso messaggio.'
@@ -4612,19 +4899,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               isBlogActive={false}
               onBlogSelect={() => setViewMode('blog')}
             />
-            {showStructurePanel && (
-              <StructurePanel
-                html={activePage.html}
-                onHtmlChange={(newHtml: string) => {
-                  const newPages = pages.map((p) => p.slug === activePage.slug ? { ...p, html: newHtml } : p)
-                  setPages(newPages)
-                  editBaseHtmlRef.current = newHtml
-                  setEditSrcDoc(injectBase(newHtml, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined))
-                  void createVersion('Modifica struttura', newPages)
-                  void saveState(messages, newPages)
-                }}
-              />
-            )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -4632,8 +4906,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     ✎ Clicca sul testo per modificarlo
                   </span>
                   <button
-                    onClick={() => setShowStructurePanel(v => !v)}
-                    title={showStructurePanel ? 'Nascondi struttura' : 'Mostra struttura pagina'}
+                    onClick={() => editIframeRef.current?.contentWindow?.postMessage({ type: 'fact-structure-toggle' }, '*')}
+                    title={showStructurePanel ? 'Nascondi overlay struttura' : 'Mostra overlay struttura pagina'}
                     style={{
                       background: showStructurePanel ? C.blue : C.bg,
                       color: showStructurePanel ? 'white' : C.textFaint,
