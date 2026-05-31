@@ -1230,6 +1230,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
+  const [menuLabelValue, setMenuLabelValue] = useState('')
   const dragIndexRef = useRef<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
@@ -6543,7 +6544,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           {/* Actions */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <button
-                              onClick={() => { setRenamingSlug(isExpanded ? null : page.slug); setRenameValue(page.name); setEditSlugValue(page.slug) }}
+                              onClick={() => { setRenamingSlug(isExpanded ? null : page.slug); setRenameValue(page.name); setEditSlugValue(page.slug); setMenuLabelValue(page.menuLabel ?? '') }}
                               title="Impostazioni"
                               style={{ background: isExpanded ? C.blue : C.bg, border: `1px solid ${isExpanded ? C.blue : C.border}`, borderRadius: '6px', padding: '3px 7px', fontSize: '0.72rem', cursor: 'pointer', color: isExpanded ? 'white' : C.text, fontFamily: 'inherit' }}
                             >⚙</button>
@@ -6597,24 +6598,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             {/* Rename */}
                             <div>
                               <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Nome pagina</label>
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <input
-                                  autoFocus
-                                  value={renameValue}
-                                  onChange={e => setRenameValue(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
-                                  style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none' }}
-                                />
-                                <button
-                                  onClick={async () => {
-                                    const trimmed = renameValue.trim()
-                                    if (!trimmed) return
-                                    await updatePageField(page.slug, 'name', trimmed)
-                                    setRenamingSlug(null)
-                                  }}
-                                  style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
-                                >✓</button>
-                              </div>
+                              <input
+                                autoFocus
+                                value={renameValue}
+                                onChange={e => setRenameValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
+                                style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                              />
                             </div>
 
                             {/* Menu label */}
@@ -6622,11 +6612,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Etichetta nel menu</label>
                               <input
                                 placeholder={page.name}
-                                defaultValue={page.menuLabel ?? ''}
-                                onBlur={async (e) => {
-                                  const v = e.target.value.trim()
-                                  await updatePageField(page.slug, 'menuLabel', v || page.name)
-                                }}
+                                value={menuLabelValue}
+                                onChange={e => setMenuLabelValue(e.target.value)}
                                 style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                               />
                               <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato nella navigazione del sito</p>
@@ -6659,6 +6646,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 ? <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>La pagina home non può essere rinominata</p>
                                 : <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Aggiorna anche tutti i link interni che puntano a questa pagina</p>
                               }
+                            </div>
+
+                            {/* Save button */}
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <button
+                                onClick={async () => {
+                                  const trimmedName = renameValue.trim()
+                                  if (!trimmedName) return
+                                  const trimmedLabel = menuLabelValue.trim()
+                                  if (trimmedName !== page.name) {
+                                    await updatePageField(page.slug, 'name', trimmedName)
+                                  }
+                                  if (trimmedLabel !== (page.menuLabel ?? '')) {
+                                    await updatePageField(page.slug, 'menuLabel', trimmedLabel || trimmedName)
+                                  }
+                                  setRenamingSlug(null)
+                                }}
+                                disabled={!renameValue.trim()}
+                                style={{ width: '100%', background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '0.82rem', cursor: renameValue.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', fontWeight: 600, opacity: renameValue.trim() ? 1 : 0.5 }}
+                              >Salva configurazione</button>
                             </div>
 
                             {/* Open in editor */}
