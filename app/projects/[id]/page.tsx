@@ -1229,6 +1229,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design'>('preview')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [editSlugValue, setEditSlugValue] = useState('')
   const dragIndexRef = useRef<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
@@ -6411,6 +6412,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               setPages(synced)
               await saveState(messages, synced)
             }
+
+            const renamePageSlug = async (oldSlug: string, rawValue: string) => {
+              // Sanitize: lowercase, spaces→hyphens, strip anything that's not a-z 0-9 - _ /
+              const newSlug = rawValue.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, '')
+              if (!newSlug || newSlug === oldSlug) { setRenamingSlug(null); return }
+              if (pages.some(p => p.slug === newSlug)) {
+                await alertDialog({ title: 'URL già in uso', message: `Esiste già una pagina con slug "${newSlug}". Scegli un URL diverso.`, variant: 'danger' })
+                return
+              }
+              // Escape oldSlug for use in regex
+              const escaped = oldSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+              const linkRe = new RegExp(`href="\\./` + escaped + `(["/?#])`, 'g')
+              const next = pages.map(p => {
+                // Update the slug on the matching page; update nav links on all pages
+                const slug = p.slug === oldSlug ? newSlug : p.slug
+                const html = p.html.replace(linkRe, `href="./${newSlug}$1`)
+                return { ...p, slug, html }
+              })
+              setPages(next)
+              if (activeSlug === oldSlug) setActiveSlug(newSlug)
+              setRenamingSlug(null)
+              await saveState(messages, next)
+            }
             return (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
                 {/* Header */}
@@ -6519,7 +6543,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           {/* Actions */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <button
-                              onClick={() => { setRenamingSlug(isExpanded ? null : page.slug); setRenameValue(page.name) }}
+                              onClick={() => { setRenamingSlug(isExpanded ? null : page.slug); setRenameValue(page.name); setEditSlugValue(page.slug) }}
                               title="Impostazioni"
                               style={{ background: isExpanded ? C.blue : C.bg, border: `1px solid ${isExpanded ? C.blue : C.border}`, borderRadius: '6px', padding: '3px 7px', fontSize: '0.72rem', cursor: 'pointer', color: isExpanded ? 'white' : C.text, fontFamily: 'inherit' }}
                             >⚙</button>
@@ -6606,6 +6630,35 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                               />
                               <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato nella navigazione del sito</p>
+                            </div>
+
+                            {/* URL / Slug */}
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>URL della pagina</label>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.8rem', color: C.textFaint, whiteSpace: 'nowrap' }}>./</span>
+                                <input
+                                  value={editSlugValue}
+                                  onChange={e => setEditSlugValue(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, ''))}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') void renamePageSlug(page.slug, editSlugValue)
+                                    if (e.key === 'Escape') setRenamingSlug(null)
+                                  }}
+                                  disabled={page.slug === 'home'}
+                                  placeholder={page.slug}
+                                  style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', background: page.slug === 'home' ? '#f3f4f6' : 'white', color: page.slug === 'home' ? C.textFaint : C.text }}
+                                />
+                                {page.slug !== 'home' && editSlugValue !== page.slug && (
+                                  <button
+                                    onClick={() => void renamePageSlug(page.slug, editSlugValue)}
+                                    style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap' }}
+                                  >✓ Salva</button>
+                                )}
+                              </div>
+                              {page.slug === 'home'
+                                ? <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>La pagina home non può essere rinominata</p>
+                                : <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Aggiorna anche tutti i link interni che puntano a questa pagina</p>
+                              }
                             </div>
 
                             {/* Open in editor */}
