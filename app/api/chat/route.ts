@@ -535,10 +535,12 @@ export async function POST(req: NextRequest) {
       // Skip on delete/remove requests: keyword fires on subject of deletion
       // (e.g. "elimina Funcionalidades" → matches mega-menu component tag)
       // Skip on translate requests: "traduci in italiano" should not inject component HTML
-      // Skip on rename/text-change-only requests that mention nav items by name
+      // Skip on duplicate/copy/rename requests: "duplica Funcionalidades" must not inject
+      // the mega-menu component just because "funcionalidades" is in its tags.
       const isDeleteMsg = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(lastUserMessage)
       const isTranslateMsg = /\b(traduci|translate|traduzione|in italiano|in inglese|in spagnolo|in español|in english|in tedesco|in francese|in portoghese|in francese)\b/i.test(lastUserMessage)
-      const matchedComponent = (isDeleteMsg || isTranslateMsg) ? null : findComponentByKeywords(lastUserMessage)
+      const isDuplicateMsg = /\b(duplica|duplic|copia|clona|clone|crea.*copiando|duplicar|copiar|cloner|kopier)\b/i.test(lastUserMessage)
+      const matchedComponent = (isDeleteMsg || isTranslateMsg || isDuplicateMsg) ? null : findComponentByKeywords(lastUserMessage)
       const agentMessages = matchedComponent
         ? messages.map((m, i) => i === messages.length - 1
             ? {
@@ -572,14 +574,15 @@ export async function POST(req: NextRequest) {
           duration_ms: Date.now() - runStartTime,
           output_data: {
             tool: result.tool ?? 'edit_page',
-            page_slug: result.input?.pageSlug as string ?? undefined,
+            // add_page uses result.input.slug; edit_page uses result.input.pageSlug
+            page_slug: (result.input?.pageSlug ?? result.input?.slug) as string ?? undefined,
             operations_count: (result.input?.operations as unknown[])?.length,
             edits_count: (result.input?.edits as unknown[])?.length,
             summary: result.input?.summary as string ?? undefined,
             pages_affected: result.tool === 'create_site'
               ? ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug)
-              : result.input?.pageSlug
-                ? [result.input.pageSlug as string]
+              : (result.input?.pageSlug ?? result.input?.slug)
+                ? [(result.input?.pageSlug ?? result.input?.slug) as string]
                 : undefined,
           },
         }).catch(() => null)
