@@ -631,6 +631,23 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
           else if(inOl) document.execCommand('insertOrderedList',false,null);
         }
       }
+      // Fix: after inserting a list, unwrap any heading elements that ended up
+      // inside <li> tags. When execCommand('insertUnorderedList') is applied to
+      // selected heading text, browsers create <ul><li><h1>...</h1></li></ul>.
+      // This leaves the heading styling inside the list, making items look like
+      // giant titles. We strip the heading wrapper and keep its text content.
+      if(cmd==='insertUnorderedList'||cmd==='insertOrderedList'){
+        document.execCommand(cmd,false,val);
+        document.querySelectorAll('li h1,li h2,li h3,li h4,li h5,li h6').forEach(function(h){
+          var li=h.parentElement;
+          if(!li||li.tagName!=='LI') return;
+          var frag=document.createDocumentFragment();
+          while(h.firstChild) frag.appendChild(h.firstChild);
+          li.replaceChild(frag,h);
+        });
+        triggerSave();
+        return;
+      }
       document.execCommand(cmd,false,val);
       triggerSave();
     }
@@ -694,10 +711,16 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     var node=sel.getRangeAt(0).startContainer;
     var el=node.nodeType===3?node.parentElement:node;
     var blockTag=null,fontName='',fontSizePt=null,color='';
+    // Fix: check for LI ancestor first. If cursor is inside a list item that
+    // contains a heading (e.g. <li><h1>text</h1></li>), the heading is closer
+    // to the cursor than LI, so it would win. But for block-type purposes the
+    // correct answer is LI — the content belongs to a list item.
+    var liCheck=el;
+    while(liCheck&&liCheck!==document.body){if(liCheck.tagName==='LI'){blockTag='LI';break;}liCheck=liCheck.parentElement;}
     var cur=el;
     while(cur&&cur!==document.body){
       var tag=cur.tagName||'';
-      // First block-level ancestor wins (closest to cursor)
+      // First block-level ancestor wins (closest to cursor) — skip if LI already set
       if(blockTag===null&&(/^H[1-6]$/.test(tag)||tag==='P'||tag==='BLOCKQUOTE'||tag==='LI'||tag==='PRE')){
         blockTag=tag;
       }
