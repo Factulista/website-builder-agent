@@ -150,6 +150,27 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
         var t=s.textContent||'';
         if(t.includes('scroll-to-text')||t.includes('fact-edit')||t.includes('html-change')){s.remove();}
       });
+      // Hoist component inline <style> tags to <head> (deduplication).
+      // Components like mega-menu inject a <style> inside their <li>.
+      // This means every page has the same CSS duplicated inside the nav.
+      // Moving it to <head> once: reduces HTML size, prevents duplicates,
+      // and makes what the AI agent reads for editing much cleaner.
+      var compHead = clone.querySelector('head');
+      if (compHead) {
+        var seenCss = new Set();
+        clone.querySelectorAll('[data-comp] style, .comp-nfd style, .comp-fg style, .comp-hero style, .comp-cta style').forEach(function(s){
+          var css = (s.textContent||'').trim();
+          if (!css) { s.remove(); return; }
+          if (!seenCss.has(css)) {
+            seenCss.add(css);
+            var tag = document.createElement('style');
+            tag.setAttribute('data-component-css','true');
+            tag.textContent = css;
+            compHead.appendChild(tag);
+          }
+          s.remove();
+        });
+      }
       var html='<!DOCTYPE html>\\n'+clone.outerHTML;
       var snippet=html.length>300?html.slice(0,300)+'…':html;
       console.log('[iframe] triggerSave sending html-change, length:',html.length,'preview:',snippet);

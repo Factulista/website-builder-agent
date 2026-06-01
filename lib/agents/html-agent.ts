@@ -207,6 +207,23 @@ function buildHtmlSkeleton(html: string, includeStyles = false): string {
 }
 
 /**
+ * Strips shared frame elements (nav, footer, mobile menu) from HTML before
+ * sending to the agent. The agent never needs to read these for content edits —
+ * nav/footer are managed by the sync system. This saves 8-15K tokens per run.
+ *
+ * Only called when the operation is NOT a nav/menu/footer edit.
+ */
+function stripSharedFrame(html: string): string {
+  return html
+    // Remove <nav> blocks
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '<!-- nav omitted — managed by shared frame -->')
+    // Remove <footer> blocks
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '<!-- footer omitted — managed by shared frame -->')
+    // Remove mobile menu divs (class="mobile-menu ..." or id="mobileMenu")
+    .replace(/<div[^>]*(?:class="[^"]*mobile-menu[^"]*"|id="mobileMenu")[^>]*>[\s\S]*?<\/div>/gi, '<!-- mobile menu omitted -->')
+}
+
+/**
  * Returns true when the user's request is about colors, backgrounds or visual styles.
  * Used to decide whether to include the full CSS in the agent context.
  */
@@ -678,6 +695,9 @@ export async function runHtmlAgent(
   // and let the model focus on the image to generate the block HTML.
   const isDesignFromMockup = hasAttachedImagesInMsg(userMsg) && !isAssetReplacement
 
+  // Detect if the request needs nav/footer HTML (menu changes, footer edits, etc.)
+  const isNavOrFooterEdit = /\b(nav|navbar|footer|menu|hamburger|menú|navigazione|navigación|mega.menu|header|cabecera|encabezado|mobile.menu)\b/i.test(userMsg)
+
   const mentionedPages = isDeleteRequest ? [] : pages.filter(p => {
     const slug = p.slug.toLowerCase()
     const name = p.name.toLowerCase()
@@ -736,16 +756,22 @@ Nota: l'HTML della pagina non è incluso — concentrati sull'immagine allegata 
       // Palette (compact color summary) + CSS vars in designSystemBlock are sufficient.
       if (colorRequest) {
         const palette = extractColorPalette(p.html)
+        const colorSkeletonHtml = isNavOrFooterEdit
+          ? buildHtmlSkeleton(p.html)
+          : buildHtmlSkeleton(stripSharedFrame(p.html))
+        const colorFrameNote = isNavOrFooterEdit
+          ? ''
+          : '\nNota: <nav> e <footer> omessi — sono gestiti dal sistema di frame condiviso. Se devi modificarli, indicalo esplicitamente.'
         return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
 SECTION INDEX (usa questi selettori nel campo "target" delle operations):
 ${sectionIndex}
-
+${colorFrameNote}
 PALETTE COLORI RILEVATA (usa questi valori esatti — il CSS completo è nelle variabili sopra):
 ${palette}
 
 HTML STRUTTURA:
 \`\`\`html
-${buildHtmlSkeleton(p.html)}
+${colorSkeletonHtml}
 \`\`\``
       }
 
@@ -769,13 +795,21 @@ Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edit
         }
       }
 
+      const skeletonHtml = isNavOrFooterEdit
+        ? buildHtmlSkeleton(p.html)
+        : buildHtmlSkeleton(stripSharedFrame(p.html))
+
+      const frameNote = isNavOrFooterEdit
+        ? ''
+        : '\nNota: <nav> e <footer> omessi — sono gestiti dal sistema di frame condiviso. Se devi modificarli, indicalo esplicitamente.'
+
       return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
 SECTION INDEX (usa questi selettori nel campo "target" delle operations):
 ${sectionIndex}
-
+${frameNote}
 HTML STRUTTURA (testi lunghi troncati — usa "operations" per sezioni intere, "edits" solo per attributi/CSS/src):
 \`\`\`html
-${buildHtmlSkeleton(p.html)}
+${skeletonHtml}
 \`\`\``
     } else if (isMentioned) {
       // For explicitly mentioned pages: show skeleton + full <style> so agent can reference/copy CSS
