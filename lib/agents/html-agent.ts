@@ -807,6 +807,16 @@ REGOLE:
 
   const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
+QUALITÀ HTML — REGOLE ANTI-REGRESSIONE (errori comuni da NON ripetere):
+- ❌ MAI usare classi Tailwind CSS (text-4xl, md:text-5xl, font-bold, leading-tight, ecc.) — il sito usa CSS custom, non Tailwind. Usa SOLO le classi definite nel <style> della pagina o variabili CSS (var(--accent), var(--font), ecc.).
+- ❌ MAI lasciare elementi vuoti (<h2><p><br></p></h2>, <div></div>, <p></p>, ecc.) — rimuovili prima di finalizzare l'output.
+- ❌ MAI duplicare dichiarazioni CSS sullo stesso selettore (es: background: #fff; poi background: #000 sullo stesso blocco) — tieni solo l'ultima versione.
+- ❌ MAI mettere un <p> dentro un <h1>/<h2>/<h3> — HTML invalido che rompe SEO e screen reader.
+- ❌ MAI includere attributi stile con CSS custom properties di Tailwind (--tw-border-spacing-x, --tw-translate-x, ecc.) — questi non hanno effetto e gonfiano l'HTML.
+- ❌ MAI aggiungere script di listener (scroll, messaggi, ecc.) che sono già iniettati dal sistema — genera solo il contenuto HTML/CSS della sezione, non ripetere script infrastrutturali.
+- ✅ Gerarchia heading corretta: un solo H1 per pagina, poi H2, poi H3 — senza salti di livello.
+- ✅ Quando modifichi CSS, rimuovi le dichiarazioni precedenti dello stesso attributo nello stesso selettore.
+
 REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.

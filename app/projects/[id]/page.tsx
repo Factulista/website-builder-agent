@@ -125,6 +125,13 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       // CSS rule [data-open="true"]{display:grid} leaves it stuck open on reload.
       clone.querySelectorAll('[data-open]').forEach(function(el){el.setAttribute('data-open','false');});
       clone.querySelectorAll('[aria-expanded="true"]').forEach(function(el){el.setAttribute('aria-expanded','false');});
+      // Strip injected runtime scripts that are re-added on every load by injectBase.
+      // Without this, each save cycle appends another copy → after N saves the page
+      // has N copies of scroll-to-text, carousel, etc. listeners all running in parallel.
+      clone.querySelectorAll('script').forEach(function(s){
+        var t=s.textContent||'';
+        if(t.includes('scroll-to-text')||t.includes('fact-edit')||t.includes('html-change')){s.remove();}
+      });
       var html='<!DOCTYPE html>\\n'+clone.outerHTML;
       var snippet=html.length>300?html.slice(0,300)+'…':html;
       console.log('[iframe] triggerSave sending html-change, length:',html.length,'preview:',snippet);
