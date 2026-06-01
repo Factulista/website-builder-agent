@@ -5707,9 +5707,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   contentHtml = allContent[allContent.length - 1].innerHTML.trim()
                 }
               } catch { /* keep original */ }
-              // Extract siteStyle from home page so CSS variables (--color-accent etc.) are inherited
+              // Extract ONLY CSS custom properties (:root variables) + Google Font links from
+              // the home page — NOT the full page CSS. Injecting the full site CSS into the
+              // blog editor causes heading rules (h1 { font-size: clamp(...); font-weight:700 })
+              // and layout rules to bleed into the editor, making list items appear as giant
+              // H1-styled text and breaking the blog content layout. CSS variables are enough
+              // to inherit brand colors (--accent, --color-text, etc.) and font families.
               const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
-              const siteStyleBlocks = (homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n')
+              const fontLinks = (homeHtml.match(/<link[^>]*(?:googleapis\.com|gstatic\.com)[^>]*>/gi) ?? []).join('\n')
+              const rootVars = (() => {
+                const blocks = homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []
+                for (const block of blocks) {
+                  const css = block.replace(/<\/?style[^>]*>/gi, '')
+                  const m = css.match(/:root\s*\{([^}]+)\}/)
+                  if (m) return `:root{${m[1].trim()}}`
+                }
+                return ''
+              })()
+              const siteStyleBlocks = [fontLinks, rootVars ? `<style>${rootVars}</style>` : ''].join('\n')
               // Editor-only overrides: live blog renders inside a grid layout that provides
               // horizontal padding; the editor doesn't, so add it here to keep list markers
               // (bullets/numbers) visible inside the iframe.
