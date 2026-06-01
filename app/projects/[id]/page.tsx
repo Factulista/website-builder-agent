@@ -679,6 +679,31 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       saveSelection();
       showLinkDialog(anch?anch.getAttribute('href'):null);
     }
+    if(e.data.type==='fact-lineheight'){
+      var lhVal=e.data.val;
+      if(!lhVal) return;
+      // Apply line-height to the nearest block-level ancestor of the cursor
+      var lhSel=window.getSelection();
+      if(!lhSel||!lhSel.rangeCount) return;
+      var lhNode=lhSel.getRangeAt(0).startContainer;
+      var lhEl=lhNode.nodeType===3?lhNode.parentElement:lhNode;
+      var applied=false;
+      while(lhEl&&lhEl!==document.body){
+        var lhTag=lhEl.tagName||'';
+        if(/^(P|H[1-6]|BLOCKQUOTE|PRE|LI|DIV)$/.test(lhTag)){
+          lhEl.style.lineHeight=lhVal;
+          applied=true;
+          break;
+        }
+        lhEl=lhEl.parentElement;
+      }
+      // Fallback: apply to the contenteditable container
+      if(!applied){
+        var cnt=document.querySelector('[data-fact-edit]');
+        if(cnt) cnt.style.lineHeight=lhVal;
+      }
+      triggerSave();
+    }
     if(e.data.type==='fact-set-content'){
       // Custom undo/redo: parent sends a content snapshot to restore.
       // We set innerHTML directly and DON'T call triggerSave — the parent
@@ -746,7 +771,14 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       var compM=compFs.match(/^(\d+(?:\.\d+)?)px$/);
       if(compM) fontSizePt=Math.round(parseFloat(compM[1])*0.75);
     }
-    window.parent.postMessage({type:'fact-style',block:blockTag,fontName:fontName,fontSizePt:fontSizePt,color:color},'*');
+    // Detect line-height from inline style on block ancestor, fallback to computed
+    var lineHeight='';
+    var lhCur=el;
+    while(lhCur&&lhCur!==document.body){
+      if(lhCur.style&&lhCur.style.lineHeight){lineHeight=lhCur.style.lineHeight;break;}
+      lhCur=lhCur.parentElement;
+    }
+    window.parent.postMessage({type:'fact-style',block:blockTag,fontName:fontName,fontSizePt:fontSizePt,color:color,lineHeight:lineHeight},'*');
   });
 
 })();`
@@ -1638,6 +1670,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [inlineAlignOpen, setInlineAlignOpen] = useState(false)
   const [blogFontName, setBlogFontName] = useState('')
   const [blogFontSizePt, setBlogFontSizePt] = useState<number | null>(null)
+  const [blogLineHeight, setBlogLineHeight] = useState<string>('')
   const blogColorInputRef = useRef<HTMLInputElement | null>(null)
   const inlineImgInputRef = useRef<HTMLInputElement | null>(null)
   const [mediaPickerTarget, setMediaPickerTarget] = useState<'inline' | 'blog' | null>(null)
@@ -1916,6 +1949,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setBlogActiveBlock(e.data.block ?? 'P')
         setBlogFontName(e.data.fontName ?? '')
         setBlogFontSizePt(e.data.fontSizePt ?? null)
+        setBlogLineHeight(e.data.lineHeight ?? '')
         if (blogColorInputRef.current && e.data.color) blogColorInputRef.current.value = e.data.color
         return
       }
@@ -6485,6 +6519,32 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               <option value="PRE">{'<>'} — Codice</option>
                             </select>
                           </div>
+
+                          <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
+
+                          {/* ── Line height ───────────────────────────────── */}
+                          <select
+                            title="Interlinea"
+                            value={blogLineHeight || ''}
+                            onMouseDown={e => { e.stopPropagation(); win()?.postMessage({ type: 'fact-save-sel' }, '*') }}
+                            onChange={e => {
+                              const val = e.target.value
+                              if (!val) return
+                              win()?.postMessage({ type: 'fact-lineheight', val }, '*')
+                            }}
+                            style={{ height: '26px', padding: '0 4px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white, cursor: 'pointer', fontSize: '0.75rem', color: C.text, fontFamily: 'inherit', minWidth: '64px' }}
+                          >
+                            <option value="">↕ Interlinea</option>
+                            <option value="1">× 1</option>
+                            <option value="1.2">× 1.2</option>
+                            <option value="1.4">× 1.4</option>
+                            <option value="1.5">× 1.5</option>
+                            <option value="1.6">× 1.6</option>
+                            <option value="1.8">× 1.8</option>
+                            <option value="2">× 2</option>
+                            <option value="2.5">× 2.5</option>
+                            <option value="3">× 3</option>
+                          </select>
 
                           <div style={{ width: 1, background: C.border, alignSelf: 'stretch', margin: '2px 3px' }} />
 
