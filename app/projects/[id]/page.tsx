@@ -6117,6 +6117,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     rel="noopener noreferrer"
                     title={`Preview: /blog/${post.slug}`}
                     style={{ fontSize: '0.72rem', color: C.textFaint, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', border: `1px solid ${C.border}`, borderRadius: 4, background: C.white }}
+                    onClick={async (ev) => {
+                      // Flush any pending autosave BEFORE opening preview so the new
+                      // tab always sees the latest content (prevents race where preview
+                      // opens within the 800ms debounce window showing stale content).
+                      ev.preventDefault()
+                      const url = `/preview/${projectSlug}/blog/${post.slug}`
+                      await flushBlogSave()
+                      window.open(url, '_blank', 'noopener,noreferrer')
+                    }}
                   >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     /blog/{post.slug}
