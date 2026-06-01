@@ -125,6 +125,24 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       // CSS rule [data-open="true"]{display:grid} leaves it stuck open on reload.
       clone.querySelectorAll('[data-open]').forEach(function(el){el.setAttribute('data-open','false');});
       clone.querySelectorAll('[aria-expanded="true"]').forEach(function(el){el.setAttribute('aria-expanded','false');});
+      // Normalize mobile-menu toggle class: standardize on "open" (some agent-generated
+      // pages use "active" instead, causing inconsistency across pages and broken toggles
+      // when nav CSS from home — which uses "open" — is synced to other pages).
+      clone.querySelectorAll('.mobile-menu.active').forEach(function(el){
+        el.classList.remove('active');
+        // Don't add 'open' — just ensure it's closed on save. The hamburger script
+        // re-opens on user interaction.
+      });
+      // Also normalize hamburger script references: rewrite script text to use 'open'
+      clone.querySelectorAll('script').forEach(function(s){
+        var t=s.textContent||'';
+        if(t.includes('mobile-menu') && t.includes("'active'") && !t.includes("'open'")){
+          s.textContent=t.replace(/classList\.toggle\('active'\)/g,"classList.toggle('open')")
+                         .replace(/classList\.contains\('active'\)/g,"classList.contains('open')")
+                         .replace(/classList\.remove\('active'\)/g,"classList.remove('open')")
+                         .replace(/\.mobile-menu\.active/g,'.mobile-menu.open');
+        }
+      });
       // Strip injected runtime scripts that are re-added on every load by injectBase.
       // Without this, each save cycle appends another copy → after N saves the page
       // has N copies of scroll-to-text, carousel, etc. listeners all running in parallel.
@@ -1288,7 +1306,13 @@ function stripEditorArtifacts(html: string): string {
   doc.querySelectorAll('[data-fact-href]').forEach(el => el.removeAttribute('data-fact-href'))
 
   const hasDoctype = /^\s*<!DOCTYPE/i.test(html)
-  return (hasDoctype ? '<!DOCTYPE html>\n' : '') + doc.documentElement.outerHTML
+
+  // Normalize mobile-menu toggle class: standardize on "open"
+  let serialized = (hasDoctype ? '<!DOCTYPE html>\n' : '') + doc.documentElement.outerHTML
+  serialized = serialized.replace(/mobile-menu active/g, 'mobile-menu open')
+                         .replace(/\.mobile-menu\.active\s*\{/g, '.mobile-menu.open {')
+
+  return serialized
 }
 
 const SCROLL_LISTENER = `<script>
@@ -1373,13 +1397,13 @@ type DesignSystem = {
   h5: TypoConfig; h6: TypoConfig; p: TypoConfig; a: TypoConfig
 }
 const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
-  h1: { fontFamily: 'inherit', fontSize: '30pt', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2',  letterSpacing: '-0.02em' },
-  h2: { fontFamily: 'inherit', fontSize: '24pt', fontWeight: '700', color: '#1a1a1a', lineHeight: '1.25', letterSpacing: '-0.01em' },
-  h3: { fontFamily: 'inherit', fontSize: '18pt', fontWeight: '600', color: '#1a1a1a', lineHeight: '1.3',  letterSpacing: '0' },
-  h4: { fontFamily: 'inherit', fontSize: '15pt', fontWeight: '600', color: '#1a1a1a', lineHeight: '1.35', letterSpacing: '0' },
-  h5: { fontFamily: 'inherit', fontSize: '13pt', fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
-  h6: { fontFamily: 'inherit', fontSize: '12pt', fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
-  p:  { fontFamily: 'inherit', fontSize: '12pt', fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
+  h1: { fontFamily: 'inherit', fontSize: '2.2rem',  fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2',  letterSpacing: '-0.02em' },
+  h2: { fontFamily: 'inherit', fontSize: '1.8rem',  fontWeight: '700', color: '#1a1a1a', lineHeight: '1.25', letterSpacing: '-0.01em' },
+  h3: { fontFamily: 'inherit', fontSize: '1.4rem',  fontWeight: '600', color: '#1a1a1a', lineHeight: '1.3',  letterSpacing: '0' },
+  h4: { fontFamily: 'inherit', fontSize: '1.15rem', fontWeight: '600', color: '#1a1a1a', lineHeight: '1.35', letterSpacing: '0' },
+  h5: { fontFamily: 'inherit', fontSize: '1rem',    fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
+  h6: { fontFamily: 'inherit', fontSize: '0.9rem',  fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
+  p:  { fontFamily: 'inherit', fontSize: '0.95rem', fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
   a:  { fontFamily: 'inherit', fontSize: 'inherit', fontWeight: '500', color: '#2563eb', lineHeight: 'inherit', letterSpacing: '0' },
 }
 
@@ -1392,12 +1416,18 @@ function generateDesignSystemCSS(ds: DesignSystem): string {
       if (!systemFonts.has(c.fontFamily)) googleFonts.add(c.fontFamily)
       props.push(`font-family:'${c.fontFamily}',sans-serif`)
     }
-    if (c.fontSize   && c.fontSize   !== 'inherit') props.push(`font-size:${c.fontSize}`)
+    // For links, skip fontSize so they inherit from context; only set color/weight
+    if (tag !== 'a') {
+      if (c.fontSize   && c.fontSize   !== 'inherit') props.push(`font-size:${c.fontSize}`)
+    }
     if (c.fontWeight && c.fontWeight !== 'inherit') props.push(`font-weight:${c.fontWeight}`)
     if (c.color      && c.color      !== 'inherit') props.push(`color:${c.color}`)
-    if (c.lineHeight && c.lineHeight !== 'inherit') props.push(`line-height:${c.lineHeight}`)
-    if (c.letterSpacing && c.letterSpacing !== '0' && c.letterSpacing !== 'inherit') props.push(`letter-spacing:${c.letterSpacing}`)
-    return props.length ? `${tag}{${props.join(';')}}` : ''
+    if (tag !== 'a') {
+      if (c.lineHeight && c.lineHeight !== 'inherit') props.push(`line-height:${c.lineHeight}`)
+      if (c.letterSpacing && c.letterSpacing !== '0' && c.letterSpacing !== 'inherit') props.push(`letter-spacing:${c.letterSpacing}`)
+    }
+    // Wrap with :where() so specificity is 0 and page-level class selectors always win
+    return props.length ? `:where(${tag}){${props.join(';')}}` : ''
   }
   const tags = ['h1','h2','h3','h4','h5','h6','p','a'] as const
   const cssRules = tags.map(t => rule(t, ds[t])).filter(Boolean).join('\n')

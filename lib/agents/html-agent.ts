@@ -816,6 +816,10 @@ QUALITÀ HTML — REGOLE ANTI-REGRESSIONE (errori comuni da NON ripetere):
 - ❌ MAI aggiungere script di listener (scroll, messaggi, ecc.) che sono già iniettati dal sistema — genera solo il contenuto HTML/CSS della sezione, non ripetere script infrastrutturali.
 - ✅ Gerarchia heading corretta: un solo H1 per pagina, poi H2, poi H3 — senza salti di livello.
 - ✅ Quando modifichi CSS, rimuovi le dichiarazioni precedenti dello stesso attributo nello stesso selettore.
+- ❌ MAI hardcodare URL assoluti nei tag <link rel="canonical"> o <meta property="og:url"> — usa SEMPRE il placeholder {{site_url}}/SLUG (es: href="{{site_url}}/precios"). Il sistema lo sostituisce con l'URL reale a runtime. URL hardcodati tipo "https://sito.com/preview/..." vengono indicizzati da Google in modo errato.
+- ❌ MAI usare tipi Schema.org inesistenti in JSON-LD. Tipi validi comuni: WebPage, WebSite, Organization, SoftwareApplication, Product, Offer, FAQPage, BreadcrumbList, Article, BlogPosting. Evita tipi inventati come "PriceComponent", "FeaturePage", "SaasApp".
+- ❌ MAI nidificare elementi block (<div>, <section>, <ul>, <table>) dentro <p> — HTML invalido che i browser gestiscono in modo imprevedibile. Spezza il <p> in elementi separati o usa <div> come contenitore.
+- ✅ Mobile menu: usa SEMPRE la classe CSS "open" (non "active") per il toggle del menu mobile — sia nel CSS (.mobile-menu.open { display: flex; }) sia nello script JavaScript (classList.toggle('open')). Questo mantiene coerenza tra tutte le pagine del sito.
 
 REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
