@@ -140,12 +140,25 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-excerpt{font-size:1.1rem !important;color:#555 !important;line-height:1.6 !important;margin:0 !important;font-weight:400 !important}
   .post-featured-img{width:100% !important;border-radius:14px !important;margin:1.75rem 0 2.25rem !important;max-height:460px !important;object-fit:cover !important;display:block !important}
   .blog-post-content{font-size:1.05rem;line-height:1.8;color:#1a1a1a}
+  .blog-post-content h1{font-size:2rem !important;font-weight:800 !important;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.25 !important}
   .blog-post-content h2{font-size:1.6rem !important;font-weight:700 !important;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.3 !important}
   .blog-post-content h3{font-size:1.25rem !important;font-weight:600 !important;margin:2rem 0 .6rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.35 !important}
   .blog-post-content h4{font-size:1.05rem !important;font-weight:600 !important;margin:1.5rem 0 .5rem !important;color:#1a1a1a !important}
   .blog-post-content p{margin:0 0 1.25rem !important}
   .blog-post-content ul,.blog-post-content ol{margin:0 0 1.35rem !important;padding-left:1.5rem !important}
   .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7}
+  /* Headings inside list items must look like normal list text — not giant titles.
+     This covers both intentional nesting and the browser artefact where
+     execCommand('insertUnorderedList') on selected heading text creates
+     <ul><li><h1>...</h1></li></ul>. JS strips them on creation, but this CSS
+     is a safety net for existing content already saved with that structure. */
+  .blog-post-content li h1,.blog-post-content li h2,
+  .blog-post-content li h3,.blog-post-content li h4,
+  .blog-post-content li h5,.blog-post-content li h6{
+    font-size:inherit !important;font-weight:inherit !important;
+    line-height:1.7 !important;margin:0 !important;padding:0 !important;
+    display:inline !important;
+  }
   .blog-post-content img{max-width:100% !important;height:auto !important;border-radius:10px !important;margin:1.75rem 0 !important;display:block}
   .blog-post-content a{color:var(--color-accent,#2563eb) !important;text-decoration:underline}
   .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.75rem 0;padding:.85rem 1.35rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}
