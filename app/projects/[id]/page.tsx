@@ -1253,7 +1253,8 @@ function removeBlogLinkFromNav(pages: Page[]): Page[] {
 function reorderNavLinks(pages: Page[]): Page[] {
   if (typeof window === 'undefined' || pages.length <= 1) return pages
   const navRe = /<nav[\s\S]*?<\/nav>/i
-  const srcPage = pages.find(p => navRe.test(p.html))
+  // Always prefer the home page as the nav source — it's the single source of truth.
+  const srcPage = pages.find(p => p.slug === 'home' && navRe.test(p.html)) ?? pages.find(p => navRe.test(p.html))
   if (!srcPage) return pages
   const navMatch = srcPage.html.match(navRe)
   if (!navMatch) return pages
@@ -1914,9 +1915,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const newHtml = e.data.html as string
       // Keep editBaseHtmlRef in sync so AI-change detection doesn't false-positive
       editBaseHtmlRef.current = newHtml
-      const newPages = latestPagesRef.current.map(p =>
+      let newPages = latestPagesRef.current.map(p =>
         p.slug === activePage.slug ? { ...p, html: newHtml } : p
       )
+      // If the user edited the nav on a non-home page, propagate that nav change to home
+      // so it becomes the shared source of truth. Without this, the save would extract
+      // home's unchanged nav and revert the edit on the next render.
+      if (activePage.slug !== 'home' && sharedNavHtmlRef.current) {
+        const newNavMatch = newHtml.match(/<nav[\s\S]*?<\/nav>/i)
+        if (newNavMatch && newNavMatch[0] !== sharedNavHtmlRef.current) {
+          const newNav = newNavMatch[0]
+          newPages = newPages.map(p => {
+            if (p.slug !== 'home' || !/<nav[\s\S]*?<\/nav>/i.test(p.html)) return p
+            return { ...p, html: p.html.replace(/<nav[\s\S]*?<\/nav>/i, newNav) }
+          })
+        }
+      }
       setPages(newPages)
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
       autoSaveTimer.current = setTimeout(async () => {
@@ -3595,6 +3609,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           site_config: await buildSiteConfig(pages, [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }], mediaMeta),
           updated_at: new Date().toISOString(),
         }).eq('id', id)
+        // Mark the run as html_changed: false so the back-office shows the right status
+        if (result._runId && chatToken) {
+          fetch(`/api/runs/${result._runId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chatToken}` },
+            body: JSON.stringify({ html_changed: false }),
+          }).catch(() => null)
+        }
         setLoading(false)
         return
       }
@@ -3832,6 +3854,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
     void createVersion(summary.slice(0, 60).replace(/^[✨✏️➕🗑🔍🗺️🎨✍️]\s*/, ''), newPages)
     await saveState(finalMessages, newPages)
+    // Confirm html_changed: true for edit_page runs where changes were actually applied.
+    // (Server set it based on ops/edits count; client is the authoritative source.)
+    if (result._runId && chatToken && result.tool === 'edit_page') {
+      fetch(`/api/runs/${result._runId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${chatToken}` },
+        body: JSON.stringify({ html_changed: true }),
+      }).catch(() => null)
+    }
     setLoading(false)
   }
   // Wire the ref so handleInsertComponent can call handleSend without circular deps

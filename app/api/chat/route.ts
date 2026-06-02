@@ -565,6 +565,16 @@ export async function POST(req: NextRequest) {
 
       const htmlUsage = result.usage as Usage
       consumeUsage(htmlUsage)
+
+      // Server-side html_changed detection: if edit_page returned zero ops AND zero edits,
+      // the agent found nothing to apply — mark immediately. The client will patch this
+      // field again once it actually applies the edits and compares HTML.
+      const opsCount = (result.input?.operations as unknown[])?.length ?? 0
+      const editsCount = (result.input?.edits as unknown[])?.length ?? 0
+      const serverHtmlChanged = result.tool === 'edit_page' && opsCount === 0 && editsCount === 0
+        ? false
+        : undefined // unknown until client applies edits
+
       if (runId) {
         completeRun(runId, {
           output_summary: `html: ${pages?.length ?? 0} pagine`,
@@ -574,16 +584,16 @@ export async function POST(req: NextRequest) {
           duration_ms: Date.now() - runStartTime,
           output_data: {
             tool: result.tool ?? 'edit_page',
-            // add_page uses result.input.slug; edit_page uses result.input.pageSlug
             page_slug: (result.input?.pageSlug ?? result.input?.slug) as string ?? undefined,
-            operations_count: (result.input?.operations as unknown[])?.length,
-            edits_count: (result.input?.edits as unknown[])?.length,
+            operations_count: opsCount,
+            edits_count: editsCount,
             summary: result.input?.summary as string ?? undefined,
             pages_affected: result.tool === 'create_site'
               ? ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug)
               : (result.input?.pageSlug ?? result.input?.slug)
                 ? [(result.input?.pageSlug ?? result.input?.slug) as string]
                 : undefined,
+            ...(serverHtmlChanged !== undefined ? { html_changed: serverHtmlChanged } : {}),
           },
         }).catch(() => null)
       }
@@ -599,7 +609,8 @@ export async function POST(req: NextRequest) {
         }
       }).catch(() => null)
 
-      return { ...result, agent: 'html' }
+      // Include _runId so the client can patch html_changed once it applies the edits
+      return { ...result, agent: 'html', _runId: runId || undefined }
     }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
 
   } catch (err) {

@@ -172,6 +172,9 @@ export default function RunDetailPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
         <Badge label={run.agent_type} color={agentColor(run.agent_type)} />
         <Badge label={run.status} color={statusColor(run.status)} />
+        {run.status === 'success' && (run.output_data as {html_changed?: boolean} | null)?.html_changed === false && (
+          <Badge label="nessuna modifica al sito" color={C.yellow} />
+        )}
         <span style={{ fontSize: '0.85rem', color: C.textMuted, marginLeft: '4px' }}>
           {formatFull(run.created_at)}
         </span>
@@ -196,6 +199,22 @@ export default function RunDetailPage() {
         ? <TextBlock label={t('runs.error' as const, language as any)} content={run.error_message} isError />
         : <TextBlock label={t('runs.output' as const, language as any)} content={run.output_summary} />
       }
+
+      {/* html_changed indicator */}
+      {run.status === 'success' && run.output_data && (run.output_data as {html_changed?: boolean}).html_changed !== undefined && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          padding: '8px 14px', borderRadius: '8px', marginBottom: '16px',
+          background: (run.output_data as {html_changed?: boolean}).html_changed === false ? C.yellow + '15' : C.green + '15',
+          border: `1px solid ${(run.output_data as {html_changed?: boolean}).html_changed === false ? C.yellow : C.green}40`,
+          fontSize: '0.82rem', fontWeight: 600,
+          color: (run.output_data as {html_changed?: boolean}).html_changed === false ? C.yellow : C.green,
+        }}>
+          {(run.output_data as {html_changed?: boolean}).html_changed === false
+            ? '○ Nessuna modifica applicata al sito'
+            : '✓ Modifiche applicate al sito'}
+        </div>
+      )}
 
       {/* Footer meta */}
       <div style={{

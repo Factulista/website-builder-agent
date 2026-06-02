@@ -156,6 +156,26 @@ export async function completeRun(
     .eq('id', runId)
 }
 
+/**
+ * Patches html_changed inside output_data once the client has applied the
+ * agent's edits and knows whether the page HTML actually changed.
+ * Called fire-and-forget — never blocks the user flow.
+ */
+export async function updateRunHtmlChanged(runId: string, htmlChanged: boolean): Promise<void> {
+  const supabase = getClient()
+  // Read current output_data first so we don't clobber existing fields
+  const { data } = await supabase
+    .from('agent_runs')
+    .select('output_data')
+    .eq('id', runId)
+    .single()
+  const existing = (data?.output_data ?? {}) as Record<string, unknown>
+  await supabase
+    .from('agent_runs')
+    .update({ output_data: { ...existing, html_changed: htmlChanged } })
+    .eq('id', runId)
+}
+
 export async function failRun(
   runId: string,
   opts: {

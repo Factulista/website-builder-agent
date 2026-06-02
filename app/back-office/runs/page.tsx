@@ -568,7 +568,12 @@ CREATE INDEX agent_runs_project_id_idx ON agent_runs (project_id);`}</pre>
                     {run.project_id ? run.project_id.slice(0, 8) : '—'}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
-                    <Badge label={run.status} color={statusColor(run.status)} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <Badge label={run.status} color={statusColor(run.status)} />
+                      {run.status === 'success' && (run.output_data as {html_changed?: boolean} | null)?.html_changed === false && (
+                        <Badge label="nessuna modifica" color={C.yellow} />
+                      )}
+                    </div>
                   </td>
                   <td style={{ padding: '10px 14px', color: C.textMuted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                     {formatTokens(run.input_tokens + run.output_tokens)}
