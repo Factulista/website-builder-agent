@@ -144,9 +144,12 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-content h2{font-size:1.6rem !important;font-weight:700 !important;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.3 !important}
   .blog-post-content h3{font-size:1.25rem !important;font-weight:600 !important;margin:2rem 0 .6rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.35 !important}
   .blog-post-content h4{font-size:1.05rem !important;font-weight:600 !important;margin:1.5rem 0 .5rem !important;color:#1a1a1a !important}
-  .blog-post-content p{margin:0 0 1.25rem !important}
+  /* font-size + line-height on p with !important overrides any inline style="font-size:Xpt"
+     baked in from old editing sessions. Span-level overrides (from the font size picker)
+     still work because they target a child <span>, not the <p> itself. */
+  .blog-post-content p{font-size:1rem !important;line-height:1.7 !important;margin:0 0 1.25rem !important;color:#1a1a1a}
   .blog-post-content ul,.blog-post-content ol{margin:0 0 1.35rem !important;padding-left:1.5rem !important}
-  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7;font-size:1rem}
+  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7 !important;font-size:1rem !important;color:#1a1a1a}
   /* When browsers apply insertUnorderedList/insertOrderedList on block content
      they often wrap it as <li><p>text</p></li> or <li><h1>text</h1></li>.
      JS unwraps these on creation, but this CSS is a safety net for saved content.
