@@ -4151,6 +4151,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
     await loadMedia()
     insertMediaImageUrl(publicUrl)
+    // Auto-generate SEO metadata (alt, title, caption, description) for newly uploaded image
+    generateAndSaveImageMeta(path, publicUrl)
   }
 
   return (
