@@ -591,21 +591,25 @@ export const COMPONENT_REGISTRY: Component[] = [
   <p class="comp-cf-sub">Compila il modulo e ti risponderemo entro 24 ore.</p>
   <form class="comp-cf-form" novalidate>
     <div class="comp-cf-group">
-      <label class="comp-cf-label" for="comp-cf-name">Nome *</label>
-      <input class="comp-cf-input" type="text" id="comp-cf-name" name="name" placeholder="Il tuo nome" autocomplete="name">
-      <span class="comp-cf-error" id="comp-cf-name-err">Inserisci il tuo nome.</span>
+      <label class="comp-cf-label" for="comp-cf-name">Nombre *</label>
+      <input class="comp-cf-input" type="text" id="comp-cf-name" name="nombre" placeholder="Tu nombre" autocomplete="name">
+      <span class="comp-cf-error" id="comp-cf-name-err">Introduce tu nombre.</span>
     </div>
     <div class="comp-cf-group">
       <label class="comp-cf-label" for="comp-cf-email">Email *</label>
-      <input class="comp-cf-input" type="email" id="comp-cf-email" name="email" placeholder="tua@email.com" autocomplete="email">
-      <span class="comp-cf-error" id="comp-cf-email-err">Inserisci un'email valida.</span>
+      <input class="comp-cf-input" type="email" id="comp-cf-email" name="email" placeholder="tu@email.com" autocomplete="email">
+      <span class="comp-cf-error" id="comp-cf-email-err">Introduce un email válido.</span>
     </div>
     <div class="comp-cf-group">
-      <label class="comp-cf-label" for="comp-cf-msg">Messaggio *</label>
-      <textarea class="comp-cf-textarea" id="comp-cf-msg" name="message" placeholder="Come possiamo aiutarti?"></textarea>
-      <span class="comp-cf-error" id="comp-cf-msg-err">Scrivi un messaggio.</span>
+      <label class="comp-cf-label" for="comp-cf-company">Empresa</label>
+      <input class="comp-cf-input" type="text" id="comp-cf-company" name="empresa" placeholder="Tu empresa (opcional)" autocomplete="organization">
     </div>
-    <button class="comp-cf-btn" type="submit">Invia messaggio</button>
+    <div class="comp-cf-group">
+      <label class="comp-cf-label" for="comp-cf-msg">Mensaje *</label>
+      <textarea class="comp-cf-textarea" id="comp-cf-msg" name="mensaje" placeholder="¿En qué podemos ayudarte?"></textarea>
+      <span class="comp-cf-error" id="comp-cf-msg-err">Escribe tu mensaje.</span>
+    </div>
+    <button class="comp-cf-btn" type="submit">Enviar mensaje</button>
     <div class="comp-cf-status" id="comp-cf-status"></div>
   </form>
   <script>
@@ -629,12 +633,12 @@ export const COMPONENT_REGISTRY: Component[] = [
         if(!msg.value.trim()){msgErr.style.display='block';valid=false;}
         if(!valid)return;
         var btn=form.querySelector('.comp-cf-btn');
-        btn.disabled=true; btn.textContent='Invio in corso…';
-        fetch('/api/forms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.value,email:email.value,message:msg.value})})
+        btn.disabled=true; btn.textContent='Enviando…';
+        fetch('/api/forms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:'contacto',nombre:name.value,email:email.value,empresa:document.getElementById('comp-cf-company').value,mensaje:msg.value})})
           .then(function(r){return r.ok?r.json():Promise.reject(r.status);})
-          .then(function(){status.className='comp-cf-status success';status.textContent='Messaggio inviato! Ti risponderemo presto.';form.reset();})
-          .catch(function(){status.className='comp-cf-status error';status.textContent='Errore nell\'invio. Riprova più tardi.';})
-          .finally(function(){btn.disabled=false;btn.textContent='Invia messaggio';});
+          .then(function(){status.className='comp-cf-status success';status.textContent='¡Mensaje enviado! Te responderemos pronto.';form.reset();})
+          .catch(function(){status.className='comp-cf-status error';status.textContent='Error al enviar. Inténtalo de nuevo.';})
+          .finally(function(){btn.disabled=false;btn.textContent='Enviar mensaje';});
       });
     })();
   </script>
