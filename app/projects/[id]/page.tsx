@@ -1776,6 +1776,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestPagesRef = useRef<Page[]>([])
+  // Track slugs explicitly deleted in this session so the merge doesn't bring them back
+  const deletedSlugsRef = useRef<Set<string>>(new Set())
   const editIframeRef = useRef<HTMLIFrameElement>(null)
   const editBaseHtmlRef = useRef<string>('')
 
@@ -2663,7 +2665,37 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return false
     }
     const med = newMedia ?? mediaMeta
-    const merged = await buildSiteConfig(newPages, newMessages, med)
+
+    // ── Collaborative merge ────────────────────────────────────────────────────
+    // Two users on the same account can work concurrently. Without merging,
+    // whoever saves last overwrites the other's new pages.
+    // Strategy: read current DB state → keep any pages that exist in DB but NOT
+    // in newPages (added by another session), except those explicitly deleted
+    // in this session (tracked in deletedSlugsRef).
+    let pagesToSave = newPages
+    try {
+      const { data: fresh } = await supabase
+        .from('projects')
+        .select('site_config')
+        .eq('id', id)
+        .single()
+      const dbPages = ((fresh?.site_config as Record<string, unknown>)?.pages ?? []) as Page[]
+      if (Array.isArray(dbPages) && dbPages.length > 0) {
+        const ourSlugs = new Set(newPages.map(p => p.slug))
+        const deleted  = deletedSlugsRef.current
+        // Pages in DB that we've never seen in this session → preserve them
+        const extraPages = dbPages.filter(p => !ourSlugs.has(p.slug) && !deleted.has(p.slug))
+        if (extraPages.length > 0) {
+          console.log('[saveState] merging', extraPages.length, 'page(s) added by another session:', extraPages.map(p => p.slug))
+          pagesToSave = [...newPages, ...extraPages]
+        }
+      }
+    } catch (mergeErr) {
+      console.warn('[saveState] merge read failed (non-fatal):', mergeErr)
+    }
+    // ── End collaborative merge ────────────────────────────────────────────────
+
+    const merged = await buildSiteConfig(pagesToSave, newMessages, med)
 
     // Retry up to 3 times with exponential back-off (1s, 2s) so transient
     // Supabase timeouts don't silently lose messages.
@@ -3835,6 +3867,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         newPages = syncNavigation(filtered, 'delete', targetSlug)
         summary = `🗑 ${result.input.summary ?? "fatto"}`
         if (activeSlug === targetSlug) newActiveSlug = newPages[0]?.slug || 'home'
+        // Track deleted slug so the collaborative merge doesn't restore it
+        deletedSlugsRef.current.add(targetSlug)
       }
     } else if (result.tool === 'update_seo') {
       const rawSeoPages = result.input.pages
@@ -4052,6 +4086,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       variant: 'danger',
     })
     if (!ok) return
+    deletedSlugsRef.current.add(slug) // prevent merge from restoring it
     const newPages = pages.filter(p => p.slug !== slug)
     setPages(newPages)
     if (activeSlug === slug) setActiveSlug(newPages[0]?.slug || 'home')
