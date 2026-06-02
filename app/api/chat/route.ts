@@ -6,7 +6,7 @@ import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-
 import { runClarifier } from '../../../lib/agents/clarifier'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
-import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
+import { startRun, completeRun, failRun, noActionRun } from '../../../lib/agents/run-logger'
 import { findComponentByKeywords } from '../../../lib/components/index'
 import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
@@ -566,36 +566,51 @@ export async function POST(req: NextRequest) {
       const htmlUsage = result.usage as Usage
       consumeUsage(htmlUsage)
 
-      // Server-side html_changed detection: if edit_page returned zero ops AND zero edits,
-      // the agent found nothing to apply — mark immediately. The client will patch this
-      // field again once it actually applies the edits and compares HTML.
-      const opsCount = (result.input?.operations as unknown[])?.length ?? 0
-      const editsCount = (result.input?.edits as unknown[])?.length ?? 0
-      const serverHtmlChanged = result.tool === 'edit_page' && opsCount === 0 && editsCount === 0
-        ? false
-        : undefined // unknown until client applies edits
+      // Server-side html_changed detection: if edit_page returned zero ops AND zero edits
+      // AND zero typed_edits → the agent found nothing to apply (element not found, text mismatch).
+      const opsCount        = (result.input?.operations  as unknown[])?.length ?? 0
+      const editsCount      = (result.input?.edits        as unknown[])?.length ?? 0
+      const typedEditsCount = (result.input?.typed_edits  as unknown[])?.length ?? 0
+      const isNoAction = result.tool === 'edit_page' && opsCount === 0 && editsCount === 0 && typedEditsCount === 0
+      const serverHtmlChanged = isNoAction ? false : undefined // unknown until client applies edits
 
       if (runId) {
-        completeRun(runId, {
-          output_summary: `html: ${pages?.length ?? 0} pagine`,
-          input_tokens: htmlUsage?.input_tokens ?? 0,
-          output_tokens: htmlUsage?.output_tokens ?? 0,
-          cache_read_tokens: htmlUsage?.cache_read_input_tokens ?? 0,
-          duration_ms: Date.now() - runStartTime,
-          output_data: {
-            tool: result.tool ?? 'edit_page',
-            page_slug: (result.input?.pageSlug ?? result.input?.slug) as string ?? undefined,
-            operations_count: opsCount,
-            edits_count: editsCount,
-            summary: result.input?.summary as string ?? undefined,
-            pages_affected: result.tool === 'create_site'
-              ? ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug)
-              : (result.input?.pageSlug ?? result.input?.slug)
-                ? [(result.input?.pageSlug ?? result.input?.slug) as string]
-                : undefined,
-            ...(serverHtmlChanged !== undefined ? { html_changed: serverHtmlChanged } : {}),
-          },
-        }).catch(() => null)
+        if (isNoAction) {
+          // Mark as no_action so back-office stats are accurate
+          noActionRun(runId, {
+            reason: `Elemento non trovato nella pagina "${result.input?.pageSlug ?? ''}". Nessuna modifica applicata.`,
+            input_tokens: htmlUsage?.input_tokens ?? 0,
+            output_tokens: htmlUsage?.output_tokens ?? 0,
+            cache_read_tokens: htmlUsage?.cache_read_input_tokens ?? 0,
+            duration_ms: Date.now() - runStartTime,
+          }).catch(() => null)
+          // Inject a clear feedback message so the client shows it in chat
+          result.input = {
+            ...(result.input as Record<string, unknown> ?? {}),
+            summary: `⚠️ Non ho trovato l'elemento da modificare. Prova a descrivere meglio il testo esatto del bottone/elemento o indica la sezione della pagina.`,
+          }
+        } else {
+          completeRun(runId, {
+            output_summary: `html: ${pages?.length ?? 0} pagine`,
+            input_tokens: htmlUsage?.input_tokens ?? 0,
+            output_tokens: htmlUsage?.output_tokens ?? 0,
+            cache_read_tokens: htmlUsage?.cache_read_input_tokens ?? 0,
+            duration_ms: Date.now() - runStartTime,
+            output_data: {
+              tool: result.tool ?? 'edit_page',
+              page_slug: (result.input?.pageSlug ?? result.input?.slug) as string ?? undefined,
+              operations_count: opsCount,
+              edits_count: editsCount,
+              summary: result.input?.summary as string ?? undefined,
+              pages_affected: result.tool === 'create_site'
+                ? ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug)
+                : (result.input?.pageSlug ?? result.input?.slug)
+                  ? [(result.input?.pageSlug ?? result.input?.slug) as string]
+                  : undefined,
+              ...(serverHtmlChanged !== undefined ? { html_changed: serverHtmlChanged } : {}),
+            },
+          }).catch(() => null)
+        }
       }
 
       // Run memory agent in background (non-blocking)

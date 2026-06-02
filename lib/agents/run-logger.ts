@@ -129,6 +129,36 @@ export async function startRun(opts: {
   return data.id as string
 }
 
+/**
+ * Marks a run as no_action — the agent was called and responded,
+ * but produced zero operations/edits (element not found, button text mismatch, etc).
+ * Distinct from 'success' (made changes) and 'failed' (error).
+ */
+export async function noActionRun(
+  runId: string,
+  opts: {
+    reason?: string
+    input_tokens?: number
+    output_tokens?: number
+    cache_read_tokens?: number
+    duration_ms?: number
+  }
+): Promise<void> {
+  const supabase = getClient()
+  await supabase
+    .from('agent_runs')
+    .update({
+      status: 'no_action',
+      output_summary: opts.reason ?? 'Nessuna modifica — elemento non trovato o testo non corrispondente',
+      input_tokens: opts.input_tokens ?? 0,
+      output_tokens: opts.output_tokens ?? 0,
+      cache_read_tokens: opts.cache_read_tokens ?? 0,
+      duration_ms: opts.duration_ms ?? null,
+      completed_at: new Date().toISOString(),
+    })
+    .eq('id', runId)
+}
+
 export async function completeRun(
   runId: string,
   opts: {

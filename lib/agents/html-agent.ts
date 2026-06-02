@@ -965,6 +965,14 @@ REGOLE:
 
   const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
+🔍 REGOLA TESTO ESATTO — PRIMA DI MODIFICARE UN ELEMENTO:
+Se l'utente chiede di modificare un bottone, link o testo specifico (es: "il bottone Activar PRO") e non trovi quel testo ESATTO nell'HTML:
+1. NON generare un edit vuoto (0 operations, 0 edits) — causa confusione all'utente
+2. Cerca varianti simili nell'HTML (maiuscole/minuscole, spazi extra, testo parziale)
+3. Se trovi una variante simile → applicala
+4. Se non trovi nulla di simile → usa typed_edits con "attr" o "text" specificando il selettore CSS invece del testo
+5. Solo come ultima risorsa: usa il campo summary per spiegare che non hai trovato l'elemento e chiedi il testo esatto
+
 🚫 REGOLA ANTI-REGRESSIONE — STILE INTOCCABILE SALVO RICHIESTA ESPLICITA:
 
 Quando l'utente chiede di aggiungere/modificare un campo form, un bottone, un link, o qualsiasi elemento HTML:
