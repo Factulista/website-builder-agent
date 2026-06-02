@@ -88,31 +88,35 @@ function buildUserConfirmation(payload: FormPayload, customMsg?: string): { subj
  * by matching the host against custom_domain or the staging subdomain slug.
  */
 async function detectProjectFromRequest(req: NextRequest): Promise<Record<string, unknown> | null> {
-  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? ''
-  if (!origin) return null
+  // Also accept projectId in body for explicit matching
+  const bodyHint = (req as unknown as { _projectId?: string })._projectId
 
-  let host: string
+  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? ''
+  if (!origin && !bodyHint) return null
+
+  let host: string = ''
   try {
-    host = new URL(origin).hostname
+    host = origin ? new URL(origin).hostname : ''
   } catch {
     return null
   }
 
   if (!host) return null
 
-  // 1. Try to match by custom_domain
+  // Normalize: try both www.host and host without www
+  const wwwHost    = host.startsWith('www.') ? host : `www.${host}`
+  const bareHost   = host.replace(/^www\./, '')
+
+  // Match by custom_domain (try exact, www-variant, and bare variant)
   const { data: byDomain } = await supabase
     .from('projects')
     .select('site_config')
-    .eq('custom_domain', host)
+    .in('custom_domain', [host, wwwHost, bareHost])
+    .is('deleted_at', null)
+    .limit(1)
     .maybeSingle()
 
   if (byDomain?.site_config) return byDomain.site_config as Record<string, unknown>
-
-  // 2. Try to match by staging subdomain — host pattern: myweb.<root>/<slug> or /<slug> path
-  // For staging the slug is a path segment, not a subdomain — skip subdomain matching here.
-  // Callers on the same origin (Next.js preview) would match host === window.location.hostname
-  // which is not a custom domain, so there's nothing else to match without a projectSlug hint.
 
   return null
 }
@@ -207,13 +211,28 @@ export async function POST(req: NextRequest) {
   let projectConfirmEmailMsg = ''
   let projectRedirectUrl = ''
   try {
-    const siteConfig = await detectProjectFromRequest(req)
+    let siteConfig = await detectProjectFromRequest(req)
+
+    // Fallback: if project_id is passed in body, look up directly
+    if (!siteConfig && body.project_id) {
+      const { data: byId } = await supabase
+        .from('projects')
+        .select('site_config')
+        .eq('id', body.project_id)
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (byId?.site_config) siteConfig = byId.site_config as Record<string, unknown>
+    }
+
     if (siteConfig) {
       const cfConfig = ((siteConfig as any)?.components_config?.contact_form ?? {}) as Record<string, string>
+      console.log(`[forms] project config found — redirect: "${cfConfig.redirect_url ?? ''}", admin: "${cfConfig.admin_email ?? ''}"`)
       if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
       if (cfConfig.confirm_message) projectConfirmMsg = cfConfig.confirm_message
       if (cfConfig.confirm_email_message) projectConfirmEmailMsg = cfConfig.confirm_email_message
       if (cfConfig.redirect_url) projectRedirectUrl = cfConfig.redirect_url
+    } else {
+      console.warn(`[forms] project not found for origin: ${origin}`)
     }
   } catch { /* non-fatal */ }
 
