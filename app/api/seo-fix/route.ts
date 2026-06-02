@@ -223,6 +223,33 @@ function applyHtmlFix(
       return html
     }
 
+    case 'viewport': {
+      const tag = '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+      html = html.replace(/<meta\b[^>]*name=["']viewport["'][^>]*>\n?/gi, '')
+      return html.replace(/<head[^>]*>/i, (m) => `${m}\n  ${tag}`)
+    }
+
+    case 'doctype': {
+      if (!/^\s*<!doctype\s+html\s*>/i.test(html.trimStart())) {
+        return '<!DOCTYPE html>\n' + html.replace(/^\s*<!doctype[^>]*>\n?/i, '')
+      }
+      return html
+    }
+
+    case 'obsolete-tags': {
+      // Use LLM-generated fixed HTML if available; otherwise do deterministic regex replace
+      if (generated && generated.trim().length > 100) return generated
+      return html
+        .replace(/<strike(\s[^>]*)?>/gi, '<s$1>')
+        .replace(/<\/strike>/gi, '</s>')
+        .replace(/<font(\s[^>]*)?>/gi, '<span$1>')
+        .replace(/<\/font>/gi, '</span>')
+        .replace(/<center(\s[^>]*)?>/gi, '<div$1 style="text-align:center">')
+        .replace(/<\/center>/gi, '</div>')
+        .replace(/<tt(\s[^>]*)?>/gi, '<code$1>')
+        .replace(/<\/tt>/gi, '</code>')
+    }
+
     // ── SEO-owner: LLM generates content, we inject it deterministically ─────
 
     case 'title': {
@@ -648,6 +675,25 @@ Requisiti:
 Lingua contenuto: ${resolvedLang} — scrivi i testi in questa lingua.
 Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO i tag, nient'altro.`,
               apiKey, context, tokens)
+            break
+          }
+
+          case 'viewport':
+            generated = '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+            break
+
+          case 'doctype':
+            // handled by applyHtmlFix — just signal fix needed
+            generated = '<!DOCTYPE html>'
+            break
+
+          case 'obsolete-tags': {
+            const found = (data?.found as string[]) ?? []
+            generated = await callSeoAgent(
+              `Nell'HTML della pagina "${targetPage.name}" sono presenti ${found.length} tag obsoleti: ${found.join(', ')}.
+Sostituiscili con i loro equivalenti HTML5: <strike>/<s> → <s>, <font> → <span style="...">, <center> → <div style="text-align:center">, <tt> → <code>, <big> → <span style="font-size:larger">.
+HTML completo:\n${targetPage.html.slice(0, 8000)}
+Restituisci SOLO l'HTML completo corretto, senza commenti.`, apiKey, context, tokens)
             break
           }
 

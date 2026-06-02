@@ -22,6 +22,10 @@ export type CheckId =
   | 'schema-organization'
   | 'schema-faq'
   | 'broken-links'
+  | 'obsolete-tags'
+  | 'favicon'
+  | 'viewport'
+  | 'doctype'
 
 export type CheckGroup = 'meta' | 'structure' | 'images' | 'performance' | 'schema'
 export type FixOwner = 'html' | 'seo'
@@ -206,6 +210,48 @@ export const SEO_CHECKS: SeoCheck[] = [
     scoreType: 'binary',
     weight: 5,
     fixable: false,
+  },
+  // ── HTML Quality ─────────────────────────────────────────────────────────────
+  {
+    id: 'obsolete-tags',
+    label: 'Nessun tag HTML obsoleto',
+    description: 'Tag come <strike>, <font>, <center>, <tt> sono obsoleti in HTML5. Abbassano il punteggio SEO negli strumenti di analisi.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'html',
+    scoreType: 'binary',
+    weight: 4,
+  },
+  {
+    id: 'favicon',
+    label: 'Favicon presente',
+    description: '<link rel="icon"> migliora il riconoscimento del brand nella SERP e nelle tab del browser.',
+    group: 'meta',
+    groupLabel: '📋 Meta & Title',
+    fixOwner: 'html',
+    scoreType: 'binary',
+    weight: 2,
+    fixable: false,
+  },
+  {
+    id: 'viewport',
+    label: 'Meta viewport ottimizzato',
+    description: '<meta name="viewport"> è obbligatorio per la corretta visualizzazione mobile. Google penalizza pagine non mobile-friendly.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'html',
+    scoreType: 'binary',
+    weight: 3,
+  },
+  {
+    id: 'doctype',
+    label: 'DOCTYPE HTML5',
+    description: '<!DOCTYPE html> deve essere la prima riga della pagina per una corretta interpretazione da parte dei browser e crawler.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'html',
+    scoreType: 'binary',
+    weight: 2,
   },
   // ── Schema.org (10 pts total) ─────────────────────────────────────────────────
   {

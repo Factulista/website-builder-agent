@@ -397,6 +397,48 @@ function checkBrokenLinks(html: string, allSlugs: Set<string>): CheckResult {
   }
 }
 
+function checkObsoleteTags(html: string): CheckResult {
+  const OBSOLETE = ['strike','font','center','tt','big','basefont','applet','acronym','isindex','listing','plaintext','xmp','marquee','blink','spacer']
+  const found: string[] = []
+  for (const tag of OBSOLETE) {
+    if (new RegExp(`<${tag}[\\s>]`, 'i').test(html)) found.push(`<${tag}>`)
+  }
+  if (found.length === 0) {
+    return { checkId: 'obsolete-tags', score: 100, status: 'pass', detail: 'Nessun tag obsoleto trovato ✓', data: { found: [] } }
+  }
+  return {
+    checkId: 'obsolete-tags', score: 0, status: 'fail',
+    detail: `${found.length} tag obsolet${found.length > 1 ? 'i' : 'o'}: ${found.join(', ')}`,
+    data: { found },
+  }
+}
+
+function checkFavicon(html: string): CheckResult {
+  const hasFavicon = /<link[^>]+(rel=["'](?:icon|shortcut icon)["'][^>]*|[^>]*rel=["'](?:icon|shortcut icon)["'])[^>]*>/i.test(html)
+  if (hasFavicon) return { checkId: 'favicon', score: 100, status: 'pass', detail: 'Favicon configurata ✓', data: {} }
+  return { checkId: 'favicon', score: 0, status: 'fail', detail: 'Favicon mancante — aggiungila dalla sezione Media', data: { missing: true } }
+}
+
+function checkViewport(html: string): CheckResult {
+  const m = html.match(/<meta[^>]+name=["']viewport["'][^>]*content=["']([^"']*)["']/i)
+    ?? html.match(/<meta[^>]+content=["']([^"']*)["'][^>]*name=["']viewport["']/i)
+  if (!m) return { checkId: 'viewport', score: 0, status: 'fail', detail: 'Meta viewport mancante', data: { missing: true } }
+  const content = m[1]
+  const hasUserScalableNo = /user-scalable\s*=\s*no/i.test(content)
+  const maxScale = content.match(/maximum-scale\s*=\s*([\d.]+)/i)?.[1]
+  const badMaxScale = maxScale && parseFloat(maxScale) < 5
+  if (hasUserScalableNo || badMaxScale) {
+    return { checkId: 'viewport', score: 50, status: 'warn', detail: 'Viewport blocca lo zoom utente (user-scalable=no o maximum-scale<5)', data: { content } }
+  }
+  return { checkId: 'viewport', score: 100, status: 'pass', detail: 'Meta viewport ottimizzato ✓', data: { content } }
+}
+
+function checkDoctype(html: string): CheckResult {
+  const hasDoctype = /^\s*<!doctype\s+html\s*>/i.test(html.trimStart())
+  if (hasDoctype) return { checkId: 'doctype', score: 100, status: 'pass', detail: 'DOCTYPE HTML5 presente ✓', data: {} }
+  return { checkId: 'doctype', score: 0, status: 'fail', detail: '<!DOCTYPE html> mancante o non in prima riga', data: { missing: true } }
+}
+
 function checkTitleKeywordCoherence(html: string): CheckResult {
   const titleM = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   if (!titleM) return { checkId: 'title-keyword-coherence', score: 0, status: 'fail', detail: 'Title tag mancante', data: { missing: true } }
@@ -452,6 +494,10 @@ const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
   'schema-faq': checkSchemaFaq,
   // broken-links needs allSlugs context — handled specially in analyzePage
   'broken-links': (html) => checkBrokenLinks(html, new Set()),
+  'obsolete-tags': checkObsoleteTags,
+  'favicon': checkFavicon,
+  'viewport': checkViewport,
+  'doctype': checkDoctype,
 }
 
 export function analyzePage(pageSlug: string, pageName: string, html: string, allSlugs?: Set<string>): PageAnalysis {
