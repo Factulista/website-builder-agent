@@ -14,57 +14,72 @@ type FormPayload =
   | { tipo: 'sugerencia-modulo'; nombre: string; email: string; modulo: string; descripcion: string }
   | { tipo: 'contacto';          nombre: string; email: string; empresa?: string; mensaje: string }
 
-function buildEmail(payload: FormPayload): { subject: string; html: string } {
-  const row = (label: string, value: string) =>
-    `<tr><td style="padding:8px 12px;font-weight:600;color:#374151;width:140px;vertical-align:top;border-bottom:1px solid #f3f4f6">${label}</td><td style="padding:8px 12px;color:#1f2937;border-bottom:1px solid #f3f4f6">${value}</td></tr>`
-
-  const wrap = (subject: string, rows: string) => ({
-    subject,
-    html: `
-<!DOCTYPE html>
+function buildEmailHtml(subject: string, rows: string, footer?: string): string {
+  const ts = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })
+  return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:system-ui,sans-serif;background:#f9fafb;padding:32px 0;margin:0;">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;">
-    <div style="background:#1a1a1a;padding:20px 28px;">
+    <div style="background:#1a1a1a;padding:20px 28px;display:flex;align-items:center;gap:12px;">
+      <span style="font-size:1.3rem;">⚡</span>
       <p style="margin:0;color:#fff;font-size:1rem;font-weight:600;">${subject}</p>
     </div>
-    <table style="width:100%;border-collapse:collapse;">
-      <tbody>${rows}</tbody>
-    </table>
-    <div style="padding:16px 28px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-      <p style="margin:0;font-size:0.75rem;color:#9ca3af;">Inviato da Factulista · ${new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</p>
+    <table style="width:100%;border-collapse:collapse;"><tbody>${rows}</tbody></table>
+    ${footer ? `<div style="padding:16px 28px;background:#f0fdf4;border-top:1px solid #bbf7d0;">${footer}</div>` : ''}
+    <div style="padding:12px 28px;background:#f9fafb;border-top:1px solid #e5e7eb;">
+      <p style="margin:0;font-size:0.72rem;color:#9ca3af;">Factulista · ${ts}</p>
     </div>
   </div>
 </body>
-</html>`,
-  })
+</html>`
+}
 
-  if (payload.tipo === 'CRM') {
-    return wrap(
-      'Nuevo interés en módulo CRM',
-      row('Nombre', payload.nombre) + row('Email', payload.email),
-    )
+const row = (label: string, value: string) =>
+  `<tr><td style="padding:8px 12px;font-weight:600;color:#374151;width:140px;vertical-align:top;border-bottom:1px solid #f3f4f6">${label}</td><td style="padding:8px 12px;color:#1f2937;border-bottom:1px solid #f3f4f6">${value}</td></tr>`
+
+/** Email to admin — all form fields */
+function buildAdminEmail(payload: FormPayload): { subject: string; html: string } {
+  if (payload.tipo === 'CRM') return {
+    subject: 'Nuevo interés en módulo CRM',
+    html: buildEmailHtml('Nuevo interés en módulo CRM',
+      row('Nombre', payload.nombre) + row('Email', payload.email)),
   }
-
-  if (payload.tipo === 'sugerencia-modulo') {
-    return wrap(
-      'Nueva sugerencia de módulo',
-      row('Nombre', payload.nombre) +
-      row('Email', payload.email) +
-      row('Módulo', payload.modulo) +
-      row('Descripción', payload.descripcion),
-    )
+  if (payload.tipo === 'sugerencia-modulo') return {
+    subject: 'Nueva sugerencia de módulo',
+    html: buildEmailHtml('Nueva sugerencia de módulo',
+      row('Nombre', payload.nombre) + row('Email', payload.email) +
+      row('Módulo', payload.modulo) + row('Descripción', payload.descripcion)),
   }
+  // contacto
+  return {
+    subject: 'Nuevo mensaje de contacto — Factulista',
+    html: buildEmailHtml('Nuevo mensaje de contacto',
+      row('Nombre', payload.nombre) + row('Email', payload.email) +
+      (payload.empresa ? row('Empresa', payload.empresa) : '') +
+      row('Mensaje', payload.mensaje)),
+  }
+}
 
-  // tipo === 'contacto'
-  return wrap(
-    'Nuevo mensaje de contacto',
-    row('Nombre', payload.nombre) +
-    row('Email', payload.email) +
-    (payload.empresa ? row('Empresa', payload.empresa) : '') +
-    row('Mensaje', payload.mensaje),
-  )
+/** Confirmation email to the user who submitted the form */
+function buildUserConfirmation(payload: FormPayload): { subject: string; html: string } {
+  const greeting = `<p style="padding:16px 28px 0;margin:0;color:#374151;">Hola <strong>${payload.nombre}</strong>,<br><br>
+    Hemos recibido tu mensaje. Te responderemos lo antes posible a <strong>${payload.email}</strong>.</p>`
+
+  let rows = row('Nombre', payload.nombre) + row('Email', payload.email)
+  if ('empresa' in payload && payload.empresa) rows += row('Empresa', payload.empresa)
+  if ('mensaje' in payload && payload.mensaje) rows += row('Mensaje', payload.mensaje)
+  if ('modulo' in payload && payload.modulo) rows += row('Módulo', payload.modulo)
+  if ('descripcion' in payload && payload.descripcion) rows += row('Descripción', payload.descripcion)
+
+  const footer = `<p style="margin:0;font-size:0.82rem;color:#065f46;font-weight:500;">✓ Tu mensaje ha sido enviado correctamente</p>`
+
+  return {
+    subject: 'Hemos recibido tu mensaje — Factulista',
+    html: buildEmailHtml('Resumen de tu mensaje', greeting + '<table style="width:100%;border-collapse:collapse;margin-top:12px;"><tbody>' + rows + '</tbody></table>', footer)
+      // inject greeting before the table
+      .replace('<table style="width:100%;border-collapse:collapse;"><tbody>', greeting + '<table style="width:100%;border-collapse:collapse;margin-top:12px;"><tbody>'),
+  }
 }
 
 /**
@@ -192,20 +207,37 @@ export async function POST(req: NextRequest) {
     return Response.json({ success: true })
   }
 
-  const { subject, html } = buildEmail(payload)
   const resend = new Resend(apiKey)
 
-  const { error } = await resend.emails.send({
-    from: FROM_EMAIL,
-    to:   ADMIN_EMAIL,
-    replyTo: email,
-    subject,
-    html,
-  })
+  // Send both emails in parallel — admin notification + user confirmation
+  const adminEmail = buildAdminEmail(payload)
+  const userEmail  = buildUserConfirmation(payload)
 
-  if (error) {
-    console.error('[/api/forms] Resend error:', error)
+  const [adminResult, userResult] = await Promise.allSettled([
+    resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      ADMIN_EMAIL,
+      replyTo: email,
+      subject: adminEmail.subject,
+      html:    adminEmail.html,
+    }),
+    resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      email,
+      subject: userEmail.subject,
+      html:    userEmail.html,
+    }),
+  ])
+
+  if (adminResult.status === 'rejected' || adminResult.value?.error) {
+    const err = adminResult.status === 'rejected' ? adminResult.reason : adminResult.value.error
+    console.error('[forms] Resend admin email error:', err)
     return Response.json({ error: 'Error al enviar el email' }, { status: 500 })
+  }
+  if (userResult.status === 'rejected' || userResult.value?.error) {
+    // User confirmation failed — log but don't block (admin was already notified)
+    const err = userResult.status === 'rejected' ? userResult.reason : userResult.value.error
+    console.warn('[forms] Resend user confirmation failed (non-fatal):', err)
   }
 
   return Response.json({ success: true })
