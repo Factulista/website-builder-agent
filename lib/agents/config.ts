@@ -109,9 +109,17 @@ export async function callClaude(
   const override = _dbOverrides[agentName] ?? {}
   const config = { ...base, ...override }
 
-  // Prompt Caching: separa system in parte statica (cacheable) e dinamica
-  // La parte statica è tutto ciò che precede "PIANO DEL SITO:" o "PAGINE ATTUALI:" o simili
-  const dynamicMarkers = ['PIANO DEL SITO:', 'PAGINE ATTUALI:', 'PAGINE DEL SITO:', 'URL BASE:']
+  // Prompt Caching: separa system in parte statica (cacheable) e dinamica.
+  // La parte STATICA è solo guardrail + tool descriptions + regole fisse — identica tra run.
+  // La parte DINAMICA inizia dai dati progetto-specifici (media library, context, CSS vars, pagine).
+  // ⚠️ Non mettere dati progetto-specifici prima di questi marker — invaliderebbero la cache.
+  const dynamicMarkers = [
+    'MEDIA LIBRARY DEL PROGETTO:',  // ← primo dato project-specific nell'html-agent
+    'PIANO DEL SITO:',
+    'PAGINE ATTUALI:',
+    'PAGINE DEL SITO:',
+    'URL BASE:',
+  ]
   const dynamicIdx = dynamicMarkers.reduce((min, marker) => {
     const idx = system.indexOf(marker)
     return idx > -1 && idx < min ? idx : min
@@ -146,7 +154,23 @@ export async function callClaude(
       }),
     }, agentName)
 
-    if (res.ok) return res
+    if (res.ok) {
+      // Log cache stats to Vercel logs for debugging — remove once cache is confirmed working
+      res.clone().json().then((body: Record<string, unknown>) => {
+        const u = body.usage as Record<string, number> | undefined
+        if (!u) return
+        const cacheRead   = u.cache_read_input_tokens    ?? 0
+        const cacheCreate = u.cache_creation_input_tokens ?? 0
+        const input       = u.input_tokens ?? 0
+        if (cacheRead > 0 || cacheCreate > 0) {
+          console.log(`[cache:hit] ${agentName} read=${cacheRead} create=${cacheCreate} input=${input}`)
+        } else if (input > 1000) {
+          // Warn only for non-trivial calls that should benefit from caching
+          console.warn(`[cache:miss] ${agentName} input=${input} — static part may vary between calls`)
+        }
+      }).catch(() => null)
+      return res
+    }
 
     // Retry on overload or server errors — check status only, never read body
     const isRetryable = res.status === 529 || res.status === 500 || res.status === 503

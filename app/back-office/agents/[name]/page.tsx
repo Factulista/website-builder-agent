@@ -917,8 +917,8 @@ CREATE TABLE agent_prompt_versions (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {runs.map(run => {
                 const isExpanded = expandedRunId === run.id
-                const statusEmoji = run.status === 'success' || run.status === 'completed' ? '✅' : run.status === 'failed' ? '❌' : run.status === 'no_action' ? '⚪' : '⏳'
-                const statusColor = run.status === 'success' || run.status === 'completed' ? C.green : run.status === 'failed' ? C.red : run.status === 'no_action' ? '#94a3b8' : C.yellow
+                const statusEmoji = run.status === 'success' || run.status === 'completed' ? '✅' : run.status === 'failed' ? '❌' : run.status === 'no_action' ? '⚪' : run.status === 'abandoned' ? '🔌' : '⏳'
+                const statusColor = run.status === 'success' || run.status === 'completed' ? C.green : run.status === 'failed' ? C.red : run.status === 'no_action' ? '#94a3b8' : run.status === 'abandoned' ? '#9ca3af' : C.yellow
                 const totalTokens = (run.input_tokens ?? 0) + (run.output_tokens ?? 0)
 
                 return (

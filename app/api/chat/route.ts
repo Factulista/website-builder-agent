@@ -571,6 +571,11 @@ export async function POST(req: NextRequest) {
       const opsCount        = (result.input?.operations  as unknown[])?.length ?? 0
       const editsCount      = (result.input?.edits        as unknown[])?.length ?? 0
       const typedEditsCount = (result.input?.typed_edits  as unknown[])?.length ?? 0
+      // Log typed_edits usage so we can verify the feature is being adopted
+      if (typedEditsCount > 0) {
+        const types = (result.input?.typed_edits as Array<{type: string}>).map(e => e.type).join(',')
+        console.log(`[typed_edits] ${agentModel} used ${typedEditsCount} typed_edits (${types}) — saved ~${(opsCount + editsCount) * 500} tokens vs HTML generation`)
+      }
       const isNoAction = result.tool === 'edit_page' && opsCount === 0 && editsCount === 0 && typedEditsCount === 0
       const serverHtmlChanged = isNoAction ? false : undefined // unknown until client applies edits
 

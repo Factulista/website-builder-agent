@@ -3988,6 +3988,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setActiveSlug(newActiveSlug)
     // Auto-switch to preview so the user sees the result immediately
     if (viewMode !== 'preview') setViewMode('preview')
+    // Force-refresh the edit iframe if the user was in edit mode — it has its own srcDoc
+    // that doesn't auto-update when pages change. Without this the user sees stale content
+    // and retries the same request thinking the change didn't apply.
+    if (viewMode === 'edit') {
+      const updatedActive = newPages.find(p => p.slug === newActiveSlug) ?? newPages[0]
+      if (updatedActive) {
+        editBaseHtmlRef.current = updatedActive.html
+        setEditSrcDoc(injectBase(updatedActive.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined))
+        setEditOutdated(false)
+      }
+    }
     // Set scroll target for edits: first replaced text snippet
     if (result.tool === 'edit_page') {
       const firstEdit = (result.input.edits as { find: string; replace: string }[] | undefined)?.[0]
