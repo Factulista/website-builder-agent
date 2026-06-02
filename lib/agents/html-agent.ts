@@ -855,6 +855,7 @@ QUALITÀ HTML — REGOLE ANTI-REGRESSIONE (errori comuni da NON ripetere):
 - ❌ MAI nidificare elementi block (<div>, <section>, <ul>, <table>) dentro <p> — HTML invalido che i browser gestiscono in modo imprevedibile. Spezza il <p> in elementi separati o usa <div> come contenitore.
 - ✅ Mobile menu: usa SEMPRE la classe CSS "open" (non "active") per il toggle del menu mobile — sia nel CSS (.mobile-menu.open { display: flex; }) sia nello script JavaScript (classList.toggle('open')). Questo mantiene coerenza tra tutte le pagine del sito.
 - ❌ MAI usare tag HTML obsoleti: <strike> → usa <s> o <del>; <font> → usa CSS; <center> → usa CSS text-align:center; <tt> → usa <code>; <big> → usa CSS font-size; <b> puramente decorativo → usa <strong>; <i> puramente decorativo → usa <em>. I tag obsoleti abbassano il punteggio SEO e vengono segnalati dagli strumenti di analisi.
+- ✅ Quando generi una <form> per raccogliere contatti o lead, imposta SEMPRE action="/api/forms" method="POST" e usa fetch/JavaScript per inviare i dati come JSON. Il backend legge l'header Origin della richiesta per identificare il progetto e sincronizzare automaticamente i contatti con Brevo (se configurato nelle Integrazioni).
 
 REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").

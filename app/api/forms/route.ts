@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server'
 import { Resend } from 'resend'
+import { supabase } from '../../../lib/supabase'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 // Instantiated lazily inside the handler so missing env vars don't crash the build
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'info@factulista.com'
@@ -65,6 +67,40 @@ function buildEmail(payload: FormPayload): { subject: string; html: string } {
   )
 }
 
+/**
+ * Tries to detect the project from the request Origin/Referer header
+ * by matching the host against custom_domain or the staging subdomain slug.
+ */
+async function detectProjectFromRequest(req: NextRequest): Promise<Record<string, unknown> | null> {
+  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? ''
+  if (!origin) return null
+
+  let host: string
+  try {
+    host = new URL(origin).hostname
+  } catch {
+    return null
+  }
+
+  if (!host) return null
+
+  // 1. Try to match by custom_domain
+  const { data: byDomain } = await supabase
+    .from('projects')
+    .select('site_config')
+    .eq('custom_domain', host)
+    .maybeSingle()
+
+  if (byDomain?.site_config) return byDomain.site_config as Record<string, unknown>
+
+  // 2. Try to match by staging subdomain — host pattern: myweb.<root>/<slug> or /<slug> path
+  // For staging the slug is a path segment, not a subdomain — skip subdomain matching here.
+  // Callers on the same origin (Next.js preview) would match host === window.location.hostname
+  // which is not a custom domain, so there's nothing else to match without a projectSlug hint.
+
+  return null
+}
+
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>
   try {
@@ -84,6 +120,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Campos "nombre" y "email" son obligatorios' }, { status: 400 })
   }
 
+  const empresa = (body.empresa as string | undefined)?.trim()
+
   let payload: FormPayload
   if (tipo === 'CRM') {
     payload = { tipo: 'CRM', nombre, email }
@@ -94,18 +132,61 @@ export async function POST(req: NextRequest) {
     payload = { tipo: 'sugerencia-modulo', nombre, email, modulo, descripcion }
 
   } else {
-    const empresa = (body.empresa as string | undefined)?.trim()
     const mensaje = (body.mensaje as string | undefined)?.trim() ?? ''
     payload = { tipo: 'contacto', nombre, email, empresa, mensaje }
   }
 
-  const { subject, html } = buildEmail(payload)
+  // ── Brevo integration ────────────────────────────────────────────────────────
+  // Detect project from Origin/Referer and push contact to Brevo if configured.
+  try {
+    const siteConfig = await detectProjectFromRequest(req)
+    if (siteConfig) {
+      const integrations = (siteConfig.integrations ?? {}) as Record<string, unknown>
+      const brevo = (integrations.brevo ?? {}) as Record<string, unknown>
+      const brevoApiKey = (brevo.apiKey as string | undefined)?.trim()
+      const brevoListId = (brevo.listId as string | number | undefined)
 
+      if (brevoApiKey && brevoListId) {
+        const listIdNum = parseInt(String(brevoListId), 10)
+        if (!isNaN(listIdNum)) {
+          const brevoRes = await fetch('https://api.brevo.com/v3/contacts', {
+            method: 'POST',
+            headers: {
+              'api-key': brevoApiKey,
+              'content-type': 'application/json',
+              'accept': 'application/json',
+            },
+            body: JSON.stringify({
+              email: email,
+              attributes: {
+                FIRSTNAME: nombre,
+                ...(empresa ? { COMPANY: empresa } : {}),
+              },
+              listIds: [listIdNum],
+              updateEnabled: true,
+            }),
+          })
+          if (!brevoRes.ok) {
+            const errText = await brevoRes.text().catch(() => '')
+            console.error('[forms] Brevo error:', brevoRes.status, errText)
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Never break form submission due to Brevo errors
+    console.error('[forms] Brevo integration error (non-fatal):', err)
+  }
+  // ── End Brevo integration ────────────────────────────────────────────────────
+
+  // ── Resend email notification (optional) ────────────────────────────────────
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
-    console.error('[forms] RESEND_API_KEY not set — email not sent')
-    return new Response(JSON.stringify({ ok: false, error: 'Email service not configured' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+    console.warn('[forms] RESEND_API_KEY not set — skipping email notification')
+    return Response.json({ success: true })
   }
+
+  const { subject, html } = buildEmail(payload)
   const resend = new Resend(apiKey)
 
   const { error } = await resend.emails.send({

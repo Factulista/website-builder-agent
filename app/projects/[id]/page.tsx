@@ -1645,7 +1645,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design' | 'integrations'>('preview')
+  const [brevoApiKey, setBrevoApiKey] = useState('')
+  const [brevoListId, setBrevoListId] = useState('')
+  const [brevoSaving, setBrevoSaving] = useState<'idle'|'saving'|'saved'>('idle')
+  const [brevoTesting, setBrevoTesting] = useState<'idle'|'testing'|'ok'|'error'>('idle')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
@@ -2131,6 +2135,38 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setBlogSidebarBannerSaving('idle'), 2000)
   }
 
+  const saveBrevoIntegration = async () => {
+    setBrevoSaving('saving')
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
+    const existingIntegrations = (existing.integrations ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: {
+        ...existing,
+        integrations: {
+          ...existingIntegrations,
+          brevo: { apiKey: brevoApiKey.trim(), listId: brevoListId.trim() }
+        }
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setBrevoSaving('saved')
+    setTimeout(() => setBrevoSaving('idle'), 2000)
+  }
+
+  const testBrevoConnection = async () => {
+    setBrevoTesting('testing')
+    try {
+      const r = await fetch('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': brevoApiKey.trim(), 'accept': 'application/json' }
+      })
+      setBrevoTesting(r.ok ? 'ok' : 'error')
+    } catch {
+      setBrevoTesting('error')
+    }
+    setTimeout(() => setBrevoTesting('idle'), 3000)
+  }
+
   // Auto-save banner 1.5s after the user stops typing (prevents data loss if they don't click Salva)
   const bannerAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -2458,6 +2494,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       injectPointsRef.current = existingIp
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
+      // Load Brevo integration settings
+      const integrations = ((config as any)?.integrations ?? {}) as Record<string, unknown>
+      const brevo = (integrations.brevo ?? {}) as Record<string, unknown>
+      setBrevoApiKey((brevo.apiKey as string) ?? '')
+      setBrevoListId(String(brevo.listId ?? ''))
       // Load shared nav / footer refs for editor preview injection.
       // One-time migration: if missing, extract from home page and persist immediately.
       if ((config as any)?.shared_nav_html) {
@@ -4622,6 +4663,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               title="Design System"
               active={viewMode === 'design'}
               onClick={() => setViewMode('design')}
+            />
+            <ToolbarBtn
+              label="🔌"
+              title="Integrazioni"
+              active={viewMode === 'integrations'}
+              onClick={() => setViewMode('integrations')}
             />
           </div>
 
@@ -7786,6 +7833,86 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
             )
           })()
+        ) : viewMode === 'integrations' ? (
+          /* ── Integrations Panel ─────────────────────────────────────────────── */
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', background: C.bg }}>
+            <div style={{ maxWidth: '640px', margin: '0 auto' }}>
+              {/* Header */}
+              <div style={{ marginBottom: '20px' }}>
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: C.text }}>🔌 Integrazioni</h2>
+                <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Connetti il tuo sito a servizi esterni per email marketing, CRM e altro.</p>
+              </div>
+
+              {/* Brevo card */}
+              <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px 24px', marginBottom: '16px' }}>
+                {/* Card header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#0092ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
+                    ✉️
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: C.text }}>Brevo — Email Marketing & CRM</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Quando un utente compila una form sul sito, il contatto viene automaticamente aggiunto alla tua lista Brevo. Configura anche le automazioni direttamente su Brevo.</p>
+                  </div>
+                </div>
+
+                {/* API Key */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>API Key</label>
+                  <input
+                    type="password"
+                    placeholder="xkeysib-..."
+                    value={brevoApiKey}
+                    onChange={e => setBrevoApiKey(e.target.value)}
+                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
+                  />
+                </div>
+
+                {/* List ID */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>ID Lista</label>
+                  <input
+                    type="text"
+                    placeholder="123"
+                    value={brevoListId}
+                    onChange={e => setBrevoListId(e.target.value.replace(/\D/g, ''))}
+                    style={{ width: '100px', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', background: C.white, color: C.text }}
+                  />
+                </div>
+
+                {/* Buttons row */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => void testBrevoConnection()}
+                    disabled={!brevoApiKey.trim() || brevoTesting === 'testing'}
+                    style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 14px', fontSize: '0.82rem', cursor: brevoApiKey.trim() ? 'pointer' : 'not-allowed', color: C.text, fontFamily: 'inherit', fontWeight: 500, opacity: brevoApiKey.trim() ? 1 : 0.5 }}
+                  >
+                    {brevoTesting === 'testing' ? '⏳ Testando…' : 'Testa connessione'}
+                  </button>
+                  <button
+                    onClick={() => void saveBrevoIntegration()}
+                    disabled={brevoSaving === 'saving'}
+                    style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                  >
+                    {brevoSaving === 'saving' ? 'Salvataggio…' : brevoSaving === 'saved' ? '✓ Salvato' : 'Salva'}
+                  </button>
+                  {brevoTesting === 'ok' && (
+                    <span style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 500 }}>✓ Connessione riuscita</span>
+                  )}
+                  {brevoTesting === 'error' && (
+                    <span style={{ fontSize: '0.82rem', color: '#dc2626', fontWeight: 500 }}>✗ Chiave non valida</span>
+                  )}
+                </div>
+
+                {/* Info box */}
+                <div style={{ marginTop: '14px', padding: '10px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#0369a1', lineHeight: 1.5 }}>
+                    Trova la chiave API su <strong>app.brevo.com → Account → SMTP &amp; API → API Keys</strong>. L&apos;ID lista si trova in <strong>Contatti → Liste</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           /* Preview mode — no sidebar, full width */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
