@@ -3,8 +3,7 @@ import { Resend } from 'resend'
 
 export const runtime = 'nodejs'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
+// Instantiated lazily inside the handler so missing env vars don't crash the build
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'info@factulista.com'
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@factulista.com'
 
@@ -101,6 +100,13 @@ export async function POST(req: NextRequest) {
   }
 
   const { subject, html } = buildEmail(payload)
+
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    console.error('[forms] RESEND_API_KEY not set — email not sent')
+    return new Response(JSON.stringify({ ok: false, error: 'Email service not configured' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+  }
+  const resend = new Resend(apiKey)
 
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
