@@ -26,6 +26,7 @@ export type CheckId =
   | 'favicon'
   | 'viewport'
   | 'doctype'
+  | 'iframe-usage'
 
 export type CheckGroup = 'meta' | 'structure' | 'images' | 'performance' | 'schema'
 export type FixOwner = 'html' | 'seo'
@@ -252,6 +253,17 @@ export const SEO_CHECKS: SeoCheck[] = [
     fixOwner: 'html',
     scoreType: 'binary',
     weight: 2,
+  },
+  {
+    id: 'iframe-usage',
+    label: 'Uso iframe nella pagina',
+    description: 'Gli iframe visibili con contenuto esterno non trusted rallentano la pagina e possono diluire il PageRank. Gli iframe nascosti (GTM noscript, 0×0) sono accettabili.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'html',
+    scoreType: 'scored',
+    weight: 3,
+    fixable: false,
   },
   // ── Schema.org (10 pts total) ─────────────────────────────────────────────────
   {

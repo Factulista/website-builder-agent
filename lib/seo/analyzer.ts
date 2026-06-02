@@ -397,6 +397,54 @@ function checkBrokenLinks(html: string, allSlugs: Set<string>): CheckResult {
   }
 }
 
+function checkIframeUsage(html: string): CheckResult {
+  // Collect all iframes
+  const allIframes = [...html.matchAll(/<iframe\b([^>]*)>/gi)].map(m => m[1])
+  if (allIframes.length === 0) {
+    return { checkId: 'iframe-usage', score: 100, status: 'pass', detail: 'Nessun iframe presente ✓', data: { total: 0, problematic: [] } }
+  }
+
+  // Safe iframe patterns: GTM noscript (0×0, hidden), YouTube/Vimeo embeds are borderline
+  const isSafe = (attrs: string) => {
+    const src = attrs.match(/src=["']([^"']*)/i)?.[1] ?? ''
+    const style = attrs.match(/style=["']([^"']*)/i)?.[1] ?? ''
+    const w = attrs.match(/width=["']?(\d+)/i)?.[1] ?? '100'
+    const h = attrs.match(/height=["']?(\d+)/i)?.[1] ?? '100'
+    // GTM noscript: 0x0, hidden, googletagmanager
+    if (/googletagmanager\.com/i.test(src) && parseInt(w) === 0 && parseInt(h) === 0) return true
+    // Explicitly hidden via style
+    if (/display\s*:\s*none/i.test(style) || /visibility\s*:\s*hidden/i.test(style)) return true
+    // 0x0 size
+    if (parseInt(w) === 0 && parseInt(h) === 0) return true
+    return false
+  }
+
+  // Check if inside <noscript>
+  const noscriptContent = [...html.matchAll(/<noscript[^>]*>([\s\S]*?)<\/noscript>/gi)].map(m => m[1]).join('')
+  const problematic = allIframes.filter(attrs => {
+    if (isSafe(attrs)) return false
+    const src = attrs.match(/src=["']([^"']*)/i)?.[1] ?? ''
+    // Check if this src is inside a noscript
+    if (src && noscriptContent.includes(src)) return false
+    return true
+  })
+
+  if (problematic.length === 0) {
+    return {
+      checkId: 'iframe-usage', score: 100, status: 'pass',
+      detail: `${allIframes.length} iframe present${allIframes.length > 1 ? 'i' : 'e'}, tutti nascosti/sicuri (GTM noscript) ✓`,
+      data: { total: allIframes.length, problematic: [] },
+    }
+  }
+
+  const score = problematic.length === 1 ? 50 : 25
+  return {
+    checkId: 'iframe-usage', score, status: 'warn',
+    detail: `${problematic.length} iframe visibil${problematic.length > 1 ? 'i' : 'e'} con contenuto esterno — valuta se necessari`,
+    data: { total: allIframes.length, problematic },
+  }
+}
+
 function checkObsoleteTags(html: string): CheckResult {
   const OBSOLETE = ['strike','font','center','tt','big','basefont','applet','acronym','isindex','listing','plaintext','xmp','marquee','blink','spacer']
   const found: string[] = []
@@ -494,6 +542,7 @@ const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
   'schema-faq': checkSchemaFaq,
   // broken-links needs allSlugs context — handled specially in analyzePage
   'broken-links': (html) => checkBrokenLinks(html, new Set()),
+  'iframe-usage': checkIframeUsage,
   'obsolete-tags': checkObsoleteTags,
   'favicon': checkFavicon,
   'viewport': checkViewport,
