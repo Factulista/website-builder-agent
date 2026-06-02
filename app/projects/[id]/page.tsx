@@ -1711,6 +1711,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [seoFixing, setSeoFixing] = useState<CheckId | null>(null)
   const [seoFixError, setSeoFixError] = useState<string | null>(null)
   const seoFixingRef = useRef<boolean>(false)
+  const [linkCheckRunning, setLinkCheckRunning] = useState(false)
+  const [linkCheckResults, setLinkCheckResults] = useState<{ pageSlug: string; pageName: string; brokenLinks: Array<{ url: string; status: number | string }> }[] | null>(null)
+  const [linkCheckTime, setLinkCheckTime] = useState<string | null>(null)
+  const [linkCheckTotals, setLinkCheckTotals] = useState<{ checked: number; broken: number } | null>(null)
   const [cfApiToken, setCfApiToken] = useState('')
   const [cfZoneId, setCfZoneId] = useState('')
   const [cfConfiguring, setCfConfiguring] = useState(false)
@@ -4080,6 +4084,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   return (
     <main style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: C.bg }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ── Chat panel ── */}
       <div style={{ width: chatHidden ? '0' : `${chatWidth}%`, minWidth: chatHidden ? '0' : undefined, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg, borderRight: chatHidden ? 'none' : `1px solid ${C.border}`, transition: 'width 0.2s ease', flexShrink: 0 }}>
@@ -5052,6 +5057,156 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         </div>
                       )
                     })}
+
+                    {/* ── Link Checker Panel ── */}
+                    <div style={{ marginTop: '32px', marginBottom: '8px' }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 0', borderBottom: `1px solid ${C.border}`, marginBottom: '12px',
+                      }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: C.text }}>Controllo link rotti</span>
+                        {linkCheckTime && (
+                          <span style={{ fontSize: '0.72rem', color: C.textFaint }}>
+                            Ultimo controllo: {linkCheckTime}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (linkCheckRunning) return
+                          setLinkCheckRunning(true)
+                          setLinkCheckResults(null)
+                          setLinkCheckTotals(null)
+                          try {
+                            const { data: { session: lkSession } } = await supabase.auth.getSession()
+                            const lkToken = lkSession?.access_token
+                            if (!lkToken) return
+                            const resp = await fetch(`/api/check-broken-links?projectId=${id}`, {
+                              headers: { Authorization: `Bearer ${lkToken}` },
+                            })
+                            if (!resp.ok) throw new Error(await resp.text())
+                            const json = await resp.json() as { results: typeof linkCheckResults; totalChecked: number; totalBroken: number }
+                            setLinkCheckResults(json.results)
+                            setLinkCheckTotals({ checked: json.totalChecked, broken: json.totalBroken })
+                            setLinkCheckTime(new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }))
+                          } catch (err) {
+                            console.error('[LinkChecker]', err)
+                          } finally {
+                            setLinkCheckRunning(false)
+                          }
+                        }}
+                        disabled={linkCheckRunning}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          padding: '7px 14px', borderRadius: '7px',
+                          border: `1px solid ${C.border}`,
+                          background: linkCheckRunning ? C.bgPanel : C.white,
+                          color: linkCheckRunning ? C.textFaint : C.text,
+                          fontSize: '0.8rem', fontWeight: 600,
+                          cursor: linkCheckRunning ? 'wait' : 'pointer',
+                          fontFamily: 'inherit', transition: 'all 0.15s',
+                        }}
+                      >
+                        {linkCheckRunning ? (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                            </svg>
+                            Controllo in corso...
+                          </>
+                        ) : (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                            </svg>
+                            Controlla link rotti
+                          </>
+                        )}
+                      </button>
+
+                      {linkCheckResults !== null && linkCheckTotals !== null && (
+                        <div style={{ marginTop: '12px' }}>
+                          {linkCheckTotals.broken === 0 ? (
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: '8px',
+                              padding: '10px 14px', borderRadius: '8px',
+                              background: '#f0fdf4', border: '1px solid #86efac',
+                              color: '#15803d', fontSize: '0.82rem', fontWeight: 600,
+                            }}>
+                              <span>✓</span>
+                              <span>Nessun link rotto trovato — {linkCheckTotals.checked} link controllati</span>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '10px 14px', borderRadius: '8px',
+                                background: '#fef2f2', border: '1px solid #fca5a5',
+                                color: '#b91c1c', fontSize: '0.82rem', fontWeight: 600,
+                                marginBottom: '12px',
+                              }}>
+                                <span>⚠</span>
+                                <span>{linkCheckTotals.broken} link rotti su {linkCheckTotals.checked} controllati</span>
+                              </div>
+
+                              {linkCheckResults.map(pageResult => (
+                                <div key={pageResult.pageSlug} style={{ marginBottom: '16px' }}>
+                                  <div style={{
+                                    fontSize: '0.78rem', fontWeight: 700, color: C.text,
+                                    marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px',
+                                  }}>
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.textFaint} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                                      <polyline points="9 22 9 12 15 12 15 22"/>
+                                    </svg>
+                                    {pageResult.pageName}
+                                    <span style={{ fontWeight: 400, color: C.textFaint }}>({pageResult.pageSlug})</span>
+                                  </div>
+                                  {pageResult.brokenLinks.map(link => (
+                                    <div
+                                      key={link.url}
+                                      style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '7px 10px', borderRadius: '6px',
+                                        background: C.bgPanel, marginBottom: '4px',
+                                        border: `1px solid ${C.borderLight}`,
+                                      }}
+                                    >
+                                      <span style={{
+                                        flexShrink: 0, fontSize: '0.68rem', fontWeight: 700,
+                                        padding: '2px 7px', borderRadius: '4px',
+                                        background: typeof link.status === 'number' && link.status >= 500 ? '#7f1d1d' : '#b91c1c',
+                                        color: 'white',
+                                        minWidth: '38px', textAlign: 'center',
+                                      }}>
+                                        {link.status}
+                                      </span>
+                                      <span style={{
+                                        flex: 1, fontSize: '0.75rem', color: C.textMuted,
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        fontFamily: 'monospace',
+                                      }} title={link.url}>
+                                        {link.url}
+                                      </span>
+                                      <a
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ flexShrink: 0, color: C.blue, fontSize: '0.7rem', textDecoration: 'none' }}
+                                      >
+                                        ↗
+                                      </a>
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
