@@ -154,6 +154,18 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
 
+  // Step 1b: replace obsolete HTML tags with their HTML5 equivalents
+  // (fixes legacy content without requiring a DB edit)
+  result = result
+    .replace(/<strike(\s[^>]*)?>/gi, '<s$1>')
+    .replace(/<\/strike>/gi, '</s>')
+    .replace(/<font(\s[^>]*)?>/gi, '<span$1>')
+    .replace(/<\/font>/gi, '</span>')
+    .replace(/<center(\s[^>]*)?>/gi, '<div$1 style="text-align:center">')
+    .replace(/<\/center>/gi, '</div>')
+    .replace(/<tt(\s[^>]*)?>/gi, '<code$1>')
+    .replace(/<\/tt>/gi, '</code>')
+
   // Step 2: Replace {{site_url}} placeholder with the actual canonical root (no trailing slash)
   result = result.replace(/\{\{site_url\}\}/g, siteUrl)
 
