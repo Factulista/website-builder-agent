@@ -2221,9 +2221,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return () => clearTimeout(t)
   }, [messages.length]) // re-arm on every messages change
 
-  const ROOT_DOMAIN = 'factulista.com'
+  const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
   const publicBaseUrl = (() => {
-    if (!projectSlug || typeof window === 'undefined') return ''
+    if (!projectSlug) return ''
+    if (customDomainStatus === 'verified' && customDomain) return `https://${customDomain}`
+    const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
+    if (rootProject && projectSlug === rootProject) return `https://www.${ROOT_DOMAIN}`
+    if (typeof window === 'undefined') return ''
     const host = window.location.host
     const isProduction = host === ROOT_DOMAIN || host.endsWith(`.${ROOT_DOMAIN}`)
     return isProduction

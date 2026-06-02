@@ -4,10 +4,22 @@ import { generateSitemap, generateRobots } from '../../../lib/seo-files'
 
 export const runtime = 'nodejs'
 
+function getProjectPublicBaseUrl(projectSlug: string, customDomain?: string | null): string {
+  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
+  const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
+  if (customDomain) return `https://${customDomain}`
+  if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}`
+  return `https://myweb.${rootDomain}/${projectSlug}`
+}
+
 // Handles myweb.factulista.com/{slug}/sitemap.xml and /robots.txt (staging)
+// Also handles www.factulista.com/sitemap.xml and /robots.txt (root project via middleware rewrite)
 export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get('slug')
   const file = req.nextUrl.searchParams.get('file')
+  // Optional host override: when the real request came from www.factulista.com, the middleware
+  // passes ?host=www.factulista.com so we can build the correct canonical base URL.
+  const hostOverride = req.nextUrl.searchParams.get('host')
 
   if (!slug || (file !== 'sitemap.xml' && file !== 'robots.txt')) {
     return new Response('Not found', { status: 404 })
@@ -20,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const { data: project } = await supabase
     .from('projects')
-    .select('site_config')
+    .select('site_config, custom_domain')
     .eq('slug', slug)
     .is('deleted_at', null)
     .single()
@@ -29,7 +41,12 @@ export async function GET(req: NextRequest) {
 
   const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
   const pages = (siteConfig.pages as { slug: string; name: string }[]) ?? []
-  const baseUrl = `https://myweb.factulista.com/${slug}`
+
+  // If the middleware passed a host override (e.g. www.factulista.com), use that directly;
+  // otherwise derive the correct URL from domain config and env vars.
+  const baseUrl = hostOverride
+    ? `https://${hostOverride}`
+    : getProjectPublicBaseUrl(slug, project.custom_domain as string | null)
 
   if (file === 'sitemap.xml') {
     const xml = generateSitemap(pages, baseUrl, slug)

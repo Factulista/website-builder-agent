@@ -571,9 +571,15 @@ export async function POST(req: NextRequest) {
       if (!targetPage) { emitError(`Pagina "${pageSlug}" non trovata`); return }
 
       // Build canonical URL
+      const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
+      const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
       const baseUrl = customDomain
         ? `https://${customDomain}`
-        : projectSlug ? `https://factulista.app/preview/${projectSlug}` : 'https://example.com'
+        : projectSlug
+          ? (rootProject && projectSlug === rootProject
+            ? `https://www.${rootDomain}`
+            : `https://myweb.${rootDomain}/${projectSlug}`)
+          : 'https://example.com'
       const pagePath = pageSlug === 'home' ? '' : `/${pageSlug}`
       const canonicalUrl = `${baseUrl}${pagePath}`
 

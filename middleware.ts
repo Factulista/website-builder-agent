@@ -24,12 +24,24 @@ export function middleware(req: NextRequest) {
   if (host === `www.${ROOT_DOMAIN}`) {
     const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? ''
     if (rootProject) {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-original-host', host)
+
+      // Intercept sitemap.xml and robots.txt — route them to /api/seo-files with the
+      // correct slug and a host param so the API builds the right canonical base URL.
+      if (url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt') {
+        const fileParam = url.pathname.slice(1) // 'sitemap.xml' or 'robots.txt'
+        url.pathname = '/api/seo-files'
+        url.searchParams.set('slug', rootProject)
+        url.searchParams.set('file', fileParam)
+        url.searchParams.set('host', host)
+        return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      }
+
       const rewritePath = url.pathname === '/' || url.pathname === ''
         ? `/preview/${rootProject}`
         : `/preview/${rootProject}${url.pathname}`
       url.pathname = rewritePath
-      const requestHeaders = new Headers(req.headers)
-      requestHeaders.set('x-original-host', host)
       return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
     }
     return NextResponse.next()
