@@ -5352,6 +5352,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                     {/* ── Tab: sitemap ── */}
                     {seoSubTab === 'sitemap' && (() => {
+                      // Public URL shown to user (for Search Console)
                       const sitemapUrl = (() => {
                         if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/sitemap.xml`
                         const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
@@ -5359,12 +5360,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}/sitemap.xml`
                         return `/preview/${projectSlug}/sitemap.xml`
                       })()
+                      // Internal API URL for download (same-origin, no CORS issues)
+                      const sitemapApiUrl = `/api/seo-files?slug=${encodeURIComponent(projectSlug)}&file=sitemap.xml`
 
                       const downloadSitemap = async () => {
                         if (sitemapDownloading) return
                         setSitemapDownloading(true)
                         try {
-                          const resp = await fetch(sitemapUrl)
+                          const resp = await fetch(sitemapApiUrl)
                           const blob = await resp.blob()
                           const url = URL.createObjectURL(blob)
                           const a = document.createElement('a')
