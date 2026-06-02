@@ -169,6 +169,19 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // Step 2: Replace {{site_url}} placeholder with the actual canonical root (no trailing slash)
   result = result.replace(/\{\{site_url\}\}/g, siteUrl)
 
+  // Step 2b: Fix hardcoded stale URLs in og:url and canonical that were saved before
+  // the {{site_url}} placeholder system was adopted. Replace any preview/staging URL
+  // with the correct siteUrl so og:url always reflects the real public domain.
+  result = result.replace(
+    /(property=["']og:url["'][^>]*content=["']|content=["'][^"']*["'][^>]*property=["']og:url["'].*?content=["'])https?:\/\/[^"'/]*\/(?:preview\/)?[^"']*/gi,
+    (_m, prefix) => `${prefix}${siteUrl}`
+  )
+  // Simpler pattern for the common <meta property="og:url" content="..."> order
+  result = result.replace(
+    /(<meta[^>]+property=["']og:url["'][^>]*content=["'])([^"']+)(["'])/gi,
+    (_m, before, _url, after) => `${before}${siteUrl}${after}`
+  )
+
   if (isStaging) {
     // Remove canonical and og:url — staging previews must not be indexed
     result = result.replace(/<link[^>]+rel=["']canonical["'][^>]*\/?>/gi, '')
