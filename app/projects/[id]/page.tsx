@@ -1722,6 +1722,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [linkCheckResults, setLinkCheckResults] = useState<{ pageSlug: string; pageName: string; brokenLinks: Array<{ url: string; status: number | string }> }[] | null>(null)
   const [linkCheckTime, setLinkCheckTime] = useState<string | null>(null)
   const [linkCheckTotals, setLinkCheckTotals] = useState<{ checked: number; broken: number } | null>(null)
+  const [gtmId, setGtmId] = useState('')
+  const [gtmSaving, setGtmSaving] = useState<'idle'|'saving'|'saved'>('idle')
   const [cfApiToken, setCfApiToken] = useState('')
   const [cfZoneId, setCfZoneId] = useState('')
   const [cfConfiguring, setCfConfiguring] = useState(false)
@@ -1810,6 +1812,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }, [])
   useEffect(() => { blogHeaderHtmlRef.current = blogHeaderHtml }, [blogHeaderHtml])
   useEffect(() => { injectPointsRef.current = injectPoints }, [injectPoints])
+  // Sync GTM ID from inject_points when they load
+  useEffect(() => {
+    const m = (injectPoints.head ?? '').match(/GTM-[A-Z0-9]+/)
+    if (m) setGtmId(m[0])
+  }, [injectPoints.head])
   useEffect(() => { blogSidebarBannerUrlRef.current = blogSidebarBannerUrl }, [blogSidebarBannerUrl])
   useEffect(() => { blogSidebarBannerLinkRef.current = blogSidebarBannerLink }, [blogSidebarBannerLink])
   useEffect(() => { projectContextRef.current = projectContext }, [projectContext])
@@ -5232,12 +5239,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                     {/* ── Google Tag Manager card ──────────────────────────── */}
                     {(() => {
-                      // Extract existing GTM ID from inject_points.head if already saved
-                      const existingHead = injectPoints.head ?? ''
-                      const existingGtmMatch = existingHead.match(/GTM-[A-Z0-9]+/)
-                      const [gtmId, setGtmId] = React.useState(existingGtmMatch?.[0] ?? '')
-                      const [gtmSaving, setGtmSaving] = React.useState<'idle'|'saving'|'saved'>('idle')
-
                       const isActive = !!(injectPoints.head?.includes('GTM-') || injectPoints.body_end?.includes('GTM-'))
 
                       const saveGtm = async () => {
