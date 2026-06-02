@@ -364,6 +364,7 @@ export function buildBlogListPage(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="${escapeHtml(baseUrl)}/">
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(subtitle)}">
   <link rel="canonical" href="${escapeHtml(baseUrl)}/blog">
@@ -496,6 +497,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="${escapeHtml(baseUrl)}/">
   <title>${escapeHtml(seoTitle)}</title>
   <meta name="description" content="${escapeHtml(seoDesc)}">
   <link rel="canonical" href="${escapeHtml(baseUrl)}/blog/${escapeHtml(post.slug)}">
