@@ -651,6 +651,21 @@ Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO
             break
           }
 
+          case 'title-keyword-coherence': {
+            const missingKw = (data?.missing as string[]) ?? []
+            generated = await callSeoAgent(
+              `Il title tag della pagina "${targetPage.name}" contiene keyword non presenti nel corpo della pagina: ${missingKw.join(', ')}.
+${pageCtx}
+Business: "${resolvedBrand}" (${type}). URL: ${canonicalUrl}. Lingua: ${resolvedLang}.
+Genera un nuovo title tag che:
+1. Usa SOLO keyword già presenti nel testo della pagina
+2. È lungo 50–60 caratteri
+3. Include la keyword primaria + brand
+4. È in lingua ${resolvedLang}
+Rispondi SOLO con il testo del title (senza tag HTML).`, apiKey, context, tokens)
+            break
+          }
+
           case 'alt-text':
             generated = await callSeoAgent(
               `Analizza l'HTML e genera alt text SEO per le immagini senza alt nella pagina "${targetPage.name}" (${type}: "${resolvedBrand}").

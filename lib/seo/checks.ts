@@ -12,6 +12,7 @@ export type CheckId =
   | 'open-graph'
   | 'h1-unique'
   | 'h1-keyword'
+  | 'title-keyword-coherence'
   | 'heading-hierarchy'
   | 'semantic-html'
   | 'alt-text'
@@ -122,6 +123,16 @@ export const SEO_CHECKS: SeoCheck[] = [
     fixOwner: 'seo',
     scoreType: 'scored',
     weight: 7,
+  },
+  {
+    id: 'title-keyword-coherence',
+    label: 'Coerenza keyword titolo–pagina',
+    description: 'Le keyword del title tag devono essere presenti anche nel corpo della pagina. Se non lo sono, Google può ritenere il titolo fuorviante.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'seo',
+    scoreType: 'scored',
+    weight: 6,
   },
   {
     id: 'heading-hierarchy',

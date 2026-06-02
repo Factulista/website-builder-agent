@@ -397,6 +397,39 @@ function checkBrokenLinks(html: string, allSlugs: Set<string>): CheckResult {
   }
 }
 
+function checkTitleKeywordCoherence(html: string): CheckResult {
+  const titleM = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  if (!titleM) return { checkId: 'title-keyword-coherence', score: 0, status: 'fail', detail: 'Title tag mancante', data: { missing: true } }
+  const title = titleM[1].replace(/&#?\w+;/g, ' ').toLowerCase()
+  // Extract meaningful words from title (skip short stop-words)
+  const stopWords = new Set(['el','la','lo','los','las','de','del','en','y','a','con','para','por','que','un','una','su','o','al','se','es','the','and','for','of','to','in','is','it','with','on','at','by','an','be','as','or','are'])
+  const titleWords = title.match(/\b[a-záéíóúüñàèìòùç]{4,}\b/gi)?.filter(w => !stopWords.has(w)) ?? []
+  if (titleWords.length === 0) return { checkId: 'title-keyword-coherence', score: 50, status: 'warn', detail: 'Title senza keyword identificabili', data: { missing: [] } }
+  // Strip tags from body text
+  const bodyText = html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#?\w+;/g, ' ')
+    .toLowerCase()
+  const missing = titleWords.filter(w => !bodyText.includes(w))
+  const presentCount = titleWords.length - missing.length
+  const ratio = presentCount / titleWords.length
+  let score: number
+  if (ratio === 1) score = 100
+  else if (ratio >= 0.75) score = 75
+  else if (ratio >= 0.5) score = 50
+  else score = 25
+  if (missing.length === 0) {
+    return { checkId: 'title-keyword-coherence', score: 100, status: 'pass', detail: 'Tutte le keyword del titolo sono nel testo ✓', data: { missing: [] } }
+  }
+  return {
+    checkId: 'title-keyword-coherence', score, status: statusFromScore(score),
+    detail: `${missing.length} keyword del titolo assent${missing.length > 1 ? 'i' : 'e'} nel testo: ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` +${missing.length - 4}` : ''}`,
+    data: { missing, titleWords },
+  }
+}
+
 // ── Main analyzer ──────────────────────────────────────────────────────────────
 
 const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
@@ -408,6 +441,7 @@ const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
   'open-graph': checkOpenGraph,
   'h1-unique': checkH1Unique,
   'h1-keyword': checkH1Keyword,
+  'title-keyword-coherence': checkTitleKeywordCoherence,
   'heading-hierarchy': checkHeadingHierarchy,
   'semantic-html': checkSemanticHtml,
   'alt-text': checkAltText,
