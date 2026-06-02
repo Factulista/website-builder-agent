@@ -1724,6 +1724,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [linkCheckTotals, setLinkCheckTotals] = useState<{ checked: number; broken: number } | null>(null)
   const [gtmId, setGtmId] = useState('')
   const [gtmSaving, setGtmSaving] = useState<'idle'|'saving'|'saved'>('idle')
+  const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'>('checks')
+  const [sitemapDownloading, setSitemapDownloading] = useState(false)
   const [cfApiToken, setCfApiToken] = useState('')
   const [cfZoneId, setCfZoneId] = useState('')
   const [cfConfiguring, setCfConfiguring] = useState(false)
@@ -4967,29 +4969,55 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   )}
                 </div>
 
-                {/* ── Main area: grouped checklist ── */}
+                {/* ── Main area: tabbed ── */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
                   <div style={{ maxWidth: '780px', margin: '0 auto' }}>
                     {/* Header */}
-                    <div style={{ marginBottom: '20px' }}>
+                    <div style={{ marginBottom: '12px' }}>
                       <h2 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: 700, color: C.text }}>SEO Optimizer</h2>
                       <p style={{ margin: 0, fontSize: '0.78rem', color: C.textFaint }}>
                         Analisi live • {SEO_CHECKS.length} check • aggiornata automaticamente
                       </p>
-                      {seoFixError && (
-                        <div style={{
-                          marginTop: '10px', padding: '10px 14px', borderRadius: '8px',
-                          background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c',
-                          fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '8px',
-                        }}>
-                          <span>❌</span>
-                          <span style={{ flex: 1 }}>{seoFixError}</span>
-                          <button onClick={() => setSeoFixError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: '1rem', padding: 0 }}>✕</button>
-                        </div>
-                      )}
                     </div>
 
-                    {SEO_GROUPS.map(group => {
+                    {/* Sub-tab bar */}
+                    <div style={{ display: 'flex', gap: '2px', marginBottom: '16px', borderBottom: `1px solid ${C.border}` }}>
+                      {([
+                        { id: 'checks', label: '📋 Analisi SEO' },
+                        { id: 'tools', label: '🔧 Strumenti' },
+                        { id: 'sitemap', label: '🗺️ Sitemap' },
+                      ] as const).map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setSeoSubTab(tab.id)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                            padding: '8px 14px', fontSize: '0.82rem', fontWeight: seoSubTab === tab.id ? 700 : 500,
+                            color: seoSubTab === tab.id ? C.blue : C.textMuted,
+                            borderBottom: seoSubTab === tab.id ? `2px solid ${C.blue}` : '2px solid transparent',
+                            marginBottom: '-1px', transition: 'all 0.15s',
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Error banner (shown on all tabs) */}
+                    {seoFixError && (
+                      <div style={{
+                        marginBottom: '16px', padding: '10px 14px', borderRadius: '8px',
+                        background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c',
+                        fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '8px',
+                      }}>
+                        <span>❌</span>
+                        <span style={{ flex: 1 }}>{seoFixError}</span>
+                        <button onClick={() => setSeoFixError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: '1rem', padding: 0 }}>✕</button>
+                      </div>
+                    )}
+
+                    {/* ── Tab: checks ── */}
+                    {seoSubTab === 'checks' && SEO_GROUPS.map(group => {
                       const groupChecks = SEO_CHECKS.filter(c => c.group === group.id)
                       const groupResults = groupChecks.map(c => avgResult(c.id)).filter(Boolean) as CheckResult[]
                       const passing = groupResults.filter(r => r.status === 'pass').length
@@ -5087,8 +5115,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       )
                     })}
 
+                    {/* ── Tab: tools ── */}
+                    {seoSubTab === 'tools' && (
+                      <div>
+
                     {/* ── Link Checker Panel ── */}
-                    <div style={{ marginTop: '32px', marginBottom: '8px' }}>
+                    <div style={{ marginBottom: '24px' }}>
                       <div style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '8px 0', borderBottom: `1px solid ${C.border}`, marginBottom: '12px',
@@ -5310,6 +5342,136 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </div>
                           <div style={{ fontSize: '0.68rem', color: C.textFaint }}>
                             Inserisci il tuo Container ID (es. GTM-ABC1234). Lo snippet verrà iniettato automaticamente in {'<head>'} e dopo {'<body>'} su tutte le pagine.
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                      </div>
+                    )}
+
+                    {/* ── Tab: sitemap ── */}
+                    {seoSubTab === 'sitemap' && (() => {
+                      const sitemapUrl = (() => {
+                        if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/sitemap.xml`
+                        const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
+                        const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
+                        if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}/sitemap.xml`
+                        return `/preview/${projectSlug}/sitemap.xml`
+                      })()
+
+                      const downloadSitemap = async () => {
+                        if (sitemapDownloading) return
+                        setSitemapDownloading(true)
+                        try {
+                          const resp = await fetch(sitemapUrl)
+                          const blob = await resp.blob()
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'sitemap.xml'
+                          document.body.appendChild(a)
+                          a.click()
+                          a.remove()
+                          URL.revokeObjectURL(url)
+                        } catch (err) {
+                          console.error('[Sitemap download]', err)
+                        } finally {
+                          setSitemapDownloading(false)
+                        }
+                      }
+
+                      const copyUrl = () => {
+                        const fullUrl = sitemapUrl.startsWith('/') ? `${window.location.origin}${sitemapUrl}` : sitemapUrl
+                        navigator.clipboard.writeText(fullUrl).catch(() => {})
+                      }
+
+                      return (
+                        <div>
+                          {/* Card header */}
+                          <div style={{ marginBottom: '20px' }}>
+                            <h3 style={{ margin: '0 0 4px', fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Sitemap XML</h3>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: C.textFaint }}>
+                              Generata automaticamente da tutte le pagine pubblicate. Aggiornata ad ogni salvataggio.
+                            </p>
+                          </div>
+
+                          {/* URL preview */}
+                          <div style={{
+                            padding: '10px 14px', borderRadius: '8px',
+                            background: C.bgPanel, border: `1px solid ${C.border}`,
+                            fontFamily: 'monospace', fontSize: '0.82rem', color: C.text,
+                            wordBreak: 'break-all', marginBottom: '14px',
+                          }}>
+                            {sitemapUrl.startsWith('/') ? `${typeof window !== 'undefined' ? window.location.origin : ''}${sitemapUrl}` : sitemapUrl}
+                          </div>
+
+                          {/* Action buttons */}
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                            <button
+                              onClick={downloadSitemap}
+                              disabled={sitemapDownloading}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                padding: '7px 14px', borderRadius: '7px',
+                                border: `1px solid ${C.border}`,
+                                background: sitemapDownloading ? C.bgPanel : C.white,
+                                color: sitemapDownloading ? C.textFaint : C.text,
+                                fontSize: '0.8rem', fontWeight: 600,
+                                cursor: sitemapDownloading ? 'wait' : 'pointer',
+                                fontFamily: 'inherit', transition: 'all 0.15s',
+                              }}
+                            >
+                              {sitemapDownloading ? '⏳ Download…' : '📥 Scarica sitemap.xml'}
+                            </button>
+                            <button
+                              onClick={copyUrl}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                padding: '7px 14px', borderRadius: '7px',
+                                border: `1px solid ${C.border}`,
+                                background: C.white, color: C.text,
+                                fontSize: '0.8rem', fontWeight: 600,
+                                cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                              }}
+                            >
+                              📋 Copia URL
+                            </button>
+                          </div>
+
+                          {/* Google Search Console hint */}
+                          <div style={{
+                            padding: '10px 14px', borderRadius: '8px',
+                            background: '#eff6ff', border: '1px solid #bfdbfe',
+                            fontSize: '0.75rem', color: '#1d4ed8', lineHeight: 1.5,
+                            marginBottom: '20px',
+                          }}>
+                            💡 Incolla questo URL in <strong>Google Search Console → Sitemap</strong> per indicizzare tutte le pagine.
+                          </div>
+
+                          {/* Pages list */}
+                          <div>
+                            <div style={{
+                              fontSize: '0.78rem', fontWeight: 700, color: C.text,
+                              marginBottom: '8px', padding: '6px 0', borderBottom: `1px solid ${C.border}`,
+                            }}>
+                              Pagine incluse ({pages.length})
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {pages.map(p => (
+                                <div key={p.slug} style={{
+                                  display: 'flex', alignItems: 'center', gap: '8px',
+                                  padding: '6px 10px', borderRadius: '6px',
+                                  background: C.bgPanel, border: `1px solid ${C.borderLight}`,
+                                  fontSize: '0.78rem',
+                                }}>
+                                  <span style={{ color: C.textFaint, flexShrink: 0 }}>📄</span>
+                                  <span style={{ fontFamily: 'monospace', color: C.text }}>
+                                    {p.slug === 'home' ? '/' : `/${p.slug}`}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       )
