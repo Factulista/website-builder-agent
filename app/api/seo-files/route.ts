@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const { data: project } = await supabase
     .from('projects')
-    .select('site_config, custom_domain')
+    .select('id, site_config, custom_domain')
     .eq('slug', slug)
     .is('deleted_at', null)
     .single()
@@ -49,7 +49,14 @@ export async function GET(req: NextRequest) {
     : getProjectPublicBaseUrl(slug, project.custom_domain as string | null)
 
   if (file === 'sitemap.xml') {
-    const xml = generateSitemap(pages, baseUrl, slug)
+    // Fetch published blog posts to include in sitemap
+    const { data: blogPosts } = await supabase
+      .from('blog_posts')
+      .select('slug, published_at')
+      .eq('project_id', project.id)
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+    const xml = generateSitemap(pages, baseUrl, slug, blogPosts ?? [])
     return new Response(xml, {
       headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
