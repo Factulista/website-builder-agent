@@ -2149,7 +2149,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ...existing,
         integrations: {
           ...existingIntegrations,
-          brevo: { apiKey: brevoApiKey.trim(), listId: brevoListId.trim() }
+          brevo: { apiKey: brevoApiKey.trim() }
         }
       },
       updated_at: new Date().toISOString(),
@@ -7872,12 +7872,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   </div>
                   <div>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: C.text }}>Brevo — Email Marketing & CRM</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Quando un utente compila una form sul sito, il contatto viene automaticamente aggiunto alla tua lista Brevo. Configura anche le automazioni direttamente su Brevo.</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Connetti Brevo al progetto per importare facilmente i codici embed delle form. Ogni form Brevo gestisce autonomamente la propria lista di destinazione.</p>
                   </div>
                 </div>
 
-                {/* API Key */}
-                <div style={{ marginBottom: '12px' }}>
+                {/* API Key only — list assignment is handled per-form inside Brevo */}
+                <div style={{ marginBottom: '16px' }}>
                   <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>API Key</label>
                   <input
                     type="password"
@@ -7885,18 +7885,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     value={brevoApiKey}
                     onChange={e => setBrevoApiKey(e.target.value)}
                     style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
-                  />
-                </div>
-
-                {/* List ID */}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>ID Lista</label>
-                  <input
-                    type="text"
-                    placeholder="123"
-                    value={brevoListId}
-                    onChange={e => setBrevoListId(e.target.value.replace(/\D/g, ''))}
-                    style={{ width: '100px', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', background: C.white, color: C.text }}
                   />
                 </div>
 
@@ -7927,7 +7915,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 {/* Info box */}
                 <div style={{ marginTop: '14px', padding: '10px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
                   <p style={{ margin: 0, fontSize: '0.75rem', color: '#0369a1', lineHeight: 1.5 }}>
-                    Trova la chiave API su <strong>app.brevo.com → Account → SMTP &amp; API → API Keys</strong>. L&apos;ID lista si trova in <strong>Contatti → Liste</strong>.
+                    Trova la chiave API su <strong>app.brevo.com → Account → SMTP &amp; API → API Keys</strong>. Crea le form su Brevo e incolla il codice embed nella sezione <strong>Embed &amp; Script</strong> del progetto.
                   </p>
                 </div>
               </div>
