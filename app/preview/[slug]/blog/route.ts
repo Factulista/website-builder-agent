@@ -66,7 +66,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     .range(offset, offset + PAGE_SIZE - 1)
 
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
-  const baseUrl = `/preview/${slug}`
+  // Use the real public domain when x-original-host is set (request from www.factulista.com)
+  // so blog article links resolve to https://www.factulista.com/blog/... not /preview/{slug}/blog/...
+  const originalHost = _req.headers.get('x-original-host')
+  const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
   const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, undefined, injectPoints)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
