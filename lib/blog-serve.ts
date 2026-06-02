@@ -146,12 +146,17 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-content h4{font-size:1.05rem !important;font-weight:600 !important;margin:1.5rem 0 .5rem !important;color:#1a1a1a !important}
   .blog-post-content p{margin:0 0 1.25rem !important}
   .blog-post-content ul,.blog-post-content ol{margin:0 0 1.35rem !important;padding-left:1.5rem !important}
-  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7}
-  /* Headings inside list items must look like normal list text — not giant titles.
-     This covers both intentional nesting and the browser artefact where
-     execCommand('insertUnorderedList') on selected heading text creates
-     <ul><li><h1>...</h1></li></ul>. JS strips them on creation, but this CSS
-     is a safety net for existing content already saved with that structure. */
+  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7;font-size:1rem}
+  /* When browsers apply insertUnorderedList/insertOrderedList on block content
+     they often wrap it as <li><p>text</p></li> or <li><h1>text</h1></li>.
+     JS unwraps these on creation, but this CSS is a safety net for saved content.
+     - <p> inside <li>: remove the bottom margin that causes huge item gaps
+     - <h*> inside <li>: reset size/weight so items look like normal list text
+     - <div> inside <li>: same treatment as <p> */
+  .blog-post-content li > p,
+  .blog-post-content li > div{
+    margin:0 !important;display:inline !important;
+  }
   .blog-post-content li h1,.blog-post-content li h2,
   .blog-post-content li h3,.blog-post-content li h4,
   .blog-post-content li h5,.blog-post-content li h6{
@@ -159,6 +164,11 @@ export const BLOG_POST_CONTENT_CSS = `
     line-height:1.7 !important;margin:0 !important;padding:0 !important;
     display:inline !important;
   }
+  /* List marker sizing — explicit so ::marker inherits from <li> not from
+     any inner block element (prevents giant bold numbers in <ol>) */
+  .blog-post-content ul,.blog-post-content ol{font-size:1rem;margin:1rem 0 1rem 1.5rem !important;padding:0}
+  .blog-post-content ul{list-style:disc}
+  .blog-post-content ol{list-style:decimal}
   .blog-post-content img{max-width:100% !important;height:auto !important;border-radius:10px !important;margin:1.75rem 0 !important;display:block}
   .blog-post-content a{color:var(--color-accent,#2563eb) !important;text-decoration:underline}
   .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.75rem 0;padding:.85rem 1.35rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}

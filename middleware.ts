@@ -16,12 +16,27 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Pass-through for main domain and www
-  if (
-    host === ROOT_DOMAIN ||
-    host === `www.${ROOT_DOMAIN}`
-  ) {
+  // www.factulista.com → serve the published site of the root project
+  // ROOT_DOMAIN_PROJECT env var controls which project slug is served at the root domain.
+  // This allows factulista.com / www.factulista.com to show the Factulista marketing site
+  // built with the builder, instead of the builder app itself.
+  if (host === `www.${ROOT_DOMAIN}`) {
+    const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? ''
+    if (rootProject) {
+      const rewritePath = url.pathname === '/' || url.pathname === ''
+        ? `/preview/${rootProject}`
+        : `/preview/${rootProject}${url.pathname}`
+      url.pathname = rewritePath
+      return NextResponse.rewrite(url)
+    }
     return NextResponse.next()
+  }
+
+  // Apex domain (factulista.com without www) → redirect to www
+  if (host === ROOT_DOMAIN) {
+    const wwwUrl = url.clone()
+    wwwUrl.host = `www.${ROOT_DOMAIN}`
+    return NextResponse.redirect(wwwUrl, 308)
   }
 
   // Skip API and Next internals for all hosts

@@ -638,12 +638,31 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
       // giant titles. We strip the heading wrapper and keep its text content.
       if(cmd==='insertUnorderedList'||cmd==='insertOrderedList'){
         document.execCommand(cmd,false,val);
-        document.querySelectorAll('li h1,li h2,li h3,li h4,li h5,li h6').forEach(function(h){
-          var li=h.parentElement;
-          if(!li||li.tagName!=='LI') return;
-          var frag=document.createDocumentFragment();
-          while(h.firstChild) frag.appendChild(h.firstChild);
-          li.replaceChild(frag,h);
+        // After list creation, unwrap block-level wrappers (headings, paragraphs)
+        // from inside <li> elements. Browsers often create <li><p>text</p></li> or
+        // <li><h1>text</h1></li> when wrapping block content. These cause:
+        //  - <p> wrapper: adds bottom margin → huge gaps between items
+        //  - <h*> wrapper: makes items and list markers appear in heading size
+        // Only unwrap when the <li> has exactly one block child and no other text,
+        // so we don't destroy multi-paragraph list items.
+        document.querySelectorAll('li').forEach(function(li){
+          var children=Array.prototype.slice.call(li.childNodes);
+          var blockChild=null,hasOther=false;
+          for(var i=0;i<children.length;i++){
+            var ch=children[i];
+            if(ch.nodeType===3&&ch.textContent.trim()){hasOther=true;break;}
+            if(ch.nodeType===1){
+              if(/^(P|H[1-6])$/.test(ch.tagName)){
+                if(blockChild){hasOther=true;break;}
+                blockChild=ch;
+              } else {hasOther=true;break;}
+            }
+          }
+          if(blockChild&&!hasOther){
+            var frag=document.createDocumentFragment();
+            while(blockChild.firstChild) frag.appendChild(blockChild.firstChild);
+            li.replaceChild(frag,blockChild);
+          }
         });
         triggerSave();
         return;
