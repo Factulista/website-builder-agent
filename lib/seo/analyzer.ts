@@ -165,37 +165,59 @@ function getOgTagContent(html: string, property: string): string | null {
   return m?.[1] ?? null
 }
 
+/** Patterns that indicate a stale/wrong og:url (preview/staging domains) */
+const OG_URL_STALE_PATTERNS = [
+  '/preview/', 'factulista.app/preview', 'myweb.', 'localhost',
+  '127.0.0.1', '.vercel.app',
+]
+
 function checkOpenGraph(html: string): CheckResult {
   const tags = ['og:title', 'og:description', 'og:image', 'og:url']
 
   const present: string[] = []
   const placeholderImage: string[] = []
+  const staleUrl: string[] = []
+  const issues: string[] = []
 
   for (const tag of tags) {
     const content = getOgTagContent(html, tag)
     if (!content) continue
     if (tag === 'og:image' && OG_IMAGE_PLACEHOLDERS.some(p => content.includes(p))) {
-      // Image exists but is a placeholder — flag separately, don't count as present
       placeholderImage.push(content)
+      continue
+    }
+    if (tag === 'og:url' && OG_URL_STALE_PATTERNS.some(p => content.includes(p))) {
+      // URL is present but points to a staging/preview domain — flag as invalid
+      staleUrl.push(content)
+      issues.push(`og:url punta a un dominio di staging: ${content}`)
       continue
     }
     present.push(tag)
   }
 
-  const missing = tags.filter(t => !present.includes(t))
-  const score = Math.round((present.length / tags.length) * 100)
+  const missing = tags.filter(t => !present.includes(t) && !staleUrl.some(u => t === 'og:url'))
+  // Stale og:url counts as missing for scoring purposes
+  const effectiveMissing = [...missing, ...staleUrl.map(() => 'og:url')]
+  const effectivePresent = tags.filter(t => present.includes(t))
+  const score = Math.round((effectivePresent.length / tags.length) * 100)
 
   const isPlaceholderImg = placeholderImage.length > 0
-  const detail = present.length === 4
-    ? 'Tutti i tag og:* presenti ✓'
-    : isPlaceholderImg && missing.includes('og:image')
-      ? `og:image usa un placeholder — carica un'immagine reale. Mancanti: ${missing.filter(t => t !== 'og:image').join(', ') || 'nessuno'}`
-      : `Mancanti: ${missing.join(', ')}`
+  const allIssues = [
+    ...issues,
+    ...(isPlaceholderImg ? [`og:image usa un placeholder — carica un'immagine reale`] : []),
+    ...(missing.filter(t => t !== 'og:url').length > 0 ? [`Mancanti: ${missing.filter(t=>t!=='og:url').join(', ')}`] : []),
+  ]
+
+  const detail = effectivePresent.length === 4
+    ? 'Tutti i tag og:* presenti e validi ✓'
+    : allIssues.length > 0
+      ? allIssues.join(' — ')
+      : `Mancanti: ${effectiveMissing.join(', ')}`
 
   return {
     checkId: 'open-graph', score, status: statusFromScore(score),
     detail,
-    data: { present, missing, placeholderImage },
+    data: { present: effectivePresent, missing: effectiveMissing, placeholderImage, staleUrl },
   }
 }
 
