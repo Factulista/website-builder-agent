@@ -3676,7 +3676,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         // (unique layouts) only get their :root tokens synced, not stripped.
         newPages = pages.map(p => ({ ...p, html: mergeSharedCssIntoPage(p.html, newCss) }))
       }
-      summary = `🎨 ${result.input.summary}`
+      summary = `🎨 ${result.input.summary ?? "fatto"}`
       // Fall through to saveState below (newPages is updated)
     } else
 
@@ -3687,7 +3687,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       // Remove any static "blog" page — blog is always served dynamically from blog_posts
       newPages = newPages.filter(p => p.slug !== 'blog')
       const steps = result.steps ? `\n${(result.steps as string[]).join('\n')}` : ''
-      summary = `✨ ${result.input.summary}${steps}`
+      summary = `✨ ${result.input.summary ?? "fatto"}${steps}`
       // Set active to first NEW page (not existing), fallback to first page
       const newSlugs = result.input.newPageSlugs as string[] | undefined
       const firstNew = newSlugs?.find(s => newPages.some(p => p.slug === s))
@@ -3763,7 +3763,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setLoading(false)
         return
       }
-      summary = `✏️ ${result.input.summary}${totalFailed ? ` ⚠️ ${totalFailed} edit parziali non applicate` : ''}`
+      summary = `✏️ ${result.input.summary ?? "fatto"}${totalFailed ? ` ⚠️ ${totalFailed} edit parziali non applicate` : ''}`
       newActiveSlug = targetSlug
 
       // Fix 9: auto-sync nav and footer from home to all other pages after home is edited.
@@ -3823,7 +3823,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             return { ...p, html: strippedHtml + `\n${sharedFooterForNewPage}` }
           })
         }
-        summary = `➕ ${result.input.summary}`
+        summary = `➕ ${result.input.summary ?? "fatto"}`
         newActiveSlug = newPage.slug
       }
     } else if (result.tool === 'delete_page') {
@@ -3833,7 +3833,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       } else {
         const filtered = pages.filter(p => p.slug !== targetSlug)
         newPages = syncNavigation(filtered, 'delete', targetSlug)
-        summary = `🗑 ${result.input.summary}`
+        summary = `🗑 ${result.input.summary ?? "fatto"}`
         if (activeSlug === targetSlug) newActiveSlug = newPages[0]?.slug || 'home'
       }
     } else if (result.tool === 'update_seo') {
@@ -3851,9 +3851,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
         return { ...p, html }
       })
-      summary = `🔍 ${result.input.summary}${skipped ? ` (${skipped} edit non applicate)` : ''}`
+      summary = `🔍 ${result.input.summary ?? "fatto"}${skipped ? ` (${skipped} edit non applicate)` : ''}`
     } else if (result.tool === 'generate_sitemap') {
-      summary = `🗺️ ${result.input.summary}`
+      summary = `🗺️ ${result.input.summary ?? "fatto"}`
     } else if (result.tool === 'insert_component') {
       // Render the component locally (zero tokens) and inject into one or more pages
       const inp = result.input as {
@@ -3940,11 +3940,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         return { ...p, html }
       })
       summary = injected > 0
-        ? `🧩 ${result.input.summary} (${injected}/${targetSlugs.length} pagine)`
+        ? `🧩 ${result.input.summary ?? "fatto"} (${injected}/${targetSlugs.length} pagine)`
         : `⚠️ Componente non iniettato — target non trovato in: ${skippedSlugs.join(', ')}`
     } else if (result.tool === 'update_blog_header') {
       const newHeaderHtml = result.input.html as string
-      summary = `📝 ${result.input.summary}`
+      summary = `📝 ${result.input.summary ?? "fatto"}`
       // Save blog_header_html to Supabase directly (merges into existing site_config)
       const { data: existing } = await supabase.from('projects').select('site_config').eq('id', id).single()
       const existingConfig = (existing?.site_config ?? {}) as Record<string, unknown>
@@ -3962,7 +3962,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     } else if (result.tool === 'set_inject_point') {
       const slot = result.input.slot as string
       const html = result.input.html as string
-      summary = `🔌 ${result.input.summary}`
+      summary = `🔌 ${result.input.summary ?? "fatto"}`
       // Merge into inject_points and save
       const updatedIp = { ...injectPointsRef.current }
       if (html.trim()) {
