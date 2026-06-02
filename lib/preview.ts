@@ -220,7 +220,10 @@ function errorPage(status: number, title: string, message: string) {
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
 
 // Staging preview: always serves the latest draft (pages)
-export async function servePreview(projectSlug: string, pageSlug: string = 'home') {
+// originalHost: when set, base href and siteUrl use this domain instead of
+// myweb.{ROOT_DOMAIN}/{slug} — used when the root domain (www.factulista.com)
+// rewrites to /preview/{slug} so that internal nav links stay on the right domain.
+export async function servePreview(projectSlug: string, pageSlug: string = 'home', originalHost?: string) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -249,10 +252,15 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   if (!pageHtml) return errorPage(200, data.name, 'Il sito non è ancora stato generato.')
 
   // Staging: base uses the public-facing URL so that relative links (./blog, ./page)
-  // resolve to https://myweb.{domain}/{slug}/... — which the middleware rewrites
-  // internally to /preview/{slug}/... without ever leaking "preview" in the browser URL.
-  const base = `https://myweb.${ROOT_DOMAIN}/${projectSlug}/`
-  const siteUrl = `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
+  // resolve correctly. When an originalHost is provided (e.g. www.factulista.com),
+  // use it directly so links stay on that domain. Otherwise fall back to the myweb
+  // subdomain which the middleware rewrites internally to /preview/{slug}/...
+  const base = originalHost
+    ? `https://${originalHost}/`
+    : `https://myweb.${ROOT_DOMAIN}/${projectSlug}/`
+  const siteUrl = originalHost
+    ? `https://${originalHost}`
+    : `https://myweb.${ROOT_DOMAIN}/${projectSlug}`
   const knownSlugs = ['blog', ...(config?.pages ?? []).map(p => p.slug)]
   const faviconUrl = config?.favicon_url
   const page = config?.pages?.find(p => p.slug === pageSlug)

@@ -18,8 +18,9 @@ export function middleware(req: NextRequest) {
 
   // www.factulista.com → serve the published site of the root project
   // ROOT_DOMAIN_PROJECT env var controls which project slug is served at the root domain.
-  // This allows factulista.com / www.factulista.com to show the Factulista marketing site
-  // built with the builder, instead of the builder app itself.
+  // We pass x-original-host so servePreview can build base href / siteUrl with the
+  // real public domain instead of myweb.factulista.com — otherwise internal nav links
+  // would redirect users from www.factulista.com to myweb.factulista.com on every click.
   if (host === `www.${ROOT_DOMAIN}`) {
     const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? ''
     if (rootProject) {
@@ -27,7 +28,9 @@ export function middleware(req: NextRequest) {
         ? `/preview/${rootProject}`
         : `/preview/${rootProject}${url.pathname}`
       url.pathname = rewritePath
-      return NextResponse.rewrite(url)
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-original-host', host)
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
     }
     return NextResponse.next()
   }
