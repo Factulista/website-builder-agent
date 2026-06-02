@@ -270,9 +270,22 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const sharedNav = config?.shared_nav_html
   const sharedFooter = config?.shared_footer_html
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, true, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
+  // isStaging=true strips canonical/og:url and injects noindex — correct for the
+  // myweb.factulista.com staging preview. When serving at the real public domain
+  // (originalHost set), treat it as production so canonical tags are preserved and
+  // noindex is NOT injected (Google must be able to crawl and index the live site).
+  const isStaging = !originalHost
+
+  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      // No caching for production domain pages — content must always be fresh.
+      // Staging previews can be cached aggressively since they're only for editing.
+      'Cache-Control': isStaging
+        ? 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400'
+        : 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+    },
   })
 }
 
