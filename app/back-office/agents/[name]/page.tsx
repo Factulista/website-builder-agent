@@ -18,6 +18,7 @@ const C = {
 const MODEL_OPTIONS = [
   { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
   { value: 'claude-sonnet-4-5-20251001', label: 'Sonnet 4.5' },
+  { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 ✨' },
   { value: 'claude-opus-4-5-20251001', label: 'Opus 4.5' },
 ]
 
@@ -325,8 +326,8 @@ CREATE TABLE agent_prompt_versions (
         if (!meta?.rules?.length) return null
         return (
           <div style={{
-            background: '#fffbeb',
-            border: '1px solid #fde68a',
+            background: '#f8faff',
+            border: '1px solid #c7d7f8',
             borderRadius: '10px',
             padding: '14px 16px',
             marginBottom: '24px',
@@ -334,30 +335,39 @@ CREATE TABLE agent_prompt_versions (
             <p style={{
               margin: '0 0 10px',
               fontSize: '0.68rem',
-              color: '#92400e',
+              color: '#1e40af',
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
             }}>
-              📋 Regole operative
+              🛡️ Guardrail attivi
             </p>
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {meta.rules.map((rule, i) => (
-                <li key={i} style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '8px',
-                  fontSize: '0.84rem',
-                  color: '#78350f',
-                  lineHeight: 1.5,
-                }}>
-                  <span style={{ color: '#d97706', flexShrink: 0, marginTop: '1px' }}>·</span>
-                  {rule}
-                </li>
-              ))}
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {meta.rules.map((rule, i) => {
+                const isBlock = rule.startsWith('❌') || rule.startsWith('🚫')
+                const isAllow = rule.startsWith('✅') || rule.startsWith('🎯')
+                const bg = isBlock ? '#fff1f2' : isAllow ? '#f0fdf4' : '#f8faff'
+                const border = isBlock ? '#fecaca' : isAllow ? '#bbf7d0' : '#e0e7ff'
+                return (
+                  <li key={i} style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    fontSize: '0.82rem',
+                    color: '#1e293b',
+                    lineHeight: 1.5,
+                    background: bg,
+                    border: `1px solid ${border}`,
+                    borderRadius: '6px',
+                    padding: '5px 10px',
+                  }}>
+                    {rule}
+                  </li>
+                )
+              })}
             </ul>
-            <p style={{ margin: '10px 0 0', fontSize: '0.68rem', color: '#a16207' }}>
-              Queste regole sono definite nel manifest dell'agente ({agent.filePath})
+            <p style={{ margin: '10px 0 0', fontSize: '0.68rem', color: '#6b7280' }}>
+              Definiti in <code style={{ fontFamily: 'monospace', background: '#e0e7ff', padding: '1px 4px', borderRadius: '3px' }}>{agent.filePath}</code> — modificabili solo via codice
             </p>
           </div>
         )

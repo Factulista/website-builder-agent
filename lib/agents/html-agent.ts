@@ -961,6 +961,12 @@ REGOLE:
 
   const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
+🚫 REGOLA ASSOLUTA — NON TOCCARE MAI LO STILE SE NON ESPLICITAMENTE RICHIESTO:
+- Se l'utente chiede di aggiungere/modificare/rimuovere un elemento (form, bottone, link, sezione, testo, immagine) → tocca SOLO quell'elemento. NON modificare mai il CSS, i colori, i font, il layout o lo stile di altri elementi non coinvolti nella richiesta.
+- Solo se l'utente usa parole come "cambia colore", "modifica stile", "aggiorna design", "rendi più grande/piccolo", "usa un altro font" → allora puoi toccare il CSS.
+- Quando aggiungi un nuovo elemento, dagli le classi CSS già esistenti nel sito — NON creare nuove regole CSS a meno che sia strettamente necessario.
+- In caso di dubbio: MENO è MEGLIO. Fai solo la modifica minima richiesta.
+
 QUALITÀ HTML — REGOLE ANTI-REGRESSIONE (errori comuni da NON ripetere):
 - ❌ MAI usare classi Tailwind CSS (text-4xl, md:text-5xl, font-bold, leading-tight, ecc.) — il sito usa CSS custom, non Tailwind. Usa SOLO le classi definite nel <style> della pagina o variabili CSS (var(--accent), var(--font), ecc.).
 - ❌ MAI lasciare elementi vuoti (<h2><p><br></p></h2>, <div></div>, <p></p>, ecc.) — rimuovili prima di finalizzare l'output.

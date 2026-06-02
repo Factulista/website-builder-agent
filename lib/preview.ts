@@ -312,9 +312,11 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
       'Content-Type': 'text/html; charset=utf-8',
       // No caching for production domain pages — content must always be fresh.
       // Staging previews can be cached aggressively since they're only for editing.
+      // Staging: short cache fine (editor previews don't need to be real-time)
+      // Production: NO cache — user must see changes immediately after Publish
       'Cache-Control': isStaging
-        ? 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400'
-        : 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+        ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
+        : 'no-cache, no-store, must-revalidate',
     },
   })
 }
@@ -357,6 +359,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
 
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },
+    // No cache on published pages — Publish must be instantly visible
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
   })
 }
