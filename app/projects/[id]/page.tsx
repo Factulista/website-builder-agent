@@ -7820,7 +7820,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     ...(nameChanged ? { name: trimmedName } : {}),
                                     ...(labelChanged ? { menuLabel: trimmedLabel || trimmedName } : {}),
                                   } : p)
-                                  const synced = reorderNavLinks(next)
+                                  // Only call reorderNavLinks when the menu label changed —
+                                  // reorderNavLinks reorders the nav according to pages[] array order,
+                                  // so calling it for a plain name change would silently reorder the nav.
+                                  const synced = labelChanged ? reorderNavLinks(next) : next
                                   setPages(synced)
                                   await saveState(messages, synced)
                                   setRenamingSlug(null)
