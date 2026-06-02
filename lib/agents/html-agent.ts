@@ -1001,9 +1001,13 @@ QUALITÀ HTML — REGOLE ANTI-REGRESSIONE (errori comuni da NON ripetere):
 - ❌ MAI usare tag HTML obsoleti: <strike> → usa <s> o <del>; <font> → usa CSS; <center> → usa CSS text-align:center; <tt> → usa <code>; <big> → usa CSS font-size; <b> puramente decorativo → usa <strong>; <i> puramente decorativo → usa <em>. I tag obsoleti abbassano il punteggio SEO e vengono segnalati dagli strumenti di analisi.
 - ✅ Quando generi una <form> per raccogliere contatti o lead, usa SEMPRE il pattern JavaScript:
   fetch('/api/forms') con POST, Content-Type application/json.
-  Body: {tipo:'contacto', nombre, email, empresa, mensaje}
-  Response: se contiene redirectUrl, usa window.location.href; se confirmMessage, mostralo.
-  Configurabili dal pannello Componenti (admin email, confirm message, redirect URL).
+  Body: {tipo:'contacto', nombre, email, empresa, mensaje, 'cf-turnstile-response': tokenValue}
+  Response: se contiene redirectUrl, usa setTimeout(2000) poi window.location.href; se confirmMessage, mostralo.
+  Se il sito ha Cloudflare Turnstile configurato (site key nel pannello Componenti), aggiungi:
+  1. Script: <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  2. Widget dentro la form: <div class="cf-turnstile" data-sitekey="SITE_KEY" data-theme="light"></div>
+  3. Nel JS prima del fetch: var token = document.querySelector('[name=cf-turnstile-response]')?.value ?? ''
+  Senza site key: ometti il widget e non includere cf-turnstile-response nel body.
 
 REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").

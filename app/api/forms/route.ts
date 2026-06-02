@@ -148,6 +148,35 @@ export async function POST(req: NextRequest) {
 
   const empresa = (body.empresa as string | undefined)?.trim()
 
+  // ── Cloudflare Turnstile verification ────────────────────────────────────────
+  const turnstileSecret = process.env.CLOUDFLARE_TURNSTILE_SECRET
+  const turnstileToken  = (body['cf-turnstile-response'] as string | undefined)?.trim()
+
+  if (turnstileSecret) {
+    if (!turnstileToken) {
+      console.warn(`[forms] Turnstile token missing — origin: ${origin}`)
+      return Response.json({ error: 'Verifica anti-bot mancante. Ricarica la pagina e riprova.', turnstileFailed: true }, { status: 400 })
+    }
+    try {
+      const verify = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: turnstileSecret, response: turnstileToken }),
+        signal: AbortSignal.timeout(8000),
+      })
+      const result = await verify.json() as { success: boolean; 'error-codes'?: string[] }
+      if (!result.success) {
+        console.warn(`[forms] Turnstile failed — codes: ${(result['error-codes'] ?? []).join(',')} — origin: ${origin}`)
+        return Response.json({ error: 'Verifica anti-bot fallita. Ricarica la pagina e riprova.', turnstileFailed: true }, { status: 400 })
+      }
+      console.log(`[forms] Turnstile OK — origin: ${origin}`)
+    } catch (err) {
+      // Non-fatal: if Cloudflare is down, let the form through
+      console.error(`[forms] Turnstile verification error (non-fatal, letting through): ${err}`)
+    }
+  }
+  // ── End Turnstile ─────────────────────────────────────────────────────────────
+
   let payload: FormPayload
   if (tipo === 'CRM') {
     payload = { tipo: 'CRM', nombre, email }

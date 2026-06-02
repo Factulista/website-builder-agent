@@ -1655,11 +1655,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [brevoSaving, setBrevoSaving] = useState<'idle'|'saving'|'saved'>('idle')
   const [brevoTesting, setBrevoTesting] = useState<'idle'|'testing'|'ok'|'error'>('idle')
   // Contact form component config
-  const [cfAdminEmail, setCfAdminEmail]         = useState('')
-  const [cfConfirmMsg, setCfConfirmMsg]         = useState('')
+  const [cfAdminEmail, setCfAdminEmail]           = useState('')
+  const [cfConfirmMsg, setCfConfirmMsg]           = useState('')
   const [cfConfirmEmailMsg, setCfConfirmEmailMsg] = useState('')
-  const [cfRedirectUrl, setCfRedirectUrl]       = useState('')
-  const [cfSaving, setCfSaving]                 = useState<'idle'|'saving'|'saved'>('idle')
+  const [cfRedirectUrl, setCfRedirectUrl]         = useState('')
+  const [cfTurnstileSiteKey, setCfTurnstileSiteKey] = useState('')
+  const [cfSaving, setCfSaving]                   = useState<'idle'|'saving'|'saved'>('idle')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
@@ -2181,6 +2182,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             confirm_message:        cfConfirmMsg.trim(),
             confirm_email_message:  cfConfirmEmailMsg.trim(),
             redirect_url:           cfRedirectUrl.trim(),
+            turnstile_site_key:     cfTurnstileSiteKey.trim(),
           }
         }
       },
@@ -2541,6 +2543,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setCfConfirmMsg((cfConfig.confirm_message as string) ?? '')
       setCfConfirmEmailMsg((cfConfig.confirm_email_message as string) ?? '')
       setCfRedirectUrl((cfConfig.redirect_url as string) ?? '')
+      setCfTurnstileSiteKey((cfConfig.turnstile_site_key as string) ?? '')
       // Load shared nav / footer refs for editor preview injection.
       // One-time migration: if missing, extract from home page and persist immediately.
       if ((config as any)?.shared_nav_html) {
@@ -8036,6 +8039,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           />
                         </div>
                         <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Se impostato, l&apos;utente viene reindirizzato a questa pagina dopo l&apos;invio invece di vedere il messaggio.</p>
+                      </div>
+
+                      {/* Cloudflare Turnstile */}
+                      <div style={{ marginBottom: '20px', padding: '14px', background: '#f8f9ff', border: `1px solid #dde3ff`, borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '1rem' }}>🛡️</span>
+                          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Cloudflare Turnstile (anti-bot)
+                          </label>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="0x4AAAAAAA... (Site Key pubblica da Cloudflare)"
+                          value={cfTurnstileSiteKey}
+                          onChange={e => setCfTurnstileSiteKey(e.target.value)}
+                          style={{ width: '100%', border: `1px solid #c7d2fe`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
+                        />
+                        <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.4' }}>
+                          {'1. Vai su dash.cloudflare.com → Turnstile → crea widget → copia Site Key qui'}
+                          <br/>
+                          {'2. La Secret Key va aggiunta su Vercel come env var CLOUDFLARE_TURNSTILE_SECRET'}
+                          <br/>
+                          {'3. Il widget si aggiunge automaticamente alla form via SQL patch (vedi istruzioni)'}
+                        </p>
                       </div>
 
                       <button
