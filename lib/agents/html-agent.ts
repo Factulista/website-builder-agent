@@ -337,6 +337,27 @@ const HTML_TOOLS = [
             required: ['find', 'replace'],
           },
         },
+        typed_edits: {
+          type: 'array',
+          description: 'Operazioni semantiche che NON richiedono generare HTML. Usa SEMPRE questi al posto di edits/operations quando possibile — zero rischio di rompere struttura. Tipi: css_var (cambia CSS variable in :root), css_prop (cambia proprietà CSS in un selettore), attr (cambia attributo HTML come href/src/alt), text (cambia testo visibile di un elemento).',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['css_var', 'css_prop', 'attr', 'text'], description: 'css_var: cambia --variabile in :root. css_prop: cambia property CSS in selettore. attr: cambia attributo HTML. text: cambia testo visibile.' },
+              selector: { type: 'string', description: 'Selettore CSS (richiesto per css_prop, attr, text). Es: ".hero-button", "#cta", "nav .logo"' },
+              var: { type: 'string', description: 'Nome CSS variable SENZA -- (solo per css_var). Es: "color-accent", "font-body"' },
+              prop: { type: 'string', description: 'Proprietà CSS (solo per css_prop). Es: "font-size", "padding", "border-radius"' },
+              attr: { type: 'string', description: 'Nome attributo HTML (solo per attr). Es: "href", "src", "alt", "placeholder"' },
+              value: { type: 'string', description: 'Nuovo valore da impostare' },
+            },
+            required: ['type', 'value'],
+          },
+        },
+        scope: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'OBBLIGATORIO per operazioni con operations[]. Lista dei selettori CSS delle sezioni che verranno modificate (es: ["section#hero", "section#pricing"]). Aiuta a verificare che non vengano toccate sezioni non richieste.',
+        },
         summary: { type: 'string' },
       },
       required: ['pageSlug', 'summary'],
@@ -631,6 +652,92 @@ ${JSON.stringify(keys)}`
   }
 }
 
+/**
+ * Applies a single typed_edit to HTML without requiring the agent to generate HTML.
+ * Uses regex-based approaches that work server-side without a DOM library.
+ */
+export function applyTypedEdit(html: string, edit: {
+  type: 'css_var' | 'css_prop' | 'attr' | 'text'
+  selector?: string
+  var?: string
+  prop?: string
+  attr?: string
+  value: string
+}): string {
+  switch (edit.type) {
+
+    case 'css_var': {
+      // Replace CSS variable value in :root { } or anywhere in <style>
+      // Handles: --color-accent: #old; → --color-accent: #new;
+      if (!edit.var) return html
+      const varName = edit.var.replace(/^--/, '') // strip -- if user included it
+      return html.replace(
+        new RegExp(`(--${varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*)[^;\\}]+`, 'g'),
+        `$1${edit.value}`
+      )
+    }
+
+    case 'css_prop': {
+      // Replace a CSS property inside a selector block
+      // Finds the selector in <style> and replaces the property value
+      if (!edit.selector || !edit.prop) return html
+      const selectorEsc = edit.selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const propEsc = edit.prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      // Match: selector { ...prop: oldval;... }
+      return html.replace(
+        new RegExp(`(${selectorEsc}\\s*\\{[^}]*${propEsc}\\s*:\\s*)[^;\\}]+`, 'g'),
+        `$1${edit.value}`
+      )
+    }
+
+    case 'attr': {
+      // Replace an HTML attribute value on elements matching the selector
+      // Handles simple selectors: .class, #id, tag, tag.class
+      if (!edit.selector || !edit.attr) return html
+      const attrEsc = edit.attr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const valEsc = edit.value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c))
+
+      // Strategy: find ALL opening tags that match the selector and swap the attribute
+      const classM = edit.selector.match(/\.([a-zA-Z0-9_-]+)/)
+      const idM = edit.selector.match(/#([a-zA-Z0-9_-]+)/)
+      const tagM = edit.selector.match(/^([a-zA-Z][a-zA-Z0-9]*)/)
+
+      const tagPat = tagM ? tagM[1] : '[a-zA-Z][a-zA-Z0-9]*'
+      let lookAhead = ''
+      if (idM) lookAhead += `(?=[^>]*id=["']${idM[1]}["'])`
+      if (classM) lookAhead += `(?=[^>]*class=["'][^"']*${classM[1]}[^"']*["'])`
+
+      // Replace attribute value in matching tags
+      const tagRe = new RegExp(`(<${tagPat}\\b${lookAhead}[^>]*\\s${attrEsc}=["'])([^"']+)(["'][^>]*>)`, 'gi')
+      return html.replace(tagRe, `$1${valEsc}$3`)
+    }
+
+    case 'text': {
+      // Replace visible text content of an element matching the selector
+      // Works for simple class/id selectors on inline text
+      if (!edit.selector) return html
+      const classM = edit.selector.match(/\.([a-zA-Z0-9_-]+)/)
+      const idM = edit.selector.match(/#([a-zA-Z0-9_-]+)/)
+      const tagM = edit.selector.match(/^([a-zA-Z][a-zA-Z0-9]*)/)
+
+      const tagPat = tagM ? tagM[1] : '[a-zA-Z][a-zA-Z0-9]*'
+      let lookAhead = ''
+      if (idM) lookAhead += `(?=[^>]*id=["']${idM[1]}["'])`
+      if (classM) lookAhead += `(?=[^>]*class=["'][^"']*${classM[1]}[^"']*["'])`
+
+      const valEsc = edit.value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c))
+
+      // Replace simple text node (no child tags) inside matching element
+      // Pattern: <tag ...>text only, no tags<
+      const textRe = new RegExp(`(<${tagPat}\\b${lookAhead}[^>]*>)([^<]+)(<)`, 'i')
+      return html.replace(textRe, `$1${valEsc}$3`)
+    }
+
+    default:
+      return html
+  }
+}
+
 export async function runHtmlAgent(
   messages: { role: string; content: string }[],
   pages: Page[],
@@ -678,7 +785,18 @@ export async function runHtmlAgent(
   // Fix 7: micro-edit — targeted single-section edits (delete, round corners, single property change)
   // Identified by: delete keyword OR single-element style tweak with no image and no new section creation
   const isSingleStyleTweak = /\b(bordes?\s+redondeados?|border.radius|arrotonda|rendi\s+tondo|rounded|bold|grassetto|sottolineato|underline|font.size|dimensione\s+testo)\b/i.test(userMsg)
-  const isMicroEdit = (isDeleteRequest || isSingleStyleTweak) && !hasAttachedImagesInMsg(userMsg)
+
+  // Typed-edit patterns — no HTML generation needed, surgical semantic edits
+  const typedEditPatterns = [
+    /\b(colou?re?|color[e]?|accent|primario|sfondo|background|tema)\b.*\b(cambi[a-z]*|modific[a-z]*|mett[a-z]*|sett[a-z]*|aggiorn[a-z]*)\b/i,
+    /\b(cambi[a-z]*|modific[a-z]*)\b.*\b(colou?re?|sfondo|accent)\b/i,
+    /\b(testo|text|titolo|heading|bottone|button|label|link)\b.*\b(cambi[a-z]*|modific[a-z]*|sost[a-z]*)\b/i,
+    /\b(href|url|link)\b.*\b(cambi[a-z]*|aggiorn[a-z]*|punta[a-z]*)\b/i,
+    /\bfont[-\s]?(size|dimensione|grandezza)\b/i,
+  ]
+  const isTypedEditRequest = typedEditPatterns.some(p => p.test(userMsg))
+
+  const isMicroEdit = (isDeleteRequest || isSingleStyleTweak || isTypedEditRequest) && !hasAttachedImagesInMsg(userMsg)
 
   /** Returns true when the message contains an attached image URL (not a logo/asset replacement URL) */
   function hasAttachedImagesInMsg(msg: string): boolean {
@@ -837,7 +955,9 @@ REGOLE:
 - Usa SEMPRE edit_page (non create_site, non add_page).
 - Preferisci "operations" (selector-based) per sezioni intere; usa "edits" (find/replace) per CSS/attributi/testi brevi.
 - Tocca SOLO l'elemento richiesto — non riscrivere HTML non coinvolto.
-- summary in ${langName(userLang)}.`
+- summary in ${langName(userLang)}.
+- 🎯 SCOPE DICHIARATO: nel campo "scope" di edit_page, elenca SOLO le sezioni che stai effettivamente modificando. Se l'utente chiede una modifica puntuale (es. "cambia il testo del bottone"), scope deve contenere solo quella sezione — mai l'intera pagina.
+- ✅ PREFERISCI typed_edits per: colori (css_var), font-size (css_prop), link href (attr), testi brevi (text) — NON generare HTML per questi casi.`
 
   const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 
@@ -861,6 +981,8 @@ REGOLE CRITICHE:
 - Nessun sito? Usa create_site (includi sempre pagina "home").
 - Modifiche a pagina esistente: usa edit_page con find/replace mirati.
 - Nuova pagina: usa add_page. Eliminare pagina: usa delete_page (non "home").
+- 🎯 SCOPE DICHIARATO: nel campo "scope" di edit_page, elenca SOLO le sezioni che stai effettivamente modificando. Se l'utente chiede una modifica puntuale (es. "cambia il testo del bottone"), scope deve contenere solo quella sezione — mai l'intera pagina.
+- ✅ PREFERISCI typed_edits per: colori (css_var), font-size (css_prop), link href (attr), testi brevi (text) — NON generare HTML per questi casi.
 - add_page — REGOLA FONDAMENTALE: genera SOLO il contenuto specifico della pagina. NAV e FOOTER vengono iniettati automaticamente dal sistema (dalla home page) — NON includerli MAI. Struttura obbligatoria: <!DOCTYPE html><html lang="..."><head>[meta SEO]</head><body><main style="padding-top:var(--nav-height,64px)">[sezioni della pagina]</main></body></html>. DEVI includere un <style> completo per i componenti specifici (layout, sezioni, card, tabelle, ecc.) usando var(--accent), var(--bg), var(--text), var(--font), ecc. per colori e font coerenti col brand.
 - MAI creare una pagina con slug "blog". Il blog è gestito da un sistema dinamico separato. Se l'utente vuole il blog, aggiungi SOLO il link <a href="./blog">Blog</a> nella nav — non creare la pagina.
 - Per modificare l'intestazione/hero/testo della PAGINA BLOG (la sezione sopra gli articoli), usa update_blog_header — NON edit_page.
@@ -1161,6 +1283,48 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
       ...op,
       ...(typeof op.html === 'string' ? { html: stripBlankLines(op.html) } : {}),
     }))
+  }
+
+  // Apply typed_edits first (most surgical, no HTML generation needed).
+  // We resolve them server-side by applying each edit to the target page HTML
+  // and converting the result into a find/replace edit so the client applies it normally.
+  const typedEdits = (inp.typed_edits ?? []) as Array<{
+    type: 'css_var' | 'css_prop' | 'attr' | 'text'
+    selector?: string; var?: string; prop?: string; attr?: string; value: string
+  }>
+  if (typedEdits.length > 0 && toolUse.name === 'edit_page') {
+    const targetSlug = inp.pageSlug as string | undefined
+    const targetPage = targetSlug ? pages.find(p => p.slug === targetSlug) : null
+    if (targetPage) {
+      let html = targetPage.html
+      const syntheticEdits: Array<{ find: string; replace: string }> = []
+      for (const te of typedEdits) {
+        const next = applyTypedEdit(html, te)
+        if (next !== html) {
+          // Find the first differing region and emit a find/replace pair.
+          // This is safe because applyTypedEdit makes precise, localized changes.
+          // We diff at line granularity to keep find strings short and unambiguous.
+          const oldLines = html.split('\n')
+          const newLines = next.split('\n')
+          for (let i = 0; i < Math.max(oldLines.length, newLines.length); i++) {
+            if (oldLines[i] !== newLines[i]) {
+              const findStr = oldLines[i] ?? ''
+              const replStr = newLines[i] ?? ''
+              if (findStr && findStr !== replStr) {
+                syntheticEdits.push({ find: findStr, replace: replStr })
+              }
+              break
+            }
+          }
+          html = next
+        }
+      }
+      if (syntheticEdits.length > 0) {
+        inp.edits = [...(inp.edits as Array<{ find: string; replace: string }> ?? []), ...syntheticEdits]
+      }
+    }
+    // typed_edits have been resolved — remove them so the client doesn't re-apply
+    delete inp.typed_edits
   }
 
   return { tool: toolUse.name, input: inp, usage: data.usage }
