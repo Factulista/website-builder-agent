@@ -7745,12 +7745,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   const trimmedName = renameValue.trim()
                                   if (!trimmedName) return
                                   const trimmedLabel = menuLabelValue.trim()
-                                  if (trimmedName !== page.name) {
-                                    await updatePageField(page.slug, 'name', trimmedName)
-                                  }
-                                  if (trimmedLabel !== (page.menuLabel ?? '')) {
-                                    await updatePageField(page.slug, 'menuLabel', trimmedLabel || trimmedName)
-                                  }
+                                  const nameChanged = trimmedName !== page.name
+                                  const labelChanged = trimmedLabel !== (page.menuLabel ?? '')
+                                  if (!nameChanged && !labelChanged) { setRenamingSlug(null); return }
+                                  // Apply both changes in ONE update — avoids stale-closure bug where
+                                  // the second updatePageField call would see the old pages state and
+                                  // overwrite the first change.
+                                  const next = pages.map(p => p.slug === page.slug ? {
+                                    ...p,
+                                    ...(nameChanged ? { name: trimmedName } : {}),
+                                    ...(labelChanged ? { menuLabel: trimmedLabel || trimmedName } : {}),
+                                  } : p)
+                                  const synced = reorderNavLinks(next)
+                                  setPages(synced)
+                                  await saveState(messages, synced)
                                   setRenamingSlug(null)
                                 }}
                                 disabled={!renameValue.trim()}
