@@ -5501,6 +5501,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             >
                               {sitemapCopied ? '✓ Copiato!' : '📋 Copia URL'}
                             </button>
+                            <a
+                              href={sitemapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                padding: '7px 14px', borderRadius: '7px',
+                                border: `1px solid ${C.border}`,
+                                background: C.white, color: C.text,
+                                fontSize: '0.8rem', fontWeight: 600,
+                                cursor: 'pointer', fontFamily: 'inherit',
+                                textDecoration: 'none', transition: 'all 0.15s',
+                              }}
+                            >
+                              🔍 Visualizza
+                            </a>
                           </div>
 
                           {/* Google Search Console hint */}
