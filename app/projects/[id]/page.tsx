@@ -1727,6 +1727,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'>('checks')
   const [sitemapDownloading, setSitemapDownloading] = useState(false)
   const [sitemapCopied, setSitemapCopied] = useState(false)
+  const [mediaAiGenerating, setMediaAiGenerating] = useState(false)
   const [cfApiToken, setCfApiToken] = useState('')
   const [cfZoneId, setCfZoneId] = useState('')
   const [cfConfiguring, setCfConfiguring] = useState(false)
@@ -2316,6 +2317,44 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       console.log('[image-meta] generated for', path, meta)
     } catch (err) {
       console.error('[image-meta] error:', err)
+    }
+  }
+
+  // Same as above but only fills EMPTY fields — used by the ✨ wand button in media panel
+  const generateImageMetaFillEmpty = async (path: string, imageUrl: string) => {
+    setMediaAiGenerating(true)
+    try {
+      const detectedLang: string =
+        projectContext?.language ||
+        latestPagesRef.current[0]?.html?.match(/<html[^>]+lang=["']([^"']{2})/i)?.[1] ||
+        'it'
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) return
+      const r = await fetch('/api/generate-image-meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ imageUrl, context: { ...projectContext, language: detectedLang } }),
+      })
+      if (!r.ok) return
+      const meta = await r.json()
+      if (!meta) return
+      const existing = mediaMeta[path] ?? {}
+      const newMeta = {
+        ...mediaMeta,
+        [path]: {
+          alt:         existing.alt         || meta.alt         || '',
+          title:       existing.title       || meta.title       || '',
+          caption:     existing.caption     || meta.caption     || '',
+          description: existing.description || meta.description || '',
+        },
+      }
+      setMediaMeta(newMeta)
+      saveState(messages, latestPagesRef.current, versions, newMeta)
+    } catch (err) {
+      console.error('[image-meta wand] error:', err)
+    } finally {
+      setMediaAiGenerating(false)
     }
   }
 
@@ -6126,6 +6165,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       {faviconSaving === 'saving' ? '⏳ ' : faviconSaving === 'saved' ? '✓ Salvato!' : selectedMedia.url === faviconUrl ? '✓ ' : ''}{faviconSaving !== 'saved' ? '🌐 Favicon del progetto' : ''}
                     </button>
                   </div>
+                  {/* ✨ AI wand — fill empty meta fields */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '0.67rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Metadati immagine</span>
+                    <button
+                      type="button"
+                      onClick={() => generateImageMetaFillEmpty(selectedMedia.path, selectedMedia.url)}
+                      disabled={mediaAiGenerating}
+                      title="Genera automaticamente con AI i campi vuoti"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '4px 10px', borderRadius: '20px',
+                        border: `1px solid ${mediaAiGenerating ? C.border : '#c4b5fd'}`,
+                        background: mediaAiGenerating ? C.bgPanel : '#faf5ff',
+                        color: mediaAiGenerating ? C.textFaint : '#7c3aed',
+                        fontSize: '0.72rem', fontWeight: 600,
+                        cursor: mediaAiGenerating ? 'wait' : 'pointer',
+                        fontFamily: 'inherit', transition: 'all 0.15s',
+                      }}
+                    >
+                      {mediaAiGenerating
+                        ? <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Generando…</>
+                        : <>✨ Genera con AI</>}
+                    </button>
+                  </div>
+
                   {(['alt', 'title', 'caption', 'description'] as const).map(field => {
                     const labels = { alt: 'Testo alternativo', title: 'Titolo', caption: 'Didascalia', description: 'Descrizione' }
                     const isLong = field === 'caption' || field === 'description'
