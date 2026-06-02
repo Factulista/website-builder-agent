@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn('[forms] RESEND_API_KEY not set — skipping email notification')
-    return Response.json({ success: true })
+    return Response.json({ success: true, emailSent: false, reason: 'RESEND_API_KEY not configured' })
   }
 
   const resend = new Resend(apiKey)
@@ -240,5 +240,9 @@ export async function POST(req: NextRequest) {
     console.warn('[forms] Resend user confirmation failed (non-fatal):', err)
   }
 
-  return Response.json({ success: true })
+  const adminId = adminResult.status === 'fulfilled' ? adminResult.value?.data?.id : null
+  const userId  = userResult.status  === 'fulfilled' ? userResult.value?.data?.id  : null
+  console.log(`[forms] emails sent — admin: ${adminId ?? 'FAILED'}, user: ${userId ?? 'FAILED'}`)
+
+  return Response.json({ success: true, emailSent: true, adminEmailId: adminId, userEmailId: userId })
 }
