@@ -3751,6 +3751,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       newPages = rawPages as Page[]
       // Remove any static "blog" page — blog is always served dynamically from blog_posts
       newPages = newPages.filter(p => p.slug !== 'blog')
+
+      // Preserve pages the AI didn't regenerate (e.g. legal pages, custom pages added by the user).
+      // create_site regenerates the main site structure but must never silently delete pages
+      // the user created manually — it only knows about pages that were in its context.
+      const aiSlugs = new Set(newPages.map(p => p.slug))
+      const preserved = latestPagesRef.current.filter(p => !aiSlugs.has(p.slug) && p.slug !== 'blog')
+      if (preserved.length > 0) {
+        newPages = [...newPages, ...preserved]
+      }
+
       const steps = result.steps ? `\n${(result.steps as string[]).join('\n')}` : ''
       summary = `✨ ${result.input.summary ?? "fatto"}${steps}`
       // Set active to first NEW page (not existing), fallback to first page
