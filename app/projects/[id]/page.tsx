@@ -1415,6 +1415,10 @@ function stripEditorArtifacts(html: string): string {
   serialized = serialized.replace(/mobile-menu active/g, 'mobile-menu open')
                          .replace(/\.mobile-menu\.active\s*\{/g, '.mobile-menu.open {')
 
+  // Remove blank lines — lines with only whitespace look bad in the code view
+  // and add no semantic value. Collapse 2+ consecutive blank lines into nothing.
+  serialized = serialized.replace(/\n(\s*\n)+/g, '\n')
+
   return serialized
 }
 

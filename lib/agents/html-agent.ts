@@ -1166,7 +1166,9 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
   return { tool: toolUse.name, input: inp, usage: data.usage }
 }
 
-/** Remove blank lines from HTML — keeps output compact and readable in the DB. */
+/** Remove blank lines from HTML — keeps output compact and readable in the code view. */
 function stripBlankLines(html: string): string {
-  return html.replace(/\n[ \t]*\n[ \t]*\n/g, '\n\n').replace(/\n{3,}/g, '\n\n')
+  // Collapse any sequence of consecutive blank/whitespace-only lines into nothing.
+  // A single newline between tags is preserved for readability.
+  return html.replace(/\n(\s*\n)+/g, '\n')
 }
