@@ -223,6 +223,19 @@ function applyHtmlFix(
       return html
     }
 
+    case 'word-count':
+    case 'link-title-attr':
+    case 'text-html-ratio':
+    case 'pagespeed':
+      return html // not auto-fixable
+
+    case 'h1-coherence': {
+      const safe = generated.replace(/<[^>]+>/g, '').trim()
+      if (!safe) return html
+      if (/<h1\b[^>]*>/i.test(html)) return html.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>/i, `<h1>${safe}</h1>`)
+      return html
+    }
+
     case 'viewport': {
       const tag = '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
       html = html.replace(/<meta\b[^>]*name=["']viewport["'][^>]*>\n?/gi, '')
@@ -694,6 +707,17 @@ Rispondi con i tag <meta> HTML completi pronti per il <head>, uno per riga. SOLO
 Sostituiscili con i loro equivalenti HTML5: <strike>/<s> → <s>, <font> → <span style="...">, <center> → <div style="text-align:center">, <tt> → <code>, <big> → <span style="font-size:larger">.
 HTML completo:\n${targetPage.html.slice(0, 8000)}
 Restituisci SOLO l'HTML completo corretto, senza commenti.`, apiKey, context, tokens)
+            break
+          }
+
+          case 'h1-coherence': {
+            const missingKw = (data?.missing as string[]) ?? []
+            generated = await callSeoAgent(
+              `L'H1 della pagina "${targetPage.name}" contiene keyword non presenti nel corpo: ${missingKw.join(', ')}.
+${pageCtx}
+Business: "${resolvedBrand}" (${type}). Lingua: ${resolvedLang}.
+Riscrivi l'H1 usando SOLO keyword già presenti nel testo della pagina. Max 10 parole. Naturale e descrittivo.
+Rispondi SOLO con il testo dell'H1.`, apiKey, context, tokens)
             break
           }
 

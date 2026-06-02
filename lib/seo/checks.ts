@@ -27,6 +27,11 @@ export type CheckId =
   | 'viewport'
   | 'doctype'
   | 'iframe-usage'
+  | 'h1-coherence'
+  | 'word-count'
+  | 'link-title-attr'
+  | 'text-html-ratio'
+  | 'pagespeed'
 
 export type CheckGroup = 'meta' | 'structure' | 'images' | 'performance' | 'schema'
 export type FixOwner = 'html' | 'seo'
@@ -253,6 +258,60 @@ export const SEO_CHECKS: SeoCheck[] = [
     fixOwner: 'html',
     scoreType: 'binary',
     weight: 2,
+  },
+  {
+    id: 'h1-coherence',
+    label: 'Coerenza keyword H1–pagina',
+    description: 'Le keyword dell\'H1 devono essere presenti nel corpo della pagina. Se non lo sono, il titolo principale risulta fuorviante per Google.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'seo',
+    scoreType: 'scored',
+    weight: 5,
+  },
+  {
+    id: 'word-count',
+    label: 'Numero di parole sufficiente',
+    description: 'Google preferisce pagine con almeno 300 parole. Contenuto scarso = difficoltà di posizionamento.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'html',
+    scoreType: 'scored',
+    weight: 3,
+    fixable: false,
+  },
+  {
+    id: 'link-title-attr',
+    label: 'Attributo title sui link',
+    description: 'I tag <a> dovrebbero avere l\'attributo title per accessibilità e contesto SEO.',
+    group: 'structure',
+    groupLabel: '🏗️ Struttura',
+    fixOwner: 'html',
+    scoreType: 'scored',
+    weight: 3,
+    fixable: false,
+  },
+  {
+    id: 'text-html-ratio',
+    label: 'Ratio testo/HTML',
+    description: 'Il rapporto tra testo visibile e HTML totale dovrebbe superare il 25%. Un ratio basso indica HTML gonfiato.',
+    group: 'performance',
+    groupLabel: '⚡ Performance',
+    fixOwner: 'html',
+    scoreType: 'scored',
+    weight: 3,
+    fixable: false,
+  },
+  {
+    id: 'pagespeed',
+    label: 'PageSpeed (FCP / LCP / TTI)',
+    description: 'Metriche Core Web Vitals reali: First Contentful Paint, Largest Contentful Paint, Time to Interactive. Richiedono analisi live della pagina.',
+    group: 'performance',
+    groupLabel: '⚡ Performance',
+    fixOwner: 'html',
+    scoreType: 'scored',
+    weight: 8,
+    fixable: false,
   },
   {
     id: 'iframe-usage',

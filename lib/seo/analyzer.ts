@@ -397,6 +397,65 @@ function checkBrokenLinks(html: string, allSlugs: Set<string>): CheckResult {
   }
 }
 
+function checkH1Coherence(html: string): CheckResult {
+  const h1M = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+  if (!h1M) return { checkId: 'h1-coherence', score: 0, status: 'fail', detail: 'Nessun H1 trovato', data: { missing: [] } }
+  const h1 = h1M[1].replace(/<[^>]+>/g, '').replace(/&#?\w+;/g, ' ').toLowerCase()
+  const stopWords = new Set(['el','la','lo','los','las','de','del','en','y','a','con','para','por','que','un','una','su','o','al','se','es','the','and','for','of','to','in','is','it','with','on','at','by','an','be','as','or','are'])
+  const h1Words = h1.match(/\b[a-záéíóúüñàèìòùç]{4,}\b/gi)?.filter(w => !stopWords.has(w)) ?? []
+  if (h1Words.length === 0) return { checkId: 'h1-coherence', score: 50, status: 'warn', detail: 'H1 senza keyword identificabili', data: { missing: [] } }
+  const bodyText = html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&#?\w+;/g, ' ').toLowerCase()
+  const missing = h1Words.filter(w => !bodyText.includes(w))
+  const ratio = (h1Words.length - missing.length) / h1Words.length
+  let score: number
+  if (ratio === 1) score = 100
+  else if (ratio >= 0.75) score = 75
+  else if (ratio >= 0.5) score = 50
+  else score = 25
+  if (missing.length === 0) return { checkId: 'h1-coherence', score: 100, status: 'pass', detail: 'Tutte le keyword H1 sono nel testo ✓', data: { missing: [] } }
+  return { checkId: 'h1-coherence', score, status: statusFromScore(score), detail: `${missing.length} keyword H1 assent${missing.length > 1 ? 'i' : 'e'} nel testo: ${missing.slice(0,4).join(', ')}`, data: { missing, h1Words } }
+}
+
+function checkWordCount(html: string): CheckResult {
+  const text = html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  const count = text.split(/\s+/).filter(w => w.length > 0).length
+  let score: number
+  if (count >= 300) score = 100
+  else if (count >= 200) score = 75
+  else if (count >= 100) score = 50
+  else score = 25
+  return { checkId: 'word-count', score, status: statusFromScore(score), detail: `${count} parole — minimo consigliato 300`, data: { count } }
+}
+
+function checkLinkTitleAttr(html: string): CheckResult {
+  const allLinks = [...html.matchAll(/<a\b([^>]*)>/gi)]
+  const total = allLinks.length
+  if (total === 0) return { checkId: 'link-title-attr', score: 100, status: 'pass', detail: 'Nessun link nella pagina', data: { total: 0, missing: 0 } }
+  const missing = allLinks.filter(m => !/\btitle=/i.test(m[1])).length
+  const ratio = (total - missing) / total
+  let score: number
+  if (ratio >= 1) score = 100
+  else if (ratio >= 0.75) score = 75
+  else if (ratio >= 0.5) score = 50
+  else score = 25
+  if (missing === 0) return { checkId: 'link-title-attr', score: 100, status: 'pass', detail: 'Tutti i link hanno l\'attributo title ✓', data: { total, missing: 0 } }
+  return { checkId: 'link-title-attr', score, status: statusFromScore(score), detail: `${missing}/${total} link senza attributo title`, data: { total, missing } }
+}
+
+function checkTextHtmlRatio(html: string): CheckResult {
+  const htmlSize = html.length
+  const text = html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+  const textSize = text.length
+  const ratio = htmlSize > 0 ? Math.round((textSize / htmlSize) * 100) : 0
+  const toKB = (n: number) => `${(n / 1024).toFixed(1)}KB`
+  let score: number
+  if (ratio >= 25) score = 100
+  else if (ratio >= 15) score = 75
+  else if (ratio >= 10) score = 50
+  else score = 25
+  return { checkId: 'text-html-ratio', score, status: statusFromScore(score), detail: `Ratio testo/HTML: ${ratio}% (testo: ${toKB(textSize)} / HTML: ${toKB(htmlSize)})`, data: { ratio, textSize, htmlSize } }
+}
+
 function checkIframeUsage(html: string): CheckResult {
   // Collect all iframes
   const allIframes = [...html.matchAll(/<iframe\b([^>]*)>/gi)].map(m => m[1])
@@ -542,6 +601,11 @@ const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
   'schema-faq': checkSchemaFaq,
   // broken-links needs allSlugs context — handled specially in analyzePage
   'broken-links': (html) => checkBrokenLinks(html, new Set()),
+  'h1-coherence': checkH1Coherence,
+  'word-count': checkWordCount,
+  'link-title-attr': checkLinkTitleAttr,
+  'text-html-ratio': checkTextHtmlRatio,
+  'pagespeed': () => ({ checkId: 'pagespeed' as const, score: 50, status: 'warn' as const, detail: 'Clicca "Analizza velocità" per misurare FCP, LCP e TTI in tempo reale', data: {} }),
   'iframe-usage': checkIframeUsage,
   'obsolete-tags': checkObsoleteTags,
   'favicon': checkFavicon,
