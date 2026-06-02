@@ -102,22 +102,28 @@ async function detectProjectFromRequest(req: NextRequest): Promise<Record<string
 }
 
 export async function POST(req: NextRequest) {
+  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? 'unknown'
+  const ct = req.headers.get('content-type') ?? 'missing'
+
   let body: Record<string, unknown>
   try {
     body = await req.json()
-  } catch {
-    return Response.json({ error: 'Body JSON inválido' }, { status: 400 })
+  } catch (parseErr) {
+    console.error(`[forms] JSON parse failed — origin: ${origin}, content-type: ${ct}, err: ${parseErr}`)
+    return Response.json({ error: 'Body JSON inválido', debug: { origin, contentType: ct } }, { status: 400 })
   }
 
   const tipo = body.tipo as string | undefined
   if (!tipo || !['CRM', 'sugerencia-modulo', 'contacto'].includes(tipo)) {
-    return Response.json({ error: 'Campo "tipo" inválido o ausente' }, { status: 400 })
+    console.error(`[forms] tipo invalido — tipo: "${tipo}", origin: ${origin}, body keys: ${Object.keys(body).join(',')}`)
+    return Response.json({ error: 'Campo "tipo" inválido o ausente', debug: { tipo, origin } }, { status: 400 })
   }
 
   const nombre = (body.nombre as string | undefined)?.trim()
   const email  = (body.email  as string | undefined)?.trim()
   if (!nombre || !email) {
-    return Response.json({ error: 'Campos "nombre" y "email" son obligatorios' }, { status: 400 })
+    console.error(`[forms] campi mancanti — nombre: "${nombre}", email: "${email}", origin: ${origin}`)
+    return Response.json({ error: 'Campos "nombre" y "email" son obligatorios', debug: { hasNombre: !!nombre, hasEmail: !!email } }, { status: 400 })
   }
 
   const empresa = (body.empresa as string | undefined)?.trim()
