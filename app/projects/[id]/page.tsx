@@ -7780,10 +7780,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', background: page.slug === 'home' ? '#f3f4f6' : 'white', color: page.slug === 'home' ? C.textFaint : C.text }}
                                 />
                                 {page.slug !== 'home' && editSlugValue !== page.slug && (
-                                  <button
-                                    onClick={() => void renamePageSlug(page.slug, editSlugValue)}
-                                    style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap' }}
-                                  >✓ Salva</button>
+                                  <span style={{ fontSize: '0.72rem', color: C.blue, whiteSpace: 'nowrap', padding: '0 4px' }}>✎ modificato</span>
                                 )}
                               </div>
                               {page.slug === 'home'
@@ -7801,11 +7798,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   const trimmedLabel = menuLabelValue.trim()
                                   const nameChanged = trimmedName !== page.name
                                   const labelChanged = trimmedLabel !== (page.menuLabel ?? '')
+                                  const slugChanged = editSlugValue && editSlugValue !== page.slug
+
+                                  // Handle slug rename first (it updates all internal links)
+                                  if (slugChanged && page.slug !== 'home') {
+                                    await renamePageSlug(page.slug, editSlugValue)
+                                    // After slug rename, page.slug has changed — close panel and return
+                                    // (name/label will be saved in next open if still needed)
+                                    if (!nameChanged && !labelChanged) return
+                                  }
+
                                   if (!nameChanged && !labelChanged) { setRenamingSlug(null); return }
-                                  // Apply both changes in ONE update — avoids stale-closure bug where
-                                  // the second updatePageField call would see the old pages state and
-                                  // overwrite the first change.
-                                  const next = pages.map(p => p.slug === page.slug ? {
+                                  // Apply name+label in ONE update to avoid stale-closure overwrite
+                                  const currentSlug = slugChanged ? editSlugValue : page.slug
+                                  const next = pages.map(p => p.slug === currentSlug ? {
                                     ...p,
                                     ...(nameChanged ? { name: trimmedName } : {}),
                                     ...(labelChanged ? { menuLabel: trimmedLabel || trimmedName } : {}),
