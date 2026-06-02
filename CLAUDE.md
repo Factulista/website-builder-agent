@@ -140,3 +140,35 @@ npx tsc --noEmit     # check TypeScript senza compilare
 - Non pushare direttamente su `main` se si lavora in contemporanea
 - Fare `git pull` prima di iniziare una sessione di lavoro
 - File più soggetto a conflitti: `app/projects/[id]/page.tsx` (~3600 righe)
+
+---
+
+## Session Management (Claude Code)
+
+To keep context window efficient across sessions:
+
+1. **Start session**: Read `.claude/session-state.json` first (2k tokens)
+2. **Work normally**: Use memory files only if needed
+3. **End session** (when context > 50%):
+   - Update `.claude/session-state.json` with:
+     - `lastCommit` hash
+     - `activeTask` (null if done)
+     - `nextSteps` (list of immediate TODOs)
+     - `blockers` (any blockers preventing progress)
+   - `git add .claude/ && git commit -m "chore: update session state" && git push`
+
+**File structure:**
+```
+.claude/
+  session-state.json     ← Read first, current status
+  projects/.../
+    memory/
+      state.jsonl        ← JSONL compact state (agents, bugs fixed, config)
+      MEMORY.md          ← Index only
+      [other].md         ← Detailed docs (read only if needed)
+```
+
+**Token budget:**
+- session-state.json: ~2k
+- state.jsonl: ~3k
+- Total overhead per session: 5k (vs 92k before)
