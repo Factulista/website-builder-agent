@@ -1899,7 +1899,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       })
 
-    setSeoAnalyses(analyzeAllPages([...pages, ...blogPagesForSeo]))
+    setSeoAnalyses(analyzeAllPages([...pages, ...blogPagesForSeo], { faviconUrl: faviconUrlRef.current || undefined }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, viewMode, blogPosts, projectSlug, projectContext, blogSidebarBannerUrl, blogSidebarBannerLink])
 
@@ -3073,7 +3073,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // Blog posts have a different fix flow
     if (pageSlug.startsWith('blog/')) return fixBlogPostCheck(checkId, pageSlug)
 
-    const analyses = analyzeAllPages(latestPagesRef.current)
+    const analyses = analyzeAllPages(latestPagesRef.current, { faviconUrl: faviconUrlRef.current || undefined })
     const pageAnalysis = analyses.find(a => a.pageSlug === pageSlug)
     const checkResult = pageAnalysis?.results.find(r => r.checkId === checkId)
     if (!checkResult) {
@@ -3125,7 +3125,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             const updated = msg.result.updatedPages as Page[]
             setPages(updated)
             latestPagesRef.current = updated
-            setSeoAnalyses(analyzeAllPages(updated))
+            setSeoAnalyses(analyzeAllPages(updated, { faviconUrl: faviconUrlRef.current || undefined }))
             await saveState(messages, updated, versions)
             return true
           }
@@ -3148,7 +3148,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const slugs = Array.isArray(scopeSlugs) ? scopeSlugs : [scopeSlugs]
       for (const slug of slugs) {
         // Skip pages where the check already passes (re-analyze from latest)
-        const currentAnalyses = analyzeAllPages(latestPagesRef.current)
+        const currentAnalyses = analyzeAllPages(latestPagesRef.current, { faviconUrl: faviconUrlRef.current || undefined })
         const result = currentAnalyses.find(a => a.pageSlug === slug)?.results.find(r => r.checkId === checkId)
         if (!result || result.status === 'pass') continue
         const ok = await fixOnePage(checkId, slug)
@@ -3168,7 +3168,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (seoFixingRef.current) return
     const slugs = Array.isArray(scopeSlugs) ? scopeSlugs : [scopeSlugs]
     // Collect all unique failing check IDs across the scope
-    const analyses = analyzeAllPages(latestPagesRef.current)
+    const analyses = analyzeAllPages(latestPagesRef.current, { faviconUrl: faviconUrlRef.current || undefined })
     const failingChecks = [...new Set(
       slugs.flatMap(slug =>
         analyses.find(a => a.pageSlug === slug)?.results

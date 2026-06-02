@@ -542,9 +542,11 @@ function checkObsoleteTags(html: string): CheckResult {
   }
 }
 
-function checkFavicon(html: string): CheckResult {
-  const hasFavicon = /<link[^>]+(rel=["'](?:icon|shortcut icon)["'][^>]*|[^>]*rel=["'](?:icon|shortcut icon)["'])[^>]*>/i.test(html)
-  if (hasFavicon) return { checkId: 'favicon', score: 100, status: 'pass', detail: 'Favicon configurata ✓', data: {} }
+// faviconUrl is passed separately because the favicon is stored in site_config.favicon_url
+// and injected at serve time — it's never present in the raw stored page HTML.
+function checkFavicon(html: string, faviconUrl?: string): CheckResult {
+  const inHtml = /<link[^>]+(rel=["'](?:icon|shortcut icon)["'][^>]*|[^>]*rel=["'](?:icon|shortcut icon)["'])[^>]*>/i.test(html)
+  if (inHtml || faviconUrl) return { checkId: 'favicon', score: 100, status: 'pass', detail: 'Favicon configurata ✓', data: {} }
   return { checkId: 'favicon', score: 0, status: 'fail', detail: 'Favicon mancante — aggiungila dalla sezione Media', data: { missing: true } }
 }
 
@@ -635,10 +637,17 @@ const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
   'doctype': checkDoctype,
 }
 
-export function analyzePage(pageSlug: string, pageName: string, html: string, allSlugs?: Set<string>): PageAnalysis {
+export function analyzePage(
+  pageSlug: string,
+  pageName: string,
+  html: string,
+  allSlugs?: Set<string>,
+  ctx?: { faviconUrl?: string }
+): PageAnalysis {
   const slugs = allSlugs ?? new Set<string>()
   const results: CheckResult[] = SEO_CHECKS.map(check => {
     if (check.id === 'broken-links') return checkBrokenLinks(html, slugs)
+    if (check.id === 'favicon') return checkFavicon(html, ctx?.faviconUrl)
     return ANALYZERS[check.id](html)
   })
 
@@ -654,10 +663,13 @@ export function analyzePage(pageSlug: string, pageName: string, html: string, al
   return { pageSlug, pageName, results, overallScore }
 }
 
-export function analyzeAllPages(pages: { slug: string; name: string; html: string }[]): PageAnalysis[] {
+export function analyzeAllPages(
+  pages: { slug: string; name: string; html: string }[],
+  ctx?: { faviconUrl?: string }
+): PageAnalysis[] {
   // Build slug set from non-blog pages for broken-link detection
   const allSlugs = new Set(pages.map(p => p.slug).filter(s => !s.startsWith('blog/')))
-  return pages.map(p => analyzePage(p.slug, p.name, p.html, allSlugs))
+  return pages.map(p => analyzePage(p.slug, p.name, p.html, allSlugs, ctx))
 }
 
 export function getAggregateScore(analyses: PageAnalysis[]): number {
