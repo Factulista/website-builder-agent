@@ -200,6 +200,20 @@ export async function POST(req: NextRequest) {
   }
   // ── End Brevo integration ────────────────────────────────────────────────────
 
+  // ── Load per-project component config (admin email, confirm message, redirect) ─
+  let projectAdminEmail = ADMIN_EMAIL
+  let projectConfirmMsg = ''
+  let projectRedirectUrl = ''
+  try {
+    const siteConfig = await detectProjectFromRequest(req)
+    if (siteConfig) {
+      const cfConfig = ((siteConfig as any)?.components_config?.contact_form ?? {}) as Record<string, string>
+      if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
+      if (cfConfig.confirm_message) projectConfirmMsg = cfConfig.confirm_message
+      if (cfConfig.redirect_url) projectRedirectUrl = cfConfig.redirect_url
+    }
+  } catch { /* non-fatal */ }
+
   // ── Resend email notification (optional) ────────────────────────────────────
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
@@ -216,7 +230,7 @@ export async function POST(req: NextRequest) {
   const [adminResult, userResult] = await Promise.allSettled([
     resend.emails.send({
       from:    FROM_EMAIL,
-      to:      ADMIN_EMAIL,
+      to:      projectAdminEmail,
       replyTo: email,
       subject: adminEmail.subject,
       html:    adminEmail.html,
@@ -244,5 +258,12 @@ export async function POST(req: NextRequest) {
   const userId  = userResult.status  === 'fulfilled' ? userResult.value?.data?.id  : null
   console.log(`[forms] emails sent — admin: ${adminId ?? 'FAILED'}, user: ${userId ?? 'FAILED'}`)
 
-  return Response.json({ success: true, emailSent: true, adminEmailId: adminId, userEmailId: userId })
+  return Response.json({
+    success: true,
+    emailSent: true,
+    adminEmailId: adminId,
+    userEmailId: userId,
+    ...(projectConfirmMsg ? { confirmMessage: projectConfirmMsg } : {}),
+    ...(projectRedirectUrl ? { redirectUrl: projectRedirectUrl } : {}),
+  })
 }

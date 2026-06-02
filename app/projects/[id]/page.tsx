@@ -1654,6 +1654,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [brevoListId, setBrevoListId] = useState('')
   const [brevoSaving, setBrevoSaving] = useState<'idle'|'saving'|'saved'>('idle')
   const [brevoTesting, setBrevoTesting] = useState<'idle'|'testing'|'ok'|'error'>('idle')
+  // Contact form component config
+  const [cfAdminEmail, setCfAdminEmail]     = useState('')
+  const [cfConfirmMsg, setCfConfirmMsg]     = useState('')
+  const [cfRedirectUrl, setCfRedirectUrl]   = useState('')
+  const [cfSaving, setCfSaving]             = useState<'idle'|'saving'|'saved'>('idle')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
@@ -2160,6 +2165,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setBrevoSaving('idle'), 2000)
   }
 
+  const saveContactFormConfig = async () => {
+    setCfSaving('saving')
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
+    const existingComponents = (existing.components_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: {
+        ...existing,
+        components_config: {
+          ...existingComponents,
+          contact_form: {
+            admin_email:     cfAdminEmail.trim(),
+            confirm_message: cfConfirmMsg.trim(),
+            redirect_url:    cfRedirectUrl.trim(),
+          }
+        }
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setCfSaving('saved')
+    setTimeout(() => setCfSaving('idle'), 2000)
+  }
+
   const testBrevoConnection = async () => {
     setBrevoTesting('testing')
     try {
@@ -2505,6 +2533,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const brevo = (integrations.brevo ?? {}) as Record<string, unknown>
       setBrevoApiKey((brevo.apiKey as string) ?? '')
       setBrevoListId(String(brevo.listId ?? ''))
+      // Load contact form component config
+      const cfConfig = ((config as any)?.components_config?.contact_form ?? {}) as Record<string, unknown>
+      setCfAdminEmail((cfConfig.admin_email as string) ?? '')
+      setCfConfirmMsg((cfConfig.confirm_message as string) ?? '')
+      setCfRedirectUrl((cfConfig.redirect_url as string) ?? '')
       // Load shared nav / footer refs for editor preview injection.
       // One-time migration: if missing, extract from home page and persist immediately.
       if ((config as any)?.shared_nav_html) {
@@ -4716,7 +4749,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             />
             <ToolbarBtn
               label="🔌"
-              title="Integrazioni"
+              title="Componenti"
               active={viewMode === 'integrations'}
               onClick={() => setViewMode('integrations')}
             />
@@ -7900,73 +7933,97 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             )
           })()
         ) : viewMode === 'integrations' ? (
-          /* ── Integrations Panel ─────────────────────────────────────────────── */
-          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', background: C.bg }}>
-            <div style={{ maxWidth: '640px', margin: '0 auto' }}>
-              {/* Header */}
-              <div style={{ marginBottom: '20px' }}>
-                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: C.text }}>🔌 Integrazioni</h2>
-                <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Connetti il tuo sito a servizi esterni per email marketing, CRM e altro.</p>
-              </div>
-
-              {/* Brevo card */}
-              <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px 24px', marginBottom: '16px' }}>
-                {/* Card header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#0092ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>
-                    ✉️
+          /* ── Components Panel ───────────────────────────────────────────────── */
+          (() => {
+            // Detect which components are used in any page
+            const allHtml = pages.map(p => p.html).join('\n')
+            const hasContactForm = /comp-cf-form|class="[^"]*contact.*form|action="\/api\/forms/i.test(allHtml)
+            return (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', background: C.bg }}>
+                <div style={{ maxWidth: '640px', margin: '0 auto' }}>
+                  <div style={{ marginBottom: '20px' }}>
+                    <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: C.text }}>⚙️ Componenti</h2>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Configura il comportamento dei componenti attivi nel sito.</p>
                   </div>
-                  <div>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: C.text }}>Brevo — Email Marketing & CRM</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Connetti Brevo al progetto per importare facilmente i codici embed delle form. Ogni form Brevo gestisce autonomamente la propria lista di destinazione.</p>
-                  </div>
-                </div>
 
-                {/* API Key only — list assignment is handled per-form inside Brevo */}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>API Key</label>
-                  <input
-                    type="password"
-                    placeholder="xkeysib-..."
-                    value={brevoApiKey}
-                    onChange={e => setBrevoApiKey(e.target.value)}
-                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
-                  />
-                </div>
-
-                {/* Buttons row */}
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => void testBrevoConnection()}
-                    disabled={!brevoApiKey.trim() || brevoTesting === 'testing'}
-                    style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 14px', fontSize: '0.82rem', cursor: brevoApiKey.trim() ? 'pointer' : 'not-allowed', color: C.text, fontFamily: 'inherit', fontWeight: 500, opacity: brevoApiKey.trim() ? 1 : 0.5 }}
-                  >
-                    {brevoTesting === 'testing' ? '⏳ Testando…' : 'Testa connessione'}
-                  </button>
-                  <button
-                    onClick={() => void saveBrevoIntegration()}
-                    disabled={brevoSaving === 'saving'}
-                    style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
-                  >
-                    {brevoSaving === 'saving' ? 'Salvataggio…' : brevoSaving === 'saved' ? '✓ Salvato' : 'Salva'}
-                  </button>
-                  {brevoTesting === 'ok' && (
-                    <span style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 500 }}>✓ Connessione riuscita</span>
+                  {!hasContactForm && (
+                    <div style={{ padding: '32px', textAlign: 'center' as const, color: C.textFaint, fontSize: '0.85rem' }}>
+                      Nessun componente configurabile rilevato nel sito.
+                    </div>
                   )}
-                  {brevoTesting === 'error' && (
-                    <span style={{ fontSize: '0.82rem', color: '#dc2626', fontWeight: 500 }}>✗ Chiave non valida</span>
-                  )}
-                </div>
 
-                {/* Info box */}
-                <div style={{ marginTop: '14px', padding: '10px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#0369a1', lineHeight: 1.5 }}>
-                    Trova la chiave API su <strong>app.brevo.com → Account → SMTP &amp; API → API Keys</strong>. Crea le form su Brevo e incolla il codice embed nella sezione <strong>Embed &amp; Script</strong> del progetto.
-                  </p>
+                  {hasContactForm && (
+                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px 24px' }}>
+                      {/* Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>✉️</div>
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: C.text }}>Form di contatto</p>
+                          <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Rilevato in {pages.filter(p => /comp-cf-form|action="\/api\/forms/i.test(p.html)).map(p => p.name).join(', ')}</p>
+                        </div>
+                      </div>
+
+                      {/* Admin email */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+                          Email notifica interna
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="info@tuosito.com"
+                          value={cfAdminEmail}
+                          onChange={e => setCfAdminEmail(e.target.value)}
+                          style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
+                        />
+                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Riceverai una notifica a questo indirizzo ogni volta che qualcuno compila la form</p>
+                      </div>
+
+                      {/* Confirm message */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+                          Messaggio di conferma
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="¡Mensaje enviado! Te responderemos pronto."
+                          value={cfConfirmMsg}
+                          onChange={e => setCfConfirmMsg(e.target.value)}
+                          style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
+                        />
+                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato all&apos;utente dopo l&apos;invio. Lascia vuoto per usare il messaggio di default.</p>
+                      </div>
+
+                      {/* Redirect URL */}
+                      <div style={{ marginBottom: '20px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+                          URL pagina di destinazione (opzionale)
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.8rem', color: C.textFaint, whiteSpace: 'nowrap' }}>./</span>
+                          <input
+                            type="text"
+                            placeholder="formulario-confirmado"
+                            value={cfRedirectUrl}
+                            onChange={e => setCfRedirectUrl(e.target.value)}
+                            style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', background: C.white, color: C.text }}
+                          />
+                        </div>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Se impostato, l&apos;utente viene reindirizzato a questa pagina dopo l&apos;invio invece di vedere il messaggio.</p>
+                      </div>
+
+                      <button
+                        onClick={() => void saveContactFormConfig()}
+                        disabled={cfSaving === 'saving'}
+                        style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '8px 20px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                      >
+                        {cfSaving === 'saving' ? 'Salvataggio…' : cfSaving === 'saved' ? '✓ Salvato' : 'Salva configurazione'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          </div>
+            )
+          })()
         ) : (
           /* Preview mode — no sidebar, full width */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
