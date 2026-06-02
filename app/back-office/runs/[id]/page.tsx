@@ -216,6 +216,43 @@ export default function RunDetailPage() {
         </div>
       )}
 
+      {/* Structured debug data */}
+      {(run.input_data || run.output_data) && (
+        <div style={{ marginBottom: '24px' }}>
+          <p style={{ margin: '0 0 8px', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Debug
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: run.input_data && run.output_data ? '1fr 1fr' : '1fr', gap: '10px' }}>
+            {run.input_data && (
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: '0.7rem', color: C.textFaint, fontWeight: 600 }}>input_data</p>
+                <pre style={{
+                  margin: 0, padding: '10px 12px', borderRadius: '8px',
+                  background: '#f4f3f1', border: `1px solid ${C.border}`,
+                  fontSize: '0.72rem', color: C.textMuted, overflowX: 'auto',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
+                }}>
+                  {JSON.stringify(run.input_data, null, 2)}
+                </pre>
+              </div>
+            )}
+            {run.output_data && (
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: '0.7rem', color: C.textFaint, fontWeight: 600 }}>output_data</p>
+                <pre style={{
+                  margin: 0, padding: '10px 12px', borderRadius: '8px',
+                  background: '#f4f3f1', border: `1px solid ${C.border}`,
+                  fontSize: '0.72rem', color: C.textMuted, overflowX: 'auto',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
+                }}>
+                  {JSON.stringify(run.output_data, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Footer meta */}
       <div style={{
         marginTop: '24px', paddingTop: '16px', borderTop: `1px solid ${C.border}`,
