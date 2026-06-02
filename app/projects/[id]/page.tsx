@@ -1726,6 +1726,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [gtmSaving, setGtmSaving] = useState<'idle'|'saving'|'saved'>('idle')
   const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'>('checks')
   const [sitemapDownloading, setSitemapDownloading] = useState(false)
+  const [sitemapCopied, setSitemapCopied] = useState(false)
   const [cfApiToken, setCfApiToken] = useState('')
   const [cfZoneId, setCfZoneId] = useState('')
   const [cfConfiguring, setCfConfiguring] = useState(false)
@@ -5386,7 +5387,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                       const copyUrl = () => {
                         const fullUrl = sitemapUrl.startsWith('/') ? `${window.location.origin}${sitemapUrl}` : sitemapUrl
-                        navigator.clipboard.writeText(fullUrl).catch(() => {})
+                        const doWrite = (text: string) => {
+                          setSitemapCopied(true)
+                          setTimeout(() => setSitemapCopied(false), 2000)
+                          if (navigator.clipboard?.writeText) {
+                            navigator.clipboard.writeText(text).catch(() => {
+                              // fallback: textarea trick
+                              const ta = document.createElement('textarea')
+                              ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'
+                              document.body.appendChild(ta); ta.select()
+                              document.execCommand('copy'); ta.remove()
+                            })
+                          } else {
+                            const ta = document.createElement('textarea')
+                            ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'
+                            document.body.appendChild(ta); ta.select()
+                            document.execCommand('copy'); ta.remove()
+                          }
+                        }
+                        doWrite(fullUrl)
                       }
 
                       return (
@@ -5432,13 +5451,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '6px',
                                 padding: '7px 14px', borderRadius: '7px',
-                                border: `1px solid ${C.border}`,
-                                background: C.white, color: C.text,
+                                border: `1px solid ${sitemapCopied ? '#86efac' : C.border}`,
+                                background: sitemapCopied ? '#f0fdf4' : C.white,
+                                color: sitemapCopied ? '#16a34a' : C.text,
                                 fontSize: '0.8rem', fontWeight: 600,
                                 cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
                               }}
                             >
-                              📋 Copia URL
+                              {sitemapCopied ? '✓ Copiato!' : '📋 Copia URL'}
                             </button>
                           </div>
 
