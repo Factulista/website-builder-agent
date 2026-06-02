@@ -5229,6 +5229,91 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         </div>
                       )}
                     </div>
+
+                    {/* ── Google Tag Manager card ──────────────────────────── */}
+                    {(() => {
+                      // Extract existing GTM ID from inject_points.head if already saved
+                      const existingHead = injectPoints.head ?? ''
+                      const existingGtmMatch = existingHead.match(/GTM-[A-Z0-9]+/)
+                      const [gtmId, setGtmId] = React.useState(existingGtmMatch?.[0] ?? '')
+                      const [gtmSaving, setGtmSaving] = React.useState<'idle'|'saving'|'saved'>('idle')
+
+                      const isActive = !!(injectPoints.head?.includes('GTM-') || injectPoints.body_end?.includes('GTM-'))
+
+                      const saveGtm = async () => {
+                        const id = gtmId.trim().toUpperCase()
+                        if (!id || !id.match(/^GTM-[A-Z0-9]+$/)) return
+                        setGtmSaving('saving')
+                        const headSnippet = `<!-- Google Tag Manager -->\n<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${id}');</script>\n<!-- End Google Tag Manager -->`
+                        const bodySnippet = `<!-- Google Tag Manager (noscript) -->\n<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${id}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>\n<!-- End Google Tag Manager (noscript) -->`
+                        // Prepend to existing head/body_end content (non-GTM parts preserved)
+                        const stripOldGtm = (s: string) => s.replace(/<!-- Google Tag Manager[\s\S]*?<!-- End Google Tag Manager[^\n]*-->\n?/g, '').trim()
+                        const newHead = headSnippet + (stripOldGtm(injectPoints.head ?? '') ? '\n' + stripOldGtm(injectPoints.head ?? '') : '')
+                        const newBodyEnd = bodySnippet + (stripOldGtm(injectPoints.body_end ?? '') ? '\n' + stripOldGtm(injectPoints.body_end ?? '') : '')
+                        const updated = { ...injectPoints, head: newHead, body_end: newBodyEnd }
+                        setInjectPoints(updated)
+                        injectPointsRef.current = updated
+                        await saveInjectPoints(updated)
+                        setGtmSaving('saved')
+                        setTimeout(() => setGtmSaving('idle'), 2000)
+                      }
+
+                      const removeGtm = async () => {
+                        const stripOldGtm = (s: string) => s.replace(/<!-- Google Tag Manager[\s\S]*?<!-- End Google Tag Manager[^\n]*-->\n?/g, '').trim()
+                        const updated = { ...injectPoints }
+                        const newHead = stripOldGtm(injectPoints.head ?? '')
+                        const newBody = stripOldGtm(injectPoints.body_end ?? '')
+                        if (newHead) updated.head = newHead; else delete updated.head
+                        if (newBody) updated.body_end = newBody; else delete updated.body_end
+                        setInjectPoints(updated)
+                        injectPointsRef.current = updated
+                        setGtmId('')
+                        await saveInjectPoints(updated)
+                      }
+
+                      return (
+                        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {/* GTM logo */}
+                            <svg width="28" height="28" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="8" fill="#4285F4"/><path d="M32 12L12 32l8 8 12-12 12 12 8-8z" fill="white"/><rect x="28" y="36" width="8" height="16" rx="2" fill="white"/></svg>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: C.text }}>Google Tag Manager</div>
+                              <div style={{ fontSize: '0.72rem', color: C.textMuted }}>Tracciamento, analytics e conversion pixel — senza toccare il codice</div>
+                            </div>
+                            {isActive && (
+                              <span style={{ marginLeft: 'auto', background: '#dcfce7', color: '#15803d', fontSize: '0.68rem', fontWeight: 700, padding: '2px 9px', borderRadius: 20 }}>● Attivo</span>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={gtmId}
+                              onChange={e => setGtmId(e.target.value.toUpperCase())}
+                              placeholder="GTM-XXXXXXX"
+                              style={{ flex: 1, height: 32, padding: '0 10px', border: `1px solid ${C.border}`, borderRadius: 7, fontSize: '0.85rem', fontFamily: 'monospace', color: C.text, background: C.white, outline: 'none', letterSpacing: '0.04em' }}
+                            />
+                            <button
+                              onClick={saveGtm}
+                              disabled={!gtmId.match(/^GTM-[A-Z0-9]+$/) || gtmSaving === 'saving'}
+                              style={{ height: 32, padding: '0 16px', background: (!gtmId.match(/^GTM-[A-Z0-9]+$/) || gtmSaving === 'saving') ? C.border : C.blue, color: 'white', border: 'none', borderRadius: 7, fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                            >
+                              {gtmSaving === 'saving' ? '💾…' : gtmSaving === 'saved' ? '✓ Salvato' : 'Attiva'}
+                            </button>
+                            {isActive && (
+                              <button
+                                onClick={removeGtm}
+                                style={{ height: 32, padding: '0 12px', background: 'none', color: '#ef4444', border: `1px solid #fecaca`, borderRadius: 7, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                              >Rimuovi</button>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: C.textFaint }}>
+                            Inserisci il tuo Container ID (es. GTM-ABC1234). Lo snippet verrà iniettato automaticamente in {'<head>'} e dopo {'<body>'} su tutte le pagine.
+                          </div>
+                        </div>
+                      )
+                    })()}
+
                   </div>
                 </div>
               </div>
