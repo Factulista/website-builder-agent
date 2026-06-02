@@ -202,8 +202,13 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     result = result.replace(/<\/body>/i, `${injectPoints.body_end}\n</body>`)
   }
 
-  // Inject <base href> (skip if the page already has one)
-  if (/<base[^>]*>/i.test(result)) return result
+  // Always inject the correct <base href> — replace any stale one that may have
+  // been baked into the stored HTML by the editor (e.g. /preview/{slug}/ or
+  // https://myweb.factulista.com/{slug}/). Keeping a stale base would cause logo
+  // and all ./ links to resolve to the wrong domain on the live site.
+  if (/<base[^>]*>/i.test(result)) {
+    return result.replace(/<base[^>]*>/i, baseTag)
+  }
   if (/<head[^>]*>/i.test(result)) {
     return result.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`)
   }
