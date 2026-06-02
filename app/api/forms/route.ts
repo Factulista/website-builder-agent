@@ -294,27 +294,21 @@ export async function POST(req: NextRequest) {
     }),
   ])
 
-  if (adminResult.status === 'rejected' || adminResult.value?.error) {
-    const err = adminResult.status === 'rejected' ? adminResult.reason : adminResult.value.error
-    console.error('[forms] Resend admin email error:', err)
-    return Response.json({ error: 'Error al enviar el email' }, { status: 500 })
-  }
-  if (userResult.status === 'rejected' || userResult.value?.error) {
-    // User confirmation failed — log but don't block (admin was already notified)
-    const err = userResult.status === 'rejected' ? userResult.reason : userResult.value.error
-    console.warn('[forms] Resend user confirmation failed (non-fatal):', err)
-  }
+  const adminId  = adminResult.status === 'fulfilled' ? adminResult.value?.data?.id  : null
+  const adminErr = adminResult.status === 'rejected'  ? adminResult.reason            : adminResult.value?.error
+  const userId   = userResult.status  === 'fulfilled' ? userResult.value?.data?.id   : null
+  const userErr  = userResult.status  === 'rejected'  ? userResult.reason             : userResult.value?.error
 
-  const adminId = adminResult.status === 'fulfilled' ? adminResult.value?.data?.id : null
-  const userId  = userResult.status  === 'fulfilled' ? userResult.value?.data?.id  : null
-  console.log(`[forms] emails sent — admin: ${adminId ?? 'FAILED'}, user: ${userId ?? 'FAILED'}`)
+  if (adminErr) console.error('[forms] Resend admin email error:', adminErr)
+  if (userErr)  console.warn('[forms] Resend user email error (non-fatal):', userErr)
+  console.log(`[forms] result — adminId: ${adminId ?? 'FAILED'}, userId: ${userId ?? 'FAILED'}, redirectUrl: "${projectRedirectUrl}"`)
 
+  // Always return success — email errors are non-fatal (form data is received regardless)
   return Response.json({
     success: true,
-    emailSent: true,
-    adminEmailId: adminId,
-    userEmailId: userId,
-    ...(projectConfirmMsg ? { confirmMessage: projectConfirmMsg } : {}),
-    ...(projectRedirectUrl ? { redirectUrl: projectRedirectUrl } : {}),
+    emailSent: !!adminId,
+    ...(adminErr ? { emailError: String(adminErr) } : {}),
+    ...(projectConfirmMsg  ? { confirmMessage: projectConfirmMsg }   : {}),
+    ...(projectRedirectUrl ? { redirectUrl:    projectRedirectUrl }  : {}),
   })
 }
