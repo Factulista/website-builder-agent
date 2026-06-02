@@ -7608,7 +7608,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       <div
                         key={page.slug}
                         draggable
-                        onDragStart={() => { dragIndexRef.current = idx }}
+                        onDragStart={(e) => {
+                          // Prevent drag when user is interacting with a text input / textarea
+                          const target = e.target as HTMLElement
+                          if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+                            e.preventDefault(); return
+                          }
+                          dragIndexRef.current = idx
+                        }}
                         onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx) }}
                         onDrop={() => handleDrop(idx)}
                         onDragEnd={() => { dragIndexRef.current = null; setDragOverIndex(null) }}
