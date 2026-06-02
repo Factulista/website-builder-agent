@@ -2662,8 +2662,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (h.index <= 0) return
     h.index--
     const prev = h.stack[h.index]
+    // Set flag so if html-change somehow fires we don't double-push to history.
+    // BUT: fact-set-content sets innerHTML directly without calling triggerSave,
+    // so html-change never arrives and the flag would stay true forever — blocking
+    // the next real user edit from being recorded. Reset it after a tick.
     undoOpInFlightRef.current = true
+    setTimeout(() => { undoOpInFlightRef.current = false }, 50)
     blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-set-content', html: prev }, '*')
+    // Cancel any pending autosave — it would re-save the content we just undid.
+    // Then schedule a fresh save of the restored content so the DB stays in sync.
+    if (blogAutoSaveTimer.current) { clearTimeout(blogAutoSaveTimer.current); blogAutoSaveTimer.current = null }
+    if (selectedPost?.id) blogPendingSaveRef.current = { postId: selectedPost.id, contentHtml: prev }
+    // Small delay lets the iframe render before flushBlogSave reads the DOM
+    blogAutoSaveTimer.current = setTimeout(() => { flushBlogSave() }, 400)
   }
   const blogRedo = () => {
     const h = blogHistoryRef.current
@@ -2671,7 +2682,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     h.index++
     const next = h.stack[h.index]
     undoOpInFlightRef.current = true
+    setTimeout(() => { undoOpInFlightRef.current = false }, 50)
     blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-set-content', html: next }, '*')
+    if (blogAutoSaveTimer.current) { clearTimeout(blogAutoSaveTimer.current); blogAutoSaveTimer.current = null }
+    if (selectedPost?.id) blogPendingSaveRef.current = { postId: selectedPost.id, contentHtml: next }
+    blogAutoSaveTimer.current = setTimeout(() => { flushBlogSave() }, 400)
   }
 
   const loadMedia = async () => {
