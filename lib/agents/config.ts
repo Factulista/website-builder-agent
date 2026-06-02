@@ -31,13 +31,16 @@ export function applyDbOverrides(
 
 export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   orchestrator: {
-    model: 'claude-haiku-4-5-20251001',
+    // Sonnet: routing decisions require strong intent understanding to avoid
+    // mis-classifying edits (e.g. "change color" sent to wrong agent).
+    model: 'claude-sonnet-4-6',
     maxTokens: 1024,
     temperature: 0,
     description: 'Classifica intent e coordina il pipeline',
   },
   planner: {
-    model: 'claude-haiku-4-5-20251001',
+    // Sonnet: multi-page site planning requires coherent reasoning across sections.
+    model: 'claude-sonnet-4-6',
     maxTokens: 2048,
     temperature: 0.2,
     description: 'Pianifica struttura pagine e sezioni',
@@ -45,7 +48,9 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   content: {
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 8192,
-    temperature: 0.7,
+    // Lowered from 0.7 → 0.3: content must be structured and SEO-coherent,
+    // not excessively creative. 0.7 was causing off-topic / inconsistent copy.
+    temperature: 0.3,
     description: 'Genera testi, copy e Schema.org',
   },
   design: {
@@ -55,7 +60,10 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
     description: 'Genera palette colori, font e CSS',
   },
   html: {
-    model: 'claude-haiku-4-5-20251001',
+    // Sonnet: the most critical agent — generates and edits full HTML pages.
+    // Haiku was causing: wrong edits, touching unrelated sections, losing context
+    // on long pages. Sonnet handles 32k+ output with much better coherence.
+    model: 'claude-sonnet-4-6',
     maxTokens: 32768,
     temperature: 0.2,
     description: 'Genera e modifica HTML delle pagine',
@@ -80,7 +88,10 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
   },
   memory: {
     model: 'claude-haiku-4-5-20251001',
-    maxTokens: 1024,
+    // Increased from 1024 → 2048: with 1024 tokens the memory agent was
+    // truncating project context (businessName, audience, services) on
+    // projects with long chat history.
+    maxTokens: 2048,
     temperature: 0,
     description: 'Estrae e aggiorna il contesto del progetto',
   },
