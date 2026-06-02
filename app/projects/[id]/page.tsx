@@ -207,10 +207,17 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     }
     return null;
   }
-  function getTableCell(){
+  function getTableCell(evTarget){
+    // First try: walk up from the right-click target (works even without a selection)
+    var node=evTarget||null;
+    while(node&&node!==document.body){
+      if(node.tagName==='TD'||node.tagName==='TH') return node;
+      node=node.parentElement;
+    }
+    // Fallback: walk up from the selection anchor node
     var sel=window.getSelection();
     if(!sel||!sel.anchorNode) return null;
-    var node=sel.anchorNode;
+    node=sel.anchorNode;
     while(node&&node!==document.body){
       if(node.tagName==='TD'||node.tagName==='TH') return node;
       node=node.parentElement;
@@ -409,7 +416,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
     menu.appendChild(item('➡','Allinea a destra',false,function(){restoreSelection();document.execCommand('justifyRight');triggerSave();}));
 
     // ── Table operations (only when inside a table cell) ───────────────────────
-    var tCell=getTableCell();
+    var tCell=getTableCell(e.target);
     if(tCell){
       menu.appendChild(sep());
       var tHdr=document.createElement('div');
@@ -6887,20 +6894,45 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </button>
                             {blogInsertOpen && (
                               <div style={{ ...dropMenu, minWidth: '200px' }} onClick={e => e.stopPropagation()}>
-                                {/* Table */}
-                                <button onMouseDown={e => {
-                                  e.preventDefault()
-                                  const tableHtml = `<table style="width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:0.95rem"><thead><tr><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 1</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 2</th><th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna 3</th></tr></thead><tbody><tr><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 1</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 2</td><td style="border:1px solid #d1d5db;padding:8px 12px">Dato 3</td></tr><tr><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 4</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 5</td><td style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb">Dato 6</td></tr></tbody></table>`
-                                  win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: tableHtml }, '*')
-                                  setBlogInsertOpen(false)
-                                }}
-                                  style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f1f5f9'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
-                                  Tabella 3×2
-                                </button>
+                                {/* Table — grid picker */}
+                                {(() => {
+                                  const [hov, setHov] = React.useState<[number,number]>([0,0])
+                                  const MAX_C = 6, MAX_R = 6
+                                  const buildTable = (cols: number, rows: number) => {
+                                    const thCells = Array.from({length:cols},(_,i)=>`<th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna ${i+1}</th>`).join('')
+                                    const tbody = Array.from({length:rows},(_,r)=>{
+                                      const bg = r%2===1?';background:#f9fafb':''
+                                      const tds = Array.from({length:cols},(_,c)=>`<td style="border:1px solid #d1d5db;padding:8px 12px${bg}">Dato ${r*cols+c+1}</td>`).join('')
+                                      return `<tr>${tds}</tr>`
+                                    }).join('')
+                                    return `<table style="width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:0.95rem"><thead><tr>${thCells}</tr></thead><tbody>${tbody}</tbody></table>`
+                                  }
+                                  return (
+                                    <div style={{ padding: '6px 12px 8px' }}>
+                                      <div style={{ fontSize: '0.75rem', color: C.textMuted, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
+                                        Tabella {hov[0]>0?`${hov[0]}×${hov[1]}`:'— scegli dimensione'}
+                                      </div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${MAX_C},18px)`, gap: 2 }}>
+                                        {Array.from({length:MAX_R},(_,r)=>Array.from({length:MAX_C},(_,c)=>(
+                                          <div key={`${r}-${c}`}
+                                            onMouseEnter={() => setHov([c+1,r+1])}
+                                            onMouseLeave={() => setHov([0,0])}
+                                            onMouseDown={ev => {
+                                              ev.preventDefault()
+                                              if(c+1>0&&r+1>0){
+                                                win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: buildTable(c+1,r+1) }, '*')
+                                                setBlogInsertOpen(false)
+                                              }
+                                            }}
+                                            style={{ width:18,height:18,borderRadius:2,border:`1px solid ${(c+1<=hov[0]&&r+1<=hov[1])?C.blue:C.border}`,background:(c+1<=hov[0]&&r+1<=hov[1])?'#eff6ff':'transparent',cursor:'pointer',boxSizing:'border-box' }}
+                                          />
+                                        )))}
+                                      </div>
+                                      <div style={{ fontSize: '0.68rem', color: C.textMuted, marginTop: '6px' }}>Usa tasto destro dentro la tabella per aggiungere/rimuovere righe e colonne</div>
+                                    </div>
+                                  )
+                                })()}
                                 {/* Image */}
                                 <button onClick={() => { setBlogInsertOpen(false); setMediaPickerTarget('blog') }}
                                   style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', cursor: 'pointer', color: C.text, fontSize: '0.82rem', textAlign: 'left', borderRadius: 6, fontFamily: 'inherit' }}
