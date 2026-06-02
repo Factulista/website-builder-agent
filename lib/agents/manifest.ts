@@ -158,7 +158,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
       'Non usa framework esterni (React, Vue): solo HTML/CSS/JS vanilla',
       'Per le modifiche usa tool use: edit_page con operations/edits/typed_edits, add_page, delete_page',
       '❌ MAI usare classi Tailwind, tag obsoleti (<strike>,<font>,<center>), elementi vuoti, o URL hardcodati in canonical/og:url',
-      '✅ Form: action="/api/forms" method="POST", campi: nombre, email, tipo, empresa, mensaje',
+      '✅ Form: action="/api/forms" method="POST", campi: nombre, email, tipo, empresa, mensaje. Se la form usa redirectUrl, aggiungi setTimeout(..., 2000) PRIMA di window.location.href per dare tempo all\'utente di vedere il messaggio di successo',
     ],
   },
   {

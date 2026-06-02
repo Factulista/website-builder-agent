@@ -62,9 +62,12 @@ function buildAdminEmail(payload: FormPayload): { subject: string; html: string 
 }
 
 /** Confirmation email to the user who submitted the form */
-function buildUserConfirmation(payload: FormPayload): { subject: string; html: string } {
-  const greeting = `<p style="padding:16px 28px 0;margin:0;color:#374151;">Hola <strong>${payload.nombre}</strong>,<br><br>
-    Hemos recibido tu mensaje. Te responderemos lo antes posible a <strong>${payload.email}</strong>.</p>`
+function buildUserConfirmation(payload: FormPayload, customMsg?: string): { subject: string; html: string } {
+  let greeting = customMsg || `Hola <strong>${payload.nombre}</strong>,<br><br>
+    Hemos recibido tu mensaje. Te responderemos lo antes posible a <strong>${payload.email}</strong>.`
+  // Replace placeholders [nombre] and [email]
+  greeting = greeting.replace(/\[nombre\]/g, payload.nombre).replace(/\[email\]/g, payload.email)
+  const greetingHtml = `<p style="padding:16px 28px 0;margin:0;color:#374151;">${greeting}</p>`
 
   let rows = row('Nombre', payload.nombre) + row('Email', payload.email)
   if ('empresa' in payload && payload.empresa) rows += row('Empresa', payload.empresa)
@@ -76,9 +79,7 @@ function buildUserConfirmation(payload: FormPayload): { subject: string; html: s
 
   return {
     subject: 'Hemos recibido tu mensaje — Factulista',
-    html: buildEmailHtml('Resumen de tu mensaje', greeting + '<table style="width:100%;border-collapse:collapse;margin-top:12px;"><tbody>' + rows + '</tbody></table>', footer)
-      // inject greeting before the table
-      .replace('<table style="width:100%;border-collapse:collapse;"><tbody>', greeting + '<table style="width:100%;border-collapse:collapse;margin-top:12px;"><tbody>'),
+    html: buildEmailHtml('Resumen de tu mensaje', greetingHtml + '<table style="width:100%;border-collapse:collapse;margin-top:12px;"><tbody>' + rows + '</tbody></table>', footer),
   }
 }
 
@@ -200,9 +201,10 @@ export async function POST(req: NextRequest) {
   }
   // ── End Brevo integration ────────────────────────────────────────────────────
 
-  // ── Load per-project component config (admin email, confirm message, redirect) ─
+  // ── Load per-project component config (admin email, confirm message, redirect, email message) ─
   let projectAdminEmail = ADMIN_EMAIL
   let projectConfirmMsg = ''
+  let projectConfirmEmailMsg = ''
   let projectRedirectUrl = ''
   try {
     const siteConfig = await detectProjectFromRequest(req)
@@ -210,6 +212,7 @@ export async function POST(req: NextRequest) {
       const cfConfig = ((siteConfig as any)?.components_config?.contact_form ?? {}) as Record<string, string>
       if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
       if (cfConfig.confirm_message) projectConfirmMsg = cfConfig.confirm_message
+      if (cfConfig.confirm_email_message) projectConfirmEmailMsg = cfConfig.confirm_email_message
       if (cfConfig.redirect_url) projectRedirectUrl = cfConfig.redirect_url
     }
   } catch { /* non-fatal */ }
@@ -225,7 +228,7 @@ export async function POST(req: NextRequest) {
 
   // Send both emails in parallel — admin notification + user confirmation
   const adminEmail = buildAdminEmail(payload)
-  const userEmail  = buildUserConfirmation(payload)
+  const userEmail  = buildUserConfirmation(payload, projectConfirmEmailMsg || undefined)
 
   const [adminResult, userResult] = await Promise.allSettled([
     resend.emails.send({

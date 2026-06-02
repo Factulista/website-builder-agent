@@ -1655,10 +1655,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [brevoSaving, setBrevoSaving] = useState<'idle'|'saving'|'saved'>('idle')
   const [brevoTesting, setBrevoTesting] = useState<'idle'|'testing'|'ok'|'error'>('idle')
   // Contact form component config
-  const [cfAdminEmail, setCfAdminEmail]     = useState('')
-  const [cfConfirmMsg, setCfConfirmMsg]     = useState('')
-  const [cfRedirectUrl, setCfRedirectUrl]   = useState('')
-  const [cfSaving, setCfSaving]             = useState<'idle'|'saving'|'saved'>('idle')
+  const [cfAdminEmail, setCfAdminEmail]         = useState('')
+  const [cfConfirmMsg, setCfConfirmMsg]         = useState('')
+  const [cfConfirmEmailMsg, setCfConfirmEmailMsg] = useState('')
+  const [cfRedirectUrl, setCfRedirectUrl]       = useState('')
+  const [cfSaving, setCfSaving]                 = useState<'idle'|'saving'|'saved'>('idle')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
@@ -2176,9 +2177,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         components_config: {
           ...existingComponents,
           contact_form: {
-            admin_email:     cfAdminEmail.trim(),
-            confirm_message: cfConfirmMsg.trim(),
-            redirect_url:    cfRedirectUrl.trim(),
+            admin_email:            cfAdminEmail.trim(),
+            confirm_message:        cfConfirmMsg.trim(),
+            confirm_email_message:  cfConfirmEmailMsg.trim(),
+            redirect_url:           cfRedirectUrl.trim(),
           }
         }
       },
@@ -2537,6 +2539,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const cfConfig = ((config as any)?.components_config?.contact_form ?? {}) as Record<string, unknown>
       setCfAdminEmail((cfConfig.admin_email as string) ?? '')
       setCfConfirmMsg((cfConfig.confirm_message as string) ?? '')
+      setCfConfirmEmailMsg((cfConfig.confirm_email_message as string) ?? '')
       setCfRedirectUrl((cfConfig.redirect_url as string) ?? '')
       // Load shared nav / footer refs for editor preview injection.
       // One-time migration: if missing, extract from home page and persist immediately.
@@ -7988,10 +7991,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Riceverai una notifica a questo indirizzo ogni volta che qualcuno compila la form</p>
                       </div>
 
-                      {/* Confirm message */}
+                      {/* Confirm message (on page) */}
                       <div style={{ marginBottom: '14px' }}>
                         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-                          Messaggio di conferma
+                          Messaggio di conferma (pagina)
                         </label>
                         <input
                           type="text"
@@ -8000,7 +8003,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           onChange={e => setCfConfirmMsg(e.target.value)}
                           style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
                         />
-                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato all&apos;utente dopo l&apos;invio. Lascia vuoto per usare il messaggio di default.</p>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato all&apos;utente dopo l&apos;invio sulla pagina web</p>
+                      </div>
+
+                      {/* Confirm email message */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+                          Messaggio email di conferma
+                        </label>
+                        <textarea
+                          placeholder="Hola [nombre], Hemos recibido tu mensaje. Te responderemos lo antes posible a [email]."
+                          value={cfConfirmEmailMsg}
+                          onChange={e => setCfConfirmEmailMsg(e.target.value)}
+                          style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, minHeight: '60px', resize: 'none' }}
+                        />
+                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>{'Messaggio personalizzato nell\'email. Usa [nombre] e [email] come placeholder. Lascia vuoto per il default.'}</p>
                       </div>
 
                       {/* Redirect URL */}
