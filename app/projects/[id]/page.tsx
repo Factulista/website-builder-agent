@@ -6753,7 +6753,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                   body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, flags: blogGenFlags, projectId: id, context: projectContext }),
                 })
-                const json = await res.json()
+                if (!res.ok) {
+                  await alertDialog({ title: 'Errore generazione', message: `Timeout (${res.status}). L'articolo è molto lungo — prova riducendo il numero di parole o sezioni.`, variant: 'danger' })
+                  setBlogGenerating(false); return
+                }
+                let json
+                try {
+                  json = await res.json()
+                } catch (e) {
+                  await alertDialog({ title: 'Errore parsing', message: 'Risposta AI non valida. Riprova con meno parole.', variant: 'danger' })
+                  setBlogGenerating(false); return
+                }
                 if (!json.post) {
                   await alertDialog({ title: 'Errore generazione', message: json.error ?? 'Risposta AI non valida', variant: 'danger' })
                   setBlogGenerating(false); return
