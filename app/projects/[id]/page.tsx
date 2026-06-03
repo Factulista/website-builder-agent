@@ -1661,6 +1661,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [cfRedirectUrl, setCfRedirectUrl]         = useState('')
   const [cfTurnstileSiteKey, setCfTurnstileSiteKey] = useState('')
   const [cfSaving, setCfSaving]                   = useState<'idle'|'saving'|'saved'>('idle')
+  // CRM interest form config
+  const [crmAdminEmail, setCrmAdminEmail]         = useState('')
+  const [crmConfirmMsg, setCrmConfirmMsg]         = useState('')
+  const [crmSaving, setCrmSaving]                 = useState<'idle'|'saving'|'saved'>('idle')
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
@@ -2193,6 +2197,28 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setCfSaving('idle'), 2000)
   }
 
+  const saveCrmConfig = async () => {
+    setCrmSaving('saving')
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
+    const existingComponents = (existing.components_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: {
+        ...existing,
+        components_config: {
+          ...existingComponents,
+          crm_form: {
+            admin_email:     crmAdminEmail.trim(),
+            confirm_message: crmConfirmMsg.trim(),
+          }
+        }
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setCrmSaving('saved')
+    setTimeout(() => setCrmSaving('idle'), 2000)
+  }
+
   const testBrevoConnection = async () => {
     setBrevoTesting('testing')
     try {
@@ -2545,6 +2571,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setCfConfirmEmailMsg((cfConfig.confirm_email_message as string) ?? '')
       setCfRedirectUrl((cfConfig.redirect_url as string) ?? '')
       setCfTurnstileSiteKey((cfConfig.turnstile_site_key as string) ?? '')
+      // Load CRM form config
+      const crmConfig = ((config as any)?.components_config?.crm_form ?? {}) as Record<string, unknown>
+      setCrmAdminEmail((crmConfig.admin_email as string) ?? '')
+      setCrmConfirmMsg((crmConfig.confirm_message as string) ?? '')
       // Load shared nav / footer refs for editor preview injection.
       // One-time migration: if missing, extract from home page and persist immediately.
       if ((config as any)?.shared_nav_html) {
@@ -8075,6 +8105,70 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </div>
                   )}
                 </div>
+
+                {/* ── CRM Interest Form Component ── */}
+                {(() => {
+                  const hasCrmForm = pages.some(p => /comp-crm-form|modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(p.html))
+                  return (
+                    <div style={{ border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', marginTop: '12px' }}>
+                      <div style={{ padding: '14px 16px', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>💼</span>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: '0.88rem', color: C.text }}>Form interesse CRM</p>
+                            <p style={{ margin: 0, fontSize: '0.72rem', color: C.textFaint }}>
+                              {hasCrmForm ? `Rilevata in ${pages.filter(p => /comp-crm-form|modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(p.html)).map(p => p.name).join(', ')}` : 'Non rilevata nelle pagine'}
+                            </p>
+                          </div>
+                        </div>
+                        <span style={{ fontSize: '0.7rem', padding: '3px 8px', borderRadius: '20px', background: hasCrmForm ? '#dcfce7' : '#f3f4f6', color: hasCrmForm ? '#166534' : C.textFaint, fontWeight: 600 }}>
+                          {hasCrmForm ? '✓ Attiva' : 'Non trovata'}
+                        </span>
+                      </div>
+                      {hasCrmForm && (
+                        <div style={{ padding: '16px' }}>
+                          {/* Admin email */}
+                          <div style={{ marginBottom: '14px' }}>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+                              Email notifica CRM
+                            </label>
+                            <input
+                              type="email"
+                              placeholder={cfAdminEmail || 'info@factulista.com'}
+                              value={crmAdminEmail}
+                              onChange={e => setCrmAdminEmail(e.target.value)}
+                              style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
+                            />
+                            <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Email per le notifiche CRM. Lascia vuoto per usare la stessa della Contact Form.</p>
+                          </div>
+
+                          {/* Confirm message */}
+                          <div style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+                              Messaggio di conferma
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="¡Gracias! Te avisaremos cuando esté disponible."
+                              value={crmConfirmMsg}
+                              onChange={e => setCrmConfirmMsg(e.target.value)}
+                              style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
+                            />
+                            <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato dopo l&apos;invio nel modal. Lascia vuoto per il default.</p>
+                          </div>
+
+                          <button
+                            onClick={() => void saveCrmConfig()}
+                            disabled={crmSaving === 'saving'}
+                            style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '8px 20px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                          >
+                            {crmSaving === 'saving' ? 'Salvataggio…' : crmSaving === 'saved' ? '✓ Salvato' : 'Salva configurazione CRM'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })()

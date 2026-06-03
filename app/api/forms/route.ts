@@ -133,7 +133,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Body JSON inválido', debug: { origin, contentType: ct } }, { status: 400 })
   }
 
-  const tipo = body.tipo as string | undefined
+  // Backwards compat: older forms sent modulo:'CRM' instead of tipo:'CRM'
+  const tipo = (body.tipo ?? (body.modulo === 'CRM' ? 'CRM' : undefined)) as string | undefined
   if (!tipo || !['CRM', 'sugerencia-modulo', 'contacto'].includes(tipo)) {
     console.error(`[forms] tipo invalido — tipo: "${tipo}", origin: ${origin}, body keys: ${Object.keys(body).join(',')}`)
     return Response.json({ error: 'Campo "tipo" inválido o ausente', debug: { tipo, origin } }, { status: 400 })
@@ -254,12 +255,22 @@ export async function POST(req: NextRequest) {
     }
 
     if (siteConfig) {
+      // Contact form config
       const cfConfig = ((siteConfig as any)?.components_config?.contact_form ?? {}) as Record<string, string>
-      console.log(`[forms] project config found — redirect: "${cfConfig.redirect_url ?? ''}", admin: "${cfConfig.admin_email ?? ''}"`)
-      if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
-      if (cfConfig.confirm_message) projectConfirmMsg = cfConfig.confirm_message
-      if (cfConfig.confirm_email_message) projectConfirmEmailMsg = cfConfig.confirm_email_message
-      if (cfConfig.redirect_url) projectRedirectUrl = cfConfig.redirect_url
+      // CRM form config (falls back to contact_form values if not set)
+      const crmConfig = ((siteConfig as any)?.components_config?.crm_form ?? {}) as Record<string, string>
+
+      if (tipo === 'CRM') {
+        if (crmConfig.admin_email) projectAdminEmail = crmConfig.admin_email
+        else if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
+        if (crmConfig.confirm_message) projectConfirmMsg = crmConfig.confirm_message
+      } else {
+        if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
+        if (cfConfig.confirm_message) projectConfirmMsg = cfConfig.confirm_message
+        if (cfConfig.confirm_email_message) projectConfirmEmailMsg = cfConfig.confirm_email_message
+        if (cfConfig.redirect_url) projectRedirectUrl = cfConfig.redirect_url
+      }
+      console.log(`[forms] project config found — tipo: ${tipo}, admin: "${projectAdminEmail}", redirect: "${projectRedirectUrl}"`)
     } else {
       console.warn(`[forms] project not found for origin: ${origin}`)
     }
