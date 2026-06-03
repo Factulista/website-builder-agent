@@ -157,13 +157,14 @@ Restituisci SOLO questo JSON (nessun testo fuori dal JSON):
 {
   "title": "H1 con keyword primaria, max 70 caratteri",
   "slug": "slug-kebab-case-con-keyword",
-  "seo_title": "SEO title max 60 caratteri con keyword primaria",
+  "seo_title": "SEO title max 60 caratteri con keyword primaria — SOLO testo, NO emoji",
   "seo_description": "meta description 150-160 caratteri con keyword e CTA",
   "excerpt": "riassunto 1-2 frasi max 200 caratteri",
-  "categories": ["categoria pertinente"],
-  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
   "content_html": "HTML COMPLETO seguendo la struttura sopra — ${wordCount} parole"
-}`
+}
+
+IMPORTANTE: NON includere campi "categories", "tags" nel JSON. Solo i campi elencati sopra.
+Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro.`
 
   // Streaming response
   const encoder = new TextEncoder()

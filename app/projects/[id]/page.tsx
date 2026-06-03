@@ -6834,16 +6834,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                 // Save complete post
                 if (completePost) {
+                  // Strip emojis from title just in case the model included them
+                  const cleanTitle = (completePost.title ?? '').replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FEFF}]/gu, '').replace(/\s+/g, ' ').trim()
+                  // Auto-derive slug from title if model didn't produce a clean one
+                  const autoSlug = (completePost.slug ?? cleanTitle)
+                    .toLowerCase()
+                    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
+                    .replace(/[^a-z0-9\s-]/g, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '')
                   const updateRes = await fetch(`/api/blog-posts/${draftId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                     body: JSON.stringify({
-                      title: completePost.title,
-                      slug: completePost.slug,
+                      title: cleanTitle,
+                      slug: autoSlug,
                       content_html: completePost.content_html,
                       excerpt: completePost.excerpt,
-                      categories: completePost.categories ?? [],
-                      tags: completePost.tags ?? [],
                       seo_title: completePost.seo_title,
                       seo_description: completePost.seo_description,
                     }),
