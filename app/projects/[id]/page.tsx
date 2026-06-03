@@ -3795,7 +3795,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (result.tool === 'create_site') {
       const rawPages = result.input.pages
       if (!Array.isArray(rawPages)) { markFailed('risposta non valida dal server'); return }
-      newPages = rawPages as Page[]
+
+      // Merge AI pages with existing pages: preserve user-set fields (og_image, etc.)
+      // that the AI doesn't know about and never returns.
+      const existingBySlug = new Map(latestPagesRef.current.map(p => [p.slug, p]))
+      newPages = (rawPages as Page[]).map(aiPage => {
+        const existing = existingBySlug.get(aiPage.slug)
+        if (!existing) return aiPage
+        // Keep AI-generated content (html, name) but restore user metadata
+        return {
+          ...aiPage,
+          ...(existing.og_image    ? { og_image:    existing.og_image }    : {}),
+          ...(existing.menuLabel   ? { menuLabel:   existing.menuLabel }   : {}),
+          ...(existing.inMenu !== undefined ? { inMenu: existing.inMenu } : {}),
+        }
+      })
+
       // Remove any static "blog" page — blog is always served dynamically from blog_posts
       newPages = newPages.filter(p => p.slug !== 'blog')
 
