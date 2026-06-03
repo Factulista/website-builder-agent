@@ -3120,8 +3120,57 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setDesignSaving('idle'), 2500)
   }
 
+  /** Resize/crop image to 1200×630 (OG format) via Canvas, upload to storage, return new URL */
+  const resizeToOgFormat = async (sourceUrl: string): Promise<string> => {
+    const OG_W = 1200, OG_H = 630
+    return new Promise((resolve, reject) => {
+      const img = new window.Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = async () => {
+        // Skip if already correct dimensions
+        if (img.naturalWidth === OG_W && img.naturalHeight === OG_H) { resolve(sourceUrl); return }
+
+        // Center-crop to 1200×630
+        const canvas = document.createElement('canvas')
+        canvas.width = OG_W; canvas.height = OG_H
+        const ctx = canvas.getContext('2d')!
+        const srcRatio = img.naturalWidth / img.naturalHeight
+        const tgtRatio = OG_W / OG_H
+        let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight
+        if (srcRatio > tgtRatio) { sw = img.naturalHeight * tgtRatio; sx = (img.naturalWidth - sw) / 2 }
+        else { sh = img.naturalWidth / tgtRatio; sy = (img.naturalHeight - sh) / 2 }
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OG_W, OG_H)
+
+        canvas.toBlob(async (blob) => {
+          if (!blob) { resolve(sourceUrl); return }
+          try {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session) { resolve(sourceUrl); return }
+            const path = `${session.user.id}/${id}/og-${Date.now()}.jpg`
+            const file = new File([blob], 'og.jpg', { type: 'image/jpeg' })
+            const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: 'image/jpeg', upsert: false })
+            if (error) { resolve(sourceUrl); return }
+            const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
+            resolve(publicUrl)
+          } catch { resolve(sourceUrl) }
+        }, 'image/jpeg', 0.92)
+      }
+      img.onerror = () => resolve(sourceUrl)
+      img.src = sourceUrl
+    })
+  }
+
   const savePageOgImage = async (slug: string, url: string) => {
-    const next = pages.map(p => p.slug === slug ? { ...p, og_image: url } : p)
+    if (!url) {
+      // Removing OG image
+      const next = pages.map(p => p.slug === slug ? { ...p, og_image: '' } : p)
+      setPages(next)
+      await saveState(messages, next)
+      return
+    }
+    // Auto-resize to 1200×630 before saving
+    const ogUrl = await resizeToOgFormat(url)
+    const next = pages.map(p => p.slug === slug ? { ...p, og_image: ogUrl } : p)
     setPages(next)
     await saveState(messages, next)
   }
@@ -7906,7 +7955,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         {/* OG image picker dropdown */}
                         {ogPickerSlug === page.slug && (
                           <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e7eb', background: '#f8fafc' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#9b9896', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Scegli immagine OG per questa pagina</div>
+                            <div style={{ fontSize: '0.7rem', color: '#9b9896', marginBottom: '2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Scegli immagine OG per questa pagina</div>
+                            <div style={{ fontSize: '0.66rem', color: '#9b9896', marginBottom: '8px' }}>Auto-ridimensionata a 1200×630px</div>
                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                               {mediaItems.slice(0, 16).map(item => (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -7914,7 +7964,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   key={item.path}
                                   src={item.url}
                                   alt=""
-                                  onClick={() => { savePageOgImage(page.slug, item.url); setOgPickerSlug(null) }}
+                                  onClick={() => { void savePageOgImage(page.slug, item.url); setOgPickerSlug(null) }}
                                   style={{
                                     width: '48px', height: '32px', objectFit: 'cover',
                                     borderRadius: '4px', cursor: 'pointer',
@@ -7924,7 +7974,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               ))}
                               {(page as any).og_image && (
                                 <button
-                                  onClick={() => { savePageOgImage(page.slug, ''); setOgPickerSlug(null) }}
+                                  onClick={() => { void savePageOgImage(page.slug, ''); setOgPickerSlug(null) }}
                                   style={{ fontSize: '0.68rem', color: '#dc2626', background: 'transparent', border: '1px solid #fecaca', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontFamily: 'inherit' }}
                                 >Rimuovi</button>
                               )}
