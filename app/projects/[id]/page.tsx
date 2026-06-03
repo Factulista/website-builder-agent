@@ -1749,6 +1749,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     stats: false,
   })
   const [showBlogGenPrompt, setShowBlogGenPrompt] = useState(false)
+  const [blogGenDraftId, setBlogGenDraftId] = useState<string | null>(null)
+  const [blogGenLiveContent, setBlogGenLiveContent] = useState('')
   const [blogMetaEdits, setBlogMetaEdits] = useState<Partial<BlogPost>>({})
   const blogAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blogBaseHtmlRef = useRef<string>('')
@@ -6736,10 +6738,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             const generateWithAI = async () => {
               if (!blogGenTopic.trim()) return
               setBlogGenerating(true)
+              setShowBlogGenPrompt(false)
+
               try {
                 const { data: { session } } = await supabase.auth.getSession()
                 const token = session?.access_token
                 if (!token) { setBlogGenerating(false); return }
+
+                // Create draft post immediately, show editor
+                const draftRes = await fetch('/api/blog-posts', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({
+                    projectId: id,
+                    title: `✍️ ${blogGenTopic}`,
+                    slug: `generating-${Date.now()}`,
+                    content_html: '<p style="color:#999;">⏳ Generazione in corso...</p>',
+                    excerpt: '',
+                    categories: [],
+                    tags: [],
+                  }),
+                })
+                const draftJson = await draftRes.json()
+                if (!draftJson.post) {
+                  setBlogGenerating(false)
+                  return
+                }
+                const draftId = draftJson.post.id
+                setBlogGenDraftId(draftId)
+                setBlogGenLiveContent('')
+                openPost(draftJson.post)
 
                 // Parse keywords: comma or newline separated, max 5
                 const keywords = blogGenKeywords
@@ -6748,54 +6776,101 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   .filter(Boolean)
                   .slice(0, 5)
 
+                // Stream generation via SSE
                 const res = await fetch('/api/generate-blog-post', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                   body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, flags: blogGenFlags, projectId: id, context: projectContext }),
                 })
+
                 if (!res.ok) {
-                  await alertDialog({ title: 'Errore generazione', message: `Timeout (${res.status}). L'articolo è molto lungo — prova riducendo il numero di parole o sezioni.`, variant: 'danger' })
-                  setBlogGenerating(false); return
+                  await alertDialog({ title: 'Errore generazione', message: `Timeout (${res.status}). Prova riducendo parole o sezioni.`, variant: 'danger' })
+                  setBlogGenerating(false)
+                  return
                 }
-                let json
-                try {
-                  json = await res.json()
-                } catch (e) {
-                  await alertDialog({ title: 'Errore parsing', message: 'Risposta AI non valida. Riprova con meno parole.', variant: 'danger' })
-                  setBlogGenerating(false); return
+
+                const reader = res.body?.getReader()
+                if (!reader) { setBlogGenerating(false); return }
+
+                const decoder = new TextDecoder()
+                let fullText = ''
+                let completePost = null
+
+                while (true) {
+                  const { done, value } = await reader.read()
+                  if (done) break
+
+                  const chunk = decoder.decode(value)
+                  const lines = chunk.split('\n')
+
+                  for (const line of lines) {
+                    if (line.startsWith('event: text')) {
+                      // Extract data from next line
+                      const dataMatch = line.match(/event: text\ndata: (.+)/)
+                      if (dataMatch) {
+                        try {
+                          const evt = JSON.parse(dataMatch[1])
+                          fullText += evt.text
+                          // Only update preview with HTML content
+                          if (evt.text.includes('<')) {
+                            setBlogGenLiveContent(fullText)
+                          }
+                        } catch (e) {}
+                      }
+                    } else if (line.startsWith('event: complete')) {
+                      // Extract complete post
+                      try {
+                        const dataLine = lines[lines.indexOf(line) + 1]
+                        if (dataLine?.startsWith('data: ')) {
+                          const data = JSON.parse(dataLine.slice(6))
+                          completePost = data.post
+                        }
+                      } catch (e) {}
+                    } else if (line.startsWith('event: error')) {
+                      try {
+                        const dataLine = lines[lines.indexOf(line) + 1]
+                        if (dataLine?.startsWith('data: ')) {
+                          const data = JSON.parse(dataLine.slice(6))
+                          await alertDialog({ title: 'Errore generazione', message: data.error, variant: 'danger' })
+                        }
+                      } catch (e) {}
+                      setBlogGenerating(false)
+                      return
+                    }
+                  }
                 }
-                if (!json.post) {
-                  await alertDialog({ title: 'Errore generazione', message: json.error ?? 'Risposta AI non valida', variant: 'danger' })
-                  setBlogGenerating(false); return
+
+                // Save complete post
+                if (completePost) {
+                  const updateRes = await fetch(`/api/blog-posts/${draftId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({
+                      title: completePost.title,
+                      slug: completePost.slug,
+                      content_html: completePost.content_html,
+                      excerpt: completePost.excerpt,
+                      categories: completePost.categories ?? [],
+                      tags: completePost.tags ?? [],
+                      seo_title: completePost.seo_title,
+                      seo_description: completePost.seo_description,
+                    }),
+                  })
+                  const updateJson = await updateRes.json()
+                  if (updateJson.post) {
+                    await loadBlogPosts()
+                    openPost(updateJson.post)
+                  }
                 }
-                const { post: generated } = json
-                const createRes = await fetch('/api/blog-posts', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({
-                    projectId: id,
-                    title: generated.title,
-                    slug: generated.slug,
-                    content_html: generated.content_html,
-                    excerpt: generated.excerpt,
-                    categories: generated.categories ?? [],
-                    tags: generated.tags ?? [],
-                    seo_title: generated.seo_title,
-                    seo_description: generated.seo_description,
-                  }),
-                })
-                const createJson = await createRes.json()
-                if (createJson.post) {
-                  await loadBlogPosts()
-                  openPost(createJson.post)
-                }
-                setShowBlogGenPrompt(false)
+
                 setBlogGenTopic('')
                 setBlogGenKeywords('')
               } catch (err) {
                 await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' })
               } finally {
                 setBlogGenerating(false)
+                setBlogGenDraftId(null)
+                setBlogGenLiveContent('')
               }
             }
 

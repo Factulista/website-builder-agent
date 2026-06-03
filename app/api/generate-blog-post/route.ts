@@ -18,12 +18,10 @@ async function getUser(req: NextRequest) {
   return user
 }
 
-/** Strip HTML tags and collapse whitespace */
 function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-/** Fetch existing blog posts to extract tone of voice */
 async function getToneOfVoiceSample(projectId: string): Promise<string> {
   try {
     const { data: posts } = await getSupabase()
@@ -38,7 +36,6 @@ async function getToneOfVoiceSample(projectId: string): Promise<string> {
 
     const samples = posts.map(p => {
       const text = stripHtml(p.content_html ?? '')
-      // Take first ~300 words per article
       const words = text.split(' ').slice(0, 300).join(' ')
       return `--- Articolo: "${p.title}" ---\n${words}...`
     }).join('\n\n')
@@ -106,19 +103,11 @@ Contesto del sito:
 - Servizi: ${(context.services ?? []).join(', ') || '—'}
 - Target: ${context.targetAudience ?? '—'}` : ''
 
-  // Load tone of voice from existing posts
   const toneOfVoice = projectId ? await getToneOfVoiceSample(projectId) : ''
   const toneSection = toneOfVoice
     ? `\n\nTONO DI VOCE — prendi spunto da questi articoli già pubblicati per replicare lo stesso stile, registro e lunghezza delle frasi:\n${toneOfVoice}`
     : ''
 
-  const system = `Sei un esperto copywriter, SEO specialist e GEO (Generative Engine Optimization) specialist.
-Scrivi articoli di blog professionali, ottimizzati per Google e per i motori AI (ChatGPT, Perplexity, Google AI Overview).
-Rispondi SEMPRE in ${langLabel}.
-Rispondi SOLO con JSON valido, senza markdown o testo extra.
-${businessCtx}${toneSection}`
-
-  // Build conditional structure blocks
   const structureBlocks: string[] = []
   structureBlocks.push(`<h1>[titolo con keyword primaria]</h1>`)
   structureBlocks.push(`<p>[intro: definizione chiara + keyword primaria nel primo paragrafo]</p>`)
@@ -131,6 +120,12 @@ ${businessCtx}${toneSection}`
   if (f.faq) structureBlocks.push(`<h2>Domande frequenti su [topic]</h2>\n[3-4 domande come <h3> con risposta in <p> — risposte autonome e complete per AI Overview]`)
   structureBlocks.push(`<h2>Conclusione</h2>\n<p>[sintesi con keyword primaria]</p>`)
   if (f.cta) structureBlocks.push(`<div class="cta-box" style="background:#1e40af;color:#fff;padding:24px;margin:24px 0;border-radius:12px;text-align:center"><h3 style="color:#fff;margin:0 0 8px">[headline CTA]</h3><p style="margin:0 0 16px;opacity:0.9">[sottotitolo CTA]</p><a href="#" style="background:#fff;color:#1e40af;padding:10px 24px;border-radius:6px;font-weight:700;text-decoration:none">[testo bottone]</a></div>`)
+
+  const system = `Sei un esperto copywriter, SEO specialist e GEO (Generative Engine Optimization) specialist.
+Scrivi articoli di blog professionali, ottimizzati per Google e per i motori AI (ChatGPT, Perplexity, Google AI Overview).
+Rispondi SEMPRE in ${langLabel}.
+Rispondi SOLO con JSON valido, senza markdown o testo extra.
+${businessCtx}${toneSection}`
 
   const userMessage = `Scrivi un articolo di blog su: "${topic}"
 
@@ -170,41 +165,96 @@ Restituisci SOLO questo JSON (nessun testo fuori dal JSON):
   "content_html": "HTML COMPLETO seguendo la struttura sopra — ${wordCount} parole"
 }`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
+  // Streaming response
+  const encoder = new TextEncoder()
+  const customReadable = new ReadableStream({
+    async start(controller) {
+      try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 16000,
+            stream: true,
+            system,
+            messages: [{ role: 'user', content: userMessage }],
+          }),
+        })
+
+        if (!response.ok) {
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: `API error: ${response.status}` })}\n\n`))
+          controller.close()
+          return
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) {
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'No reader' })}\n\n`))
+          controller.close()
+          return
+        }
+
+        let fullText = ''
+        let currentJson = ''
+        let jsonStarted = false
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = new TextDecoder().decode(value)
+          const lines = chunk.split('\n')
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.type === 'content_block_delta' && data.delta.type === 'text_delta') {
+                  const text = data.delta.text
+                  fullText += text
+
+                  // Try to detect if we're in the JSON part
+                  if (text.includes('{')) jsonStarted = true
+                  if (jsonStarted) currentJson += text
+
+                  // Send streaming event with latest text chunk
+                  controller.enqueue(encoder.encode(`event: text\ndata: ${JSON.stringify({ text })}\n\n`))
+                }
+              } catch (e) {
+                // Silently ignore parse errors on stream lines
+              }
+            }
+          }
+        }
+
+        // Parse final JSON
+        try {
+          const jsonMatch = currentJson.match(/\{[\s\S]*\}/)
+          if (!jsonMatch) throw new Error('No JSON found')
+          const post = JSON.parse(jsonMatch[0])
+          controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({ post })}\n\n`))
+        } catch (e) {
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'JSON parse failed' })}\n\n`))
+        }
+
+        controller.close()
+      } catch (err) {
+        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`))
+        controller.close()
+      }
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      system,
-      messages: [{ role: 'user', content: userMessage }],
-    }),
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('[generate-blog-post] Claude error', res.status, err)
-    return NextResponse.json({ error: 'Errore AI', detail: err }, { status: 500 })
-  }
-
-  const data = await res.json()
-  const text = data.content?.[0]?.text ?? ''
-
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) {
-    console.error('[generate-blog-post] No JSON in response:', text.slice(0, 200))
-    return NextResponse.json({ error: 'Risposta AI non valida' }, { status: 500 })
-  }
-
-  try {
-    const post = JSON.parse(jsonMatch[0])
-    return NextResponse.json({ post })
-  } catch (e) {
-    console.error('[generate-blog-post] JSON parse error:', e)
-    return NextResponse.json({ error: 'JSON non valido' }, { status: 500 })
-  }
+  return new NextResponse(customReadable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
 }
