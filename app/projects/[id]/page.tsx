@@ -1667,8 +1667,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [crmConfirmEmailMsg, setCrmConfirmEmailMsg]   = useState('')
   const [crmRedirectUrl, setCrmRedirectUrl]           = useState('')
   const [crmTurnstileSiteKey, setCrmTurnstileSiteKey] = useState('')
-  const [crmSaving, setCrmSaving]                     = useState<'idle'|'saving'|'saved'>('idle')
-  const [activeComponent, setActiveComponent]     = useState<'contact_form'|'crm_form'|null>(null)
+  const [crmSaving, setCrmSaving]                         = useState<'idle'|'saving'|'saved'>('idle')
+  // Suggest module form config
+  const [suggestAdminEmail, setSuggestAdminEmail]         = useState('')
+  const [suggestConfirmMsg, setSuggestConfirmMsg]         = useState('')
+  const [suggestConfirmEmailMsg, setSuggestConfirmEmailMsg] = useState('')
+  const [suggestRedirectUrl, setSuggestRedirectUrl]       = useState('')
+  const [suggestTurnstileSiteKey, setSuggestTurnstileSiteKey] = useState('')
+  const [suggestSaving, setSuggestSaving]                 = useState<'idle'|'saving'|'saved'>('idle')
+  const [activeComponent, setActiveComponent]             = useState<'contact_form'|'crm_form'|'suggest_form'|null>(null)
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
@@ -2226,6 +2233,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setTimeout(() => setCrmSaving('idle'), 2000)
   }
 
+  const saveSuggestConfig = async () => {
+    setSuggestSaving('saving')
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
+    const existingComponents = (existing.components_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: {
+        ...existing,
+        components_config: {
+          ...existingComponents,
+          suggest_form: {
+            admin_email:           suggestAdminEmail.trim(),
+            confirm_message:       suggestConfirmMsg.trim(),
+            confirm_email_message: suggestConfirmEmailMsg.trim(),
+            redirect_url:          suggestRedirectUrl.trim(),
+            turnstile_site_key:    suggestTurnstileSiteKey.trim(),
+          }
+        }
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
+    setSuggestSaving('saved')
+    setTimeout(() => setSuggestSaving('idle'), 2000)
+  }
+
   const testBrevoConnection = async () => {
     setBrevoTesting('testing')
     try {
@@ -2585,6 +2617,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setCrmConfirmEmailMsg((crmConfig.confirm_email_message as string) ?? '')
       setCrmRedirectUrl((crmConfig.redirect_url as string) ?? '')
       setCrmTurnstileSiteKey((crmConfig.turnstile_site_key as string) ?? '')
+      // Load suggest module form config
+      const suggestConfig = ((config as any)?.components_config?.suggest_form ?? {}) as Record<string, unknown>
+      setSuggestAdminEmail((suggestConfig.admin_email as string) ?? '')
+      setSuggestConfirmMsg((suggestConfig.confirm_message as string) ?? '')
+      setSuggestConfirmEmailMsg((suggestConfig.confirm_email_message as string) ?? '')
+      setSuggestRedirectUrl((suggestConfig.redirect_url as string) ?? '')
+      setSuggestTurnstileSiteKey((suggestConfig.turnstile_site_key as string) ?? '')
       // Load shared nav / footer refs for editor preview injection.
       // One-time migration: if missing, extract from home page and persist immediately.
       if ((config as any)?.shared_nav_html) {
@@ -8009,12 +8048,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             const allHtml = pages.map(p => p.html).join('\n')
             const hasContactForm = /comp-cf-form|action="\/api\/forms/i.test(allHtml)
             const hasCrmForm     = /modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(allHtml)
-            const cfPages  = pages.filter(p => /comp-cf-form|action="\/api\/forms/i.test(p.html)).map(p => p.name).join(', ')
-            const crmPages = pages.filter(p => /modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(p.html)).map(p => p.name).join(', ')
+            const hasSuggestForm = /sugerencia-modulo|suggest-module-form|suggest-modal/i.test(allHtml)
+            const cfPages      = pages.filter(p => /comp-cf-form|action="\/api\/forms/i.test(p.html)).map(p => p.name).join(', ')
+            const crmPages     = pages.filter(p => /modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(p.html)).map(p => p.name).join(', ')
+            const suggestPages = pages.filter(p => /sugerencia-modulo|suggest-module-form|suggest-modal/i.test(p.html)).map(p => p.name).join(', ')
 
             const components = [
-              { key: 'contact_form' as const, icon: '📧', label: 'Form di contatto',   pages: cfPages,  active: hasContactForm },
-              { key: 'crm_form'     as const, icon: '💼', label: 'Form interesse CRM', pages: crmPages, active: hasCrmForm },
+              { key: 'contact_form'  as const, icon: '📧', label: 'Form di contatto',        pages: cfPages,      active: hasContactForm },
+              { key: 'crm_form'      as const, icon: '💼', label: 'Form interesse CRM',       pages: crmPages,     active: hasCrmForm },
+              { key: 'suggest_form'  as const, icon: '💡', label: 'Form suggerisci modulo',   pages: suggestPages, active: hasSuggestForm },
             ]
 
             return (
@@ -8156,6 +8198,56 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     <button onClick={() => void saveCrmConfig()} disabled={crmSaving === 'saving'}
                                       style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '9px 22px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
                                       {crmSaving === 'saving' ? 'Salvataggio…' : crmSaving === 'saved' ? '✓ Salvato' : 'Salva'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {comp.key === 'suggest_form' && (
+                                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '14px' }}>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Email notifica interna</label>
+                                    <input type="email" placeholder={cfAdminEmail || 'info@tuosito.com'} value={suggestAdminEmail} onChange={e => setSuggestAdminEmail(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Lascia vuoto per usare la stessa della Contact Form</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio di conferma (pagina)</label>
+                                    <input type="text" placeholder="¡Gracias! Hemos recibido tu sugerencia." value={suggestConfirmMsg} onChange={e => setSuggestConfirmMsg(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato dopo l&apos;invio</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio email di conferma</label>
+                                    <textarea placeholder="Hola [nombre], Hemos recibido tu sugerencia de módulo. La tendremos en cuenta." value={suggestConfirmEmailMsg} onChange={e => setSuggestConfirmEmailMsg(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, minHeight: '60px', resize: 'none' }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>{'Usa [nombre] e [email] come placeholder'}</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>URL pagina di destinazione</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '0.8rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>./</span>
+                                      <input type="text" placeholder="gracias-por-tu-sugerencia" value={suggestRedirectUrl} onChange={e => setSuggestRedirectUrl(e.target.value)}
+                                        style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', background: C.white, color: C.text }} />
+                                    </div>
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Redirect automatico 2 secondi dopo l&apos;invio</p>
+                                  </div>
+                                  <div style={{ padding: '12px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+                                      <span>🛡️</span>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Cloudflare Turnstile</span>
+                                    </div>
+                                    <input type="text" placeholder="0x4AAAAAAA... (Site Key pubblica)" value={suggestTurnstileSiteKey} onChange={e => setSuggestTurnstileSiteKey(e.target.value)}
+                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
+                                      {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
+                                      {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
+                                    </p>
+                                  </div>
+                                  <div style={{ paddingTop: '4px' }}>
+                                    <button onClick={() => void saveSuggestConfig()} disabled={suggestSaving === 'saving'}
+                                      style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '9px 22px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                                      {suggestSaving === 'saving' ? 'Salvataggio…' : suggestSaving === 'saved' ? '✓ Salvato' : 'Salva'}
                                     </button>
                                   </div>
                                 </div>
