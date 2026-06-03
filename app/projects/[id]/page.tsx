@@ -1736,6 +1736,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogPublishing, setBlogPublishing] = useState(false)
   const [blogGenerating, setBlogGenerating] = useState(false)
   const [blogGenTopic, setBlogGenTopic] = useState('')
+  const [blogGenKeywords, setBlogGenKeywords] = useState('')
   const [showBlogGenPrompt, setShowBlogGenPrompt] = useState(false)
   const [blogMetaEdits, setBlogMetaEdits] = useState<Partial<BlogPost>>({})
   const blogAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -6724,18 +6725,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             const generateWithAI = async () => {
               if (!blogGenTopic.trim()) return
               setBlogGenerating(true)
-              const { data: { session } } = await supabase.auth.getSession()
-              const token = session?.access_token
-              if (!token) { setBlogGenerating(false); return }
-              const res = await fetch('/api/generate-blog-post', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ topic: blogGenTopic, context: projectContext }),
-              })
-              const json = await res.json()
-              if (json.post) {
+              try {
+                const { data: { session } } = await supabase.auth.getSession()
+                const token = session?.access_token
+                if (!token) { setBlogGenerating(false); return }
+
+                // Parse keywords: comma or newline separated, max 5
+                const keywords = blogGenKeywords
+                  .split(/[,\n]+/)
+                  .map(k => k.trim())
+                  .filter(Boolean)
+                  .slice(0, 5)
+
+                const res = await fetch('/api/generate-blog-post', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ topic: blogGenTopic, keywords, context: projectContext }),
+                })
+                const json = await res.json()
+                if (!json.post) {
+                  await alertDialog({ title: 'Errore generazione', message: json.error ?? 'Risposta AI non valida', variant: 'danger' })
+                  setBlogGenerating(false); return
+                }
                 const { post: generated } = json
-                // Create new post with generated content
                 const createRes = await fetch('/api/blog-posts', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -6756,10 +6768,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   await loadBlogPosts()
                   openPost(createJson.post)
                 }
+                setShowBlogGenPrompt(false)
+                setBlogGenTopic('')
+                setBlogGenKeywords('')
+              } catch (err) {
+                await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' })
+              } finally {
+                setBlogGenerating(false)
               }
-              setBlogGenerating(false)
-              setShowBlogGenPrompt(false)
-              setBlogGenTopic('')
             }
 
             // ── Blog list view ─────────────────────────────────────────────────
@@ -6806,22 +6822,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                   {/* AI generation prompt */}
                   {showBlogGenPrompt && (
-                    <div style={{ padding: '12px 24px', borderBottom: `1px solid ${C.border}`, background: '#eff6ff', display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0 }}>✦ Argomento:</span>
-                      <input
-                        value={blogGenTopic}
-                        onChange={e => setBlogGenTopic(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') generateWithAI() }}
-                        placeholder="Es: 5 consigli per migliorare il tuo sito web..."
-                        autoFocus
-                        style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none' }}
-                      />
-                      <button
-                        onClick={generateWithAI}
-                        disabled={blogGenerating || !blogGenTopic.trim()}
-                        style={{ background: blogGenTopic.trim() && !blogGenerating ? C.blue : '#93c5fd', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: blogGenTopic.trim() && !blogGenerating ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0 }}
-                      >{blogGenerating ? '⏳ Generazione...' : 'Genera'}</button>
-                      <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0 }}>✕</button>
+                    <div style={{ padding: '12px 24px', borderBottom: `1px solid ${C.border}`, background: '#eff6ff', display: 'flex', flexDirection: 'column' as const, gap: '8px', flexShrink: 0 }}>
+                      {/* Row 1: topic */}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px' }}>✦ Argomento</span>
+                        <input
+                          value={blogGenTopic}
+                          onChange={e => setBlogGenTopic(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) void generateWithAI() }}
+                          placeholder="Es: Software di fatturazione per autónomos in Spagna"
+                          autoFocus
+                          style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', background: C.white }}
+                        />
+                      </div>
+                      {/* Row 2: keywords + generate */}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px' }}>🔑 Keyword</span>
+                        <input
+                          value={blogGenKeywords}
+                          onChange={e => setBlogGenKeywords(e.target.value)}
+                          placeholder="Es: fatturazione, Verifactu, autónomo, software contabilità, PYME"
+                          style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', background: C.white }}
+                        />
+                        <button
+                          onClick={() => void generateWithAI()}
+                          disabled={blogGenerating || !blogGenTopic.trim()}
+                          style={{ background: blogGenTopic.trim() && !blogGenerating ? C.blue : '#93c5fd', color: 'white', border: 'none', padding: '7px 18px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: blogGenTopic.trim() && !blogGenerating ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' as const }}
+                        >{blogGenerating ? '⏳ Generazione...' : '✦ Genera'}</button>
+                        <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0 }}>✕</button>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.68rem', color: '#6b7280' }}>Inserisci fino a 5 keyword separate da virgola · Genera articolo ~1200 parole ottimizzato SEO + GEO</p>
                     </div>
                   )}
 
