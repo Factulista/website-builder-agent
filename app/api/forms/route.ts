@@ -87,37 +87,44 @@ function buildUserConfirmation(payload: FormPayload, customMsg?: string): { subj
  * Tries to detect the project from the request Origin/Referer header
  * by matching the host against custom_domain or the staging subdomain slug.
  */
-async function detectProjectFromRequest(req: NextRequest): Promise<Record<string, unknown> | null> {
-  // Also accept projectId in body for explicit matching
-  const bodyHint = (req as unknown as { _projectId?: string })._projectId
-
-  const origin = req.headers.get('origin') ?? req.headers.get('referer') ?? ''
-  if (!origin && !bodyHint) return null
-
-  let host: string = ''
-  try {
-    host = origin ? new URL(origin).hostname : ''
-  } catch {
-    return null
+/** Returns only components_config — avoids loading full site_config (MB of HTML pages) */
+async function detectProjectComponentsConfig(origin: string, projectId?: string): Promise<Record<string, unknown> | null> {
+  // Fast path: project_id provided in body
+  if (projectId) {
+    const { data } = await supabase
+      .from('projects')
+      .select('site_config->components_config')
+      .eq('id', projectId)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (data?.components_config) return data.components_config as Record<string, unknown>
   }
 
+  if (!origin) return null
+
+  let host: string
+  try { host = new URL(origin).hostname } catch { return null }
   if (!host) return null
 
-  // Normalize: try both www.host and host without www
-  const wwwHost    = host.startsWith('www.') ? host : `www.${host}`
-  const bareHost   = host.replace(/^www\./, '')
+  const bareHost = host.replace(/^www\./, '')
 
-  // Match by custom_domain (try exact, www-variant, and bare variant)
-  const { data: byDomain } = await supabase
-    .from('projects')
-    .select('site_config')
-    .in('custom_domain', [host, wwwHost, bareHost])
-    .is('deleted_at', null)
-    .limit(1)
-    .maybeSingle()
+  // Try exact match first, then www-stripped — two cheap queries instead of .in() + maybeSingle()
+  for (const domain of [host, bareHost, `www.${bareHost}`]) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('site_config->components_config')
+      .eq('custom_domain', domain)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle()
+    if (error) { console.warn('[forms] detectProject query error:', error.message); continue }
+    if (data?.components_config) {
+      console.log(`[forms] project found via domain: ${domain}`)
+      return data.components_config as Record<string, unknown>
+    }
+  }
 
-  if (byDomain?.site_config) return byDomain.site_config as Record<string, unknown>
-
+  console.warn(`[forms] project not found — host: ${host}`)
   return null
 }
 
@@ -195,7 +202,21 @@ export async function POST(req: NextRequest) {
   // ── Brevo integration ────────────────────────────────────────────────────────
   // Detect project from Origin/Referer and push contact to Brevo if configured.
   try {
-    const siteConfig = await detectProjectFromRequest(req)
+    // Brevo needs full site_config (for integrations key) — fetch it separately
+    let brevoSiteConfig: Record<string, unknown> | null = null
+    const brevoHost = origin !== 'unknown' ? origin : ''
+    if (brevoHost) {
+      let bHost: string
+      try { bHost = new URL(brevoHost).hostname } catch { bHost = '' }
+      if (bHost) {
+        const bareH = bHost.replace(/^www\./, '')
+        for (const d of [bHost, bareH, `www.${bareH}`]) {
+          const { data } = await supabase.from('projects').select('site_config->integrations').eq('custom_domain', d).is('deleted_at', null).limit(1).maybeSingle()
+          if (data?.integrations) { brevoSiteConfig = { integrations: data.integrations }; break }
+        }
+      }
+    }
+    const siteConfig = brevoSiteConfig
     if (siteConfig) {
       const integrations = (siteConfig.integrations ?? {}) as Record<string, unknown>
       const brevo = (integrations.brevo ?? {}) as Record<string, unknown>
@@ -235,45 +256,35 @@ export async function POST(req: NextRequest) {
   }
   // ── End Brevo integration ────────────────────────────────────────────────────
 
-  // ── Load per-project component config (admin email, confirm message, redirect, email message) ─
+  // ── Load per-project component config ────────────────────────────────────────
   let projectAdminEmail = ADMIN_EMAIL
   let projectConfirmMsg = ''
   let projectConfirmEmailMsg = ''
   let projectRedirectUrl = ''
   try {
-    let siteConfig = await detectProjectFromRequest(req)
+    const componentsConfig = await detectProjectComponentsConfig(
+      origin,
+      typeof body.project_id === 'string' ? body.project_id : undefined
+    )
 
-    // Fallback: if project_id is passed in body, look up directly
-    if (!siteConfig && body.project_id) {
-      const { data: byId } = await supabase
-        .from('projects')
-        .select('site_config')
-        .eq('id', body.project_id)
-        .is('deleted_at', null)
-        .maybeSingle()
-      if (byId?.site_config) siteConfig = byId.site_config as Record<string, unknown>
-    }
+    if (componentsConfig) {
+      const cfConfig      = ((componentsConfig as any)?.contact_form  ?? {}) as Record<string, string>
+      const crmConfig     = ((componentsConfig as any)?.crm_form      ?? {}) as Record<string, string>
+      const suggestConfig = ((componentsConfig as any)?.suggest_form  ?? {}) as Record<string, string>
 
-    if (siteConfig) {
-      // Load all form configs — fall back to contact_form values if specific config not set
-      const cfConfig      = ((siteConfig as any)?.components_config?.contact_form  ?? {}) as Record<string, string>
-      const crmConfig     = ((siteConfig as any)?.components_config?.crm_form      ?? {}) as Record<string, string>
-      const suggestConfig = ((siteConfig as any)?.components_config?.suggest_form  ?? {}) as Record<string, string>
-
+      // Pick the config for the current form type, fall back to contact_form for admin email
       const formConfig = tipo === 'CRM' ? crmConfig : tipo === 'sugerencia-modulo' ? suggestConfig : cfConfig
 
-      if (formConfig.admin_email) projectAdminEmail = formConfig.admin_email
-      else if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
-      if (formConfig.confirm_message) projectConfirmMsg = formConfig.confirm_message
-      if (formConfig.confirm_email_message) projectConfirmEmailMsg = formConfig.confirm_email_message
-      if (formConfig.redirect_url) projectRedirectUrl = formConfig.redirect_url
+      projectAdminEmail    = formConfig.admin_email     || cfConfig.admin_email     || ADMIN_EMAIL
+      projectConfirmMsg    = formConfig.confirm_message || ''
+      projectConfirmEmailMsg = formConfig.confirm_email_message || ''
+      projectRedirectUrl   = formConfig.redirect_url    || ''
 
-      console.log(`[forms] project config found — tipo: ${tipo}, admin: "${projectAdminEmail}", redirect: "${projectRedirectUrl}"`)
-
-    } else {
-      console.warn(`[forms] project not found for origin: ${origin}`)
+      console.log(`[forms] config loaded — tipo: ${tipo}, admin: "${projectAdminEmail}", confirmMsg: "${projectConfirmMsg}", redirect: "${projectRedirectUrl}"`)
     }
-  } catch { /* non-fatal */ }
+  } catch (err) {
+    console.warn('[forms] config load failed (non-fatal):', err)
+  }
 
   // ── Resend email notification (optional) ────────────────────────────────────
   const apiKey = process.env.RESEND_API_KEY
