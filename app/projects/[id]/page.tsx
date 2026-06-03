@@ -1665,6 +1665,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [crmAdminEmail, setCrmAdminEmail]         = useState('')
   const [crmConfirmMsg, setCrmConfirmMsg]         = useState('')
   const [crmSaving, setCrmSaving]                 = useState<'idle'|'saving'|'saved'>('idle')
+  const [activeComponent, setActiveComponent]     = useState<'contact_form'|'crm_form'|null>(null)
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [editSlugValue, setEditSlugValue] = useState('')
@@ -7981,194 +7982,140 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ) : viewMode === 'integrations' ? (
           /* ── Components Panel ───────────────────────────────────────────────── */
           (() => {
-            // Detect which components are used in any page
             const allHtml = pages.map(p => p.html).join('\n')
-            const hasContactForm = /comp-cf-form|class="[^"]*contact.*form|action="\/api\/forms/i.test(allHtml)
+            const hasContactForm = /comp-cf-form|action="\/api\/forms/i.test(allHtml)
+            const hasCrmForm     = /modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(allHtml)
+            const cfPages  = pages.filter(p => /comp-cf-form|action="\/api\/forms/i.test(p.html)).map(p => p.name).join(', ')
+            const crmPages = pages.filter(p => /modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(p.html)).map(p => p.name).join(', ')
+
+            const components = [
+              { key: 'contact_form' as const, icon: '📧', label: 'Form di contatto',   pages: cfPages,  active: hasContactForm },
+              { key: 'crm_form'     as const, icon: '💼', label: 'Form interesse CRM', pages: crmPages, active: hasCrmForm },
+            ]
+
             return (
               <div style={{ flex: 1, overflowY: 'auto', padding: '24px 20px', background: C.bg }}>
-                <div style={{ maxWidth: '640px', margin: '0 auto' }}>
+                <div style={{ maxWidth: '680px', margin: '0 auto' }}>
                   <div style={{ marginBottom: '20px' }}>
                     <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: C.text }}>⚙️ Componenti</h2>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Configura il comportamento dei componenti attivi nel sito.</p>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: C.textFaint }}>Configura il comportamento dei componenti attivi nel sito.</p>
                   </div>
 
-                  {!hasContactForm && (
-                    <div style={{ padding: '32px', textAlign: 'center' as const, color: C.textFaint, fontSize: '0.85rem' }}>
-                      Nessun componente configurabile rilevato nel sito.
-                    </div>
-                  )}
+                  {/* ── Table header ── */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', gap: '0 12px', padding: '0 16px 8px', borderBottom: `1px solid ${C.border}` }}>
+                    {(['COMPONENTE','PAGINE','STATO'] as const).map(h => (
+                      <span key={h} style={{ fontSize: '0.68rem', fontWeight: 700, color: C.textFaint, letterSpacing: '0.06em' }}>{h}</span>
+                    ))}
+                  </div>
 
-                  {hasContactForm && (
-                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px 24px' }}>
-                      {/* Header */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0 }}>✉️</div>
-                        <div>
-                          <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: C.text }}>Form di contatto</p>
-                          <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: C.textMuted }}>Rilevato in {pages.filter(p => /comp-cf-form|action="\/api\/forms/i.test(p.html)).map(p => p.name).join(', ')}</p>
-                        </div>
-                      </div>
-
-                      {/* Admin email */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-                          Email notifica interna
-                        </label>
-                        <input
-                          type="email"
-                          placeholder="info@tuosito.com"
-                          value={cfAdminEmail}
-                          onChange={e => setCfAdminEmail(e.target.value)}
-                          style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
-                        />
-                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Riceverai una notifica a questo indirizzo ogni volta che qualcuno compila la form</p>
-                      </div>
-
-                      {/* Confirm message (on page) */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-                          Messaggio di conferma (pagina)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="¡Mensaje enviado! Te responderemos pronto."
-                          value={cfConfirmMsg}
-                          onChange={e => setCfConfirmMsg(e.target.value)}
-                          style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
-                        />
-                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato all&apos;utente dopo l&apos;invio sulla pagina web</p>
-                      </div>
-
-                      {/* Confirm email message */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-                          Messaggio email di conferma
-                        </label>
-                        <textarea
-                          placeholder="Hola [nombre], Hemos recibido tu mensaje. Te responderemos lo antes posible a [email]."
-                          value={cfConfirmEmailMsg}
-                          onChange={e => setCfConfirmEmailMsg(e.target.value)}
-                          style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, minHeight: '60px', resize: 'none' }}
-                        />
-                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>{'Messaggio personalizzato nell\'email. Usa [nombre] e [email] come placeholder. Lascia vuoto per il default.'}</p>
-                      </div>
-
-                      {/* Redirect URL */}
-                      <div style={{ marginBottom: '20px' }}>
-                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-                          URL pagina di destinazione (opzionale)
-                        </label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.8rem', color: C.textFaint, whiteSpace: 'nowrap' }}>./</span>
-                          <input
-                            type="text"
-                            placeholder="formulario-confirmado"
-                            value={cfRedirectUrl}
-                            onChange={e => setCfRedirectUrl(e.target.value)}
-                            style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', background: C.white, color: C.text }}
-                          />
-                        </div>
-                        <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Se impostato, l&apos;utente viene reindirizzato a questa pagina dopo l&apos;invio invece di vedere il messaggio.</p>
-                      </div>
-
-                      {/* Cloudflare Turnstile */}
-                      <div style={{ marginBottom: '20px', padding: '14px', background: '#f8f9ff', border: `1px solid #dde3ff`, borderRadius: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                          <span style={{ fontSize: '1rem' }}>🛡️</span>
-                          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Cloudflare Turnstile (anti-bot)
-                          </label>
-                        </div>
-                        <input
-                          type="text"
-                          placeholder="0x4AAAAAAA... (Site Key pubblica da Cloudflare)"
-                          value={cfTurnstileSiteKey}
-                          onChange={e => setCfTurnstileSiteKey(e.target.value)}
-                          style={{ width: '100%', border: `1px solid #c7d2fe`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
-                        />
-                        <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.4' }}>
-                          {'1. Vai su dash.cloudflare.com → Turnstile → crea widget → copia Site Key qui'}
-                          <br/>
-                          {'2. La Secret Key va aggiunta su Vercel come env var CLOUDFLARE_TURNSTILE_SECRET'}
-                          <br/>
-                          {'3. Il widget si aggiunge automaticamente alla form via SQL patch (vedi istruzioni)'}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => void saveContactFormConfig()}
-                        disabled={cfSaving === 'saving'}
-                        style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '8px 20px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
-                      >
-                        {cfSaving === 'saving' ? 'Salvataggio…' : cfSaving === 'saved' ? '✓ Salvato' : 'Salva configurazione'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* ── CRM Interest Form Component ── */}
-                {(() => {
-                  const hasCrmForm = pages.some(p => /comp-crm-form|modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(p.html))
-                  return (
-                    <div style={{ border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', marginTop: '12px' }}>
-                      <div style={{ padding: '14px 16px', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <span style={{ fontSize: '1.1rem' }}>💼</span>
-                          <div>
-                            <p style={{ margin: 0, fontWeight: 700, fontSize: '0.88rem', color: C.text }}>Form interesse CRM</p>
-                            <p style={{ margin: 0, fontSize: '0.72rem', color: C.textFaint }}>
-                              {hasCrmForm ? `Rilevata in ${pages.filter(p => /comp-crm-form|modulo.*CRM|tipo.*CRM|avisar.*disponible/i.test(p.html)).map(p => p.name).join(', ')}` : 'Non rilevata nelle pagine'}
-                            </p>
-                          </div>
-                        </div>
-                        <span style={{ fontSize: '0.7rem', padding: '3px 8px', borderRadius: '20px', background: hasCrmForm ? '#dcfce7' : '#f3f4f6', color: hasCrmForm ? '#166534' : C.textFaint, fontWeight: 600 }}>
-                          {hasCrmForm ? '✓ Attiva' : 'Non trovata'}
-                        </span>
-                      </div>
-                      {hasCrmForm && (
-                        <div style={{ padding: '16px' }}>
-                          {/* Admin email */}
-                          <div style={{ marginBottom: '14px' }}>
-                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-                              Email notifica CRM
-                            </label>
-                            <input
-                              type="email"
-                              placeholder={cfAdminEmail || 'info@factulista.com'}
-                              value={crmAdminEmail}
-                              onChange={e => setCrmAdminEmail(e.target.value)}
-                              style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
-                            />
-                            <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Email per le notifiche CRM. Lascia vuoto per usare la stessa della Contact Form.</p>
-                          </div>
-
-                          {/* Confirm message */}
-                          <div style={{ marginBottom: '16px' }}>
-                            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
-                              Messaggio di conferma
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="¡Gracias! Te avisaremos cuando esté disponible."
-                              value={crmConfirmMsg}
-                              onChange={e => setCrmConfirmMsg(e.target.value)}
-                              style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }}
-                            />
-                            <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato dopo l&apos;invio nel modal. Lascia vuoto per il default.</p>
-                          </div>
-
-                          <button
-                            onClick={() => void saveCrmConfig()}
-                            disabled={crmSaving === 'saving'}
-                            style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '8px 20px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                  {/* ── Component rows ── */}
+                  <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden', marginTop: '8px' }}>
+                    {components.map((comp, i) => {
+                      const isOpen = activeComponent === comp.key
+                      return (
+                        <div key={comp.key} style={{ borderTop: i > 0 ? `1px solid ${C.border}` : 'none' }}>
+                          {/* Row */}
+                          <div
+                            onClick={() => setActiveComponent(isOpen ? null : comp.key)}
+                            style={{ display: 'grid', gridTemplateColumns: '1fr 120px 80px', gap: '0 12px', alignItems: 'center', padding: '13px 16px', cursor: 'pointer', background: isOpen ? '#f8faff' : C.white, transition: 'background 0.15s' }}
                           >
-                            {crmSaving === 'saving' ? 'Salvataggio…' : crmSaving === 'saved' ? '✓ Salvato' : 'Salva configurazione CRM'}
-                          </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '1rem' }}>{comp.icon}</span>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: C.text }}>{comp.label}</span>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: C.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                              {comp.pages || '—'}
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, background: comp.active ? '#dcfce7' : '#f3f4f6', color: comp.active ? '#166534' : C.textFaint }}>
+                                {comp.active ? '● Attiva' : '○ —'}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: C.textFaint, marginLeft: '6px', transform: isOpen ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.2s' }}>▾</span>
+                            </div>
+                          </div>
+
+                          {/* Detail panel */}
+                          {isOpen && (
+                            <div style={{ padding: '20px 20px 24px', borderTop: `1px solid ${C.border}`, background: '#fafbff' }}>
+                              {comp.key === 'contact_form' && (
+                                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '14px' }}>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Email notifica interna</label>
+                                    <input type="email" placeholder="info@tuosito.com" value={cfAdminEmail} onChange={e => setCfAdminEmail(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Notifica inviata ad ogni compilazione</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio di conferma (pagina)</label>
+                                    <input type="text" placeholder="¡Mensaje enviado! Te responderemos pronto." value={cfConfirmMsg} onChange={e => setCfConfirmMsg(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato sulla pagina dopo l&apos;invio</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio email di conferma</label>
+                                    <textarea placeholder="Hola [nombre], Hemos recibido tu mensaje. Te responderemos a [email]." value={cfConfirmEmailMsg} onChange={e => setCfConfirmEmailMsg(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, minHeight: '60px', resize: 'none' }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>{'Usa [nombre] e [email] come placeholder'}</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>URL pagina di destinazione</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '0.8rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>./</span>
+                                      <input type="text" placeholder="formulario-confirmado" value={cfRedirectUrl} onChange={e => setCfRedirectUrl(e.target.value)}
+                                        style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', background: C.white, color: C.text }} />
+                                    </div>
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Redirect automatico 2 secondi dopo l&apos;invio</p>
+                                  </div>
+                                  <div style={{ padding: '12px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+                                      <span>🛡️</span>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Cloudflare Turnstile</span>
+                                    </div>
+                                    <input type="text" placeholder="0x4AAAAAAA... (Site Key pubblica)" value={cfTurnstileSiteKey} onChange={e => setCfTurnstileSiteKey(e.target.value)}
+                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
+                                      {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
+                                      {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
+                                    </p>
+                                  </div>
+                                  <div style={{ paddingTop: '4px' }}>
+                                    <button onClick={() => void saveContactFormConfig()} disabled={cfSaving === 'saving'}
+                                      style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '9px 22px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                                      {cfSaving === 'saving' ? 'Salvataggio…' : cfSaving === 'saved' ? '✓ Salvato' : 'Salva'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {comp.key === 'crm_form' && (
+                                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '14px' }}>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Email notifica CRM</label>
+                                    <input type="email" placeholder={cfAdminEmail || 'info@tuosito.com'} value={crmAdminEmail} onChange={e => setCrmAdminEmail(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Lascia vuoto per usare la stessa della Contact Form</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio di conferma</label>
+                                    <input type="text" placeholder="¡Gracias! Te avisaremos cuando esté disponible." value={crmConfirmMsg} onChange={e => setCrmConfirmMsg(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo nel modal dopo l&apos;invio</p>
+                                  </div>
+                                  <div style={{ paddingTop: '4px' }}>
+                                    <button onClick={() => void saveCrmConfig()} disabled={crmSaving === 'saving'}
+                                      style={{ background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '9px 22px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                                      {crmSaving === 'saving' ? 'Salvataggio…' : crmSaving === 'saved' ? '✓ Salvato' : 'Salva'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )
-                })()}
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             )
           })()
