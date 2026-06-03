@@ -1737,6 +1737,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogGenerating, setBlogGenerating] = useState(false)
   const [blogGenTopic, setBlogGenTopic] = useState('')
   const [blogGenKeywords, setBlogGenKeywords] = useState('')
+  const [blogGenWordCount, setBlogGenWordCount] = useState(1200)
+  const [blogGenParaCount, setBlogGenParaCount] = useState(4)
   const [showBlogGenPrompt, setShowBlogGenPrompt] = useState(false)
   const [blogMetaEdits, setBlogMetaEdits] = useState<Partial<BlogPost>>({})
   const blogAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -6740,7 +6742,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 const res = await fetch('/api/generate-blog-post', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ topic: blogGenTopic, keywords, context: projectContext }),
+                  body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, projectId: id, context: projectContext }),
                 })
                 const json = await res.json()
                 if (!json.post) {
@@ -6851,7 +6853,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         >{blogGenerating ? '⏳ Generazione...' : '✦ Genera'}</button>
                         <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0 }}>✕</button>
                       </div>
-                      <p style={{ margin: 0, fontSize: '0.68rem', color: '#6b7280' }}>Inserisci fino a 5 keyword separate da virgola · Genera articolo ~1200 parole ottimizzato SEO + GEO</p>
+                      {/* Row 3: word count + paragraph count */}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px' }}>⚙️ Parametri</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.78rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>Parole:</span>
+                          <select value={blogGenWordCount} onChange={e => setBlogGenWordCount(Number(e.target.value))}
+                            style={{ border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', background: C.white, cursor: 'pointer' }}>
+                            {[600, 800, 1000, 1200, 1500, 2000].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.78rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>Paragrafi H2:</span>
+                          <select value={blogGenParaCount} onChange={e => setBlogGenParaCount(Number(e.target.value))}
+                            style={{ border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', background: C.white, cursor: 'pointer' }}>
+                            {[2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                        <span style={{ fontSize: '0.68rem', color: '#6b7280', marginLeft: '4px' }}>· Tono di voce preso dagli articoli esistenti · SEO + GEO</span>
+                      </div>
                     </div>
                   )}
 

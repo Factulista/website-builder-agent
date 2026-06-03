@@ -18,6 +18,37 @@ async function getUser(req: NextRequest) {
   return user
 }
 
+/** Strip HTML tags and collapse whitespace */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** Fetch existing blog posts to extract tone of voice */
+async function getToneOfVoiceSample(projectId: string): Promise<string> {
+  try {
+    const { data: posts } = await getSupabase()
+      .from('blog_posts')
+      .select('title, content_html')
+      .eq('project_id', projectId)
+      .not('content_html', 'is', null)
+      .order('published_at', { ascending: false })
+      .limit(3)
+
+    if (!posts || posts.length === 0) return ''
+
+    const samples = posts.map(p => {
+      const text = stripHtml(p.content_html ?? '')
+      // Take first ~300 words per article
+      const words = text.split(' ').slice(0, 300).join(' ')
+      return `--- Articolo: "${p.title}" ---\n${words}...`
+    }).join('\n\n')
+
+    return samples
+  } catch {
+    return ''
+  }
+}
+
 export async function POST(req: NextRequest) {
   const user = await getUser(req)
   if (!user) return NextResponse.json({ error: 'Non autorizzato' }, { status: 401 })
@@ -26,9 +57,19 @@ export async function POST(req: NextRequest) {
   if (!apiKey) return NextResponse.json({ error: 'API key mancante' }, { status: 500 })
 
   const body = await req.json()
-  const { topic, keywords = [], context } = body as {
+  const {
+    topic,
+    keywords = [],
+    wordCount = 1200,
+    paragraphCount = 4,
+    projectId,
+    context,
+  } = body as {
     topic: string
     keywords?: string[]
+    wordCount?: number
+    paragraphCount?: number
+    projectId?: string
     context?: {
       businessName?: string
       businessType?: string
@@ -53,63 +94,68 @@ Contesto del sito:
 - Servizi: ${(context.services ?? []).join(', ') || '—'}
 - Target: ${context.targetAudience ?? '—'}` : ''
 
+  // Load tone of voice from existing posts
+  const toneOfVoice = projectId ? await getToneOfVoiceSample(projectId) : ''
+  const toneSection = toneOfVoice
+    ? `\n\nTONO DI VOCE — prendi spunto da questi articoli già pubblicati per replicare lo stesso stile, registro e lunghezza delle frasi:\n${toneOfVoice}`
+    : ''
+
+  // Build H2 sections instruction
+  const h2Sections = Array.from({ length: paragraphCount }, (_, i) =>
+    `<h2>Sezione ${i + 1}: [titolo con keyword]</h2>\n<p>[contenuto...]</p>`
+  ).join('\n')
+
   const system = `Sei un esperto copywriter, SEO specialist e GEO (Generative Engine Optimization) specialist.
 Scrivi articoli di blog professionali, ottimizzati per Google e per i motori AI (ChatGPT, Perplexity, Google AI Overview).
 Rispondi SEMPRE in ${langLabel}.
 Rispondi SOLO con JSON valido, senza markdown o testo extra.
-${businessCtx}`
+${businessCtx}${toneSection}`
 
-  const userMessage = `Scrivi un articolo di blog completo e ottimizzato su: "${topic}"
+  const userMessage = `Scrivi un articolo di blog su: "${topic}"
 
 Keyword primaria: "${primaryKw}"
 ${secondaryKws.length > 0 ? `Keyword secondarie: ${secondaryKws.map(k => `"${k}"`).join(', ')}` : ''}
 
-REQUISITI OBBLIGATORI:
-- Lunghezza: minimo 1200 parole reali nel contenuto
-- Struttura: 1 H1 (uguale al titolo), 3-4 sezioni H2, H3 per sottosezioni dove serve
-- Usa almeno: 1 lista puntata/numerata + 1 tabella HTML dove appropriato
-- Keyword primaria: nell'H1, nel primo paragrafo, in almeno 2 H2, nella conclusione
-- Keyword secondarie: distribuite naturalmente nel testo (1-2 volte ciascuna)
-- Densità keyword: 1-2% (naturale, non forzata)
-- Ogni sezione H2: almeno 2-3 paragrafi
+PARAMETRI OBBLIGATORI:
+- Lunghezza esatta: ${wordCount} parole (±5%)
+- Numero di sezioni H2 principali: ${paragraphCount} (esclusi intro, FAQ e conclusione)
+- Lingua: ${langLabel}
 
-OTTIMIZZAZIONE SEO + GEO (AI Search):
-- Inizia con una definizione chiara dell'argomento (favorisce Google AI Overview)
-- Includi risposte dirette a domande comuni ("Cos'è X?", "Come funziona Y?")
-- Usa un tono autorevole ma accessibile
-- Aggiungi una sezione FAQ finale con 3-4 domande e risposte concise (ottima per GEO)
-- Le risposte FAQ devono essere autonome e complete (leggibili da AI senza contesto)
-- Usa <strong> per i concetti chiave
-- Includi dati/statistiche specifiche dove possibile
+STRUTTURA HTML obbligatoria:
+<h1>[keyword primaria nel titolo]</h1>
+<p>[intro: definizione chiara dell'argomento + keyword primaria nel primo paragrafo]</p>
 
-STRUTTURA HTML richiesta:
-<h1>Titolo principale con keyword primaria</h1>
-<p>Paragrafo introduttivo con definizione e keyword primaria...</p>
-<h2>Prima sezione</h2>
-<p>...</p>
-[<ul><li>...</li></ul> oppure <table>...</table> dove utile]
-<h2>Seconda sezione</h2>
-...
-<h2>Terza sezione</h2>
-...
+[${paragraphCount} sezioni H2, ognuna con 2-3 paragrafi <p> e dove pertinente <ul>/<ol>/<table>]
+
 <h2>Domande frequenti su [topic]</h2>
-<h3>Domanda 1?</h3>
-<p>Risposta completa...</p>
-<h3>Domanda 2?</h3>
-<p>Risposta completa...</p>
-<h2>Conclusione</h2>
-<p>...</p>
+[3 domande come <h3> con risposta in <p> — risposte autonome e complete, ottimali per AI Overview]
 
-Restituisci SOLO questo JSON:
+<h2>Conclusione</h2>
+<p>[sintesi con keyword primaria + CTA]</p>
+
+REGOLE SEO:
+- Keyword primaria: in H1, primo paragrafo, almeno 2 H2, conclusione
+- Keyword secondarie: distribuite (1-2 volte ciascuna, mai forzate)
+- Densità keyword primaria: 1-2%
+- Usa <strong> per concetti chiave (2-3 per sezione max)
+- Includi almeno 1 lista (<ul> o <ol>) e 1 tabella (<table>) nel corpo
+
+REGOLE GEO (AI Search Optimization):
+- Primo paragrafo: definizione diretta e concisa (Google AI Overview la preleva)
+- FAQ: risposte complete e autonome, leggibili senza contesto da parte di AI
+- Usa frasi dirette ("X è...", "Per fare Y bisogna...", "Il vantaggio principale è...")
+- Includi almeno 1 dato/statistica concreta se disponibile
+
+Restituisci SOLO questo JSON (nessun testo fuori):
 {
-  "title": "titolo H1 con keyword primaria, max 70 caratteri",
-  "slug": "slug-url-kebab-case-con-keyword-primaria",
-  "seo_title": "titolo SEO max 60 caratteri con keyword primaria",
-  "seo_description": "meta description 150-160 caratteri con keyword primaria e CTA chiara",
+  "title": "H1 con keyword primaria, max 70 caratteri",
+  "slug": "slug-kebab-case-con-keyword",
+  "seo_title": "SEO title max 60 caratteri con keyword primaria",
+  "seo_description": "meta description 150-160 caratteri con keyword e CTA",
   "excerpt": "riassunto 1-2 frasi max 200 caratteri",
   "categories": ["categoria pertinente"],
   "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-  "content_html": "HTML COMPLETO con H1+H2+H3+p+ul/ol+table+strong — MINIMO 1200 parole — includi FAQ finale"
+  "content_html": "HTML COMPLETO — H1+${paragraphCount}×H2+FAQ H2+Conclusione H2 — ${wordCount} parole — include <ul>/<ol> e <table>"
 }`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
