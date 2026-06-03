@@ -203,8 +203,13 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
       const type = mimeMap[ext] ?? 'image/png'
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" type="${type}" href="${faviconUrl}">\n<link rel="apple-touch-icon" href="${faviconUrl}">`)
     }
-    if (ogImageUrl && !/<meta[^>]+property=["']og:image["']/i.test(result)) {
-      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<meta property="og:image" content="${ogImageUrl}">`)
+    if (ogImageUrl) {
+      // If page.og_image is set, it always wins — replace any existing og:image in HTML
+      if (/<meta[^>]+property=["']og:image["']/i.test(result)) {
+        result = result.replace(/<meta[^>]+property=["']og:image["'][^>]*>/i, `<meta property="og:image" content="${ogImageUrl}">`)
+      } else {
+        result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<meta property="og:image" content="${ogImageUrl}">`)
+      }
     }
   }
 
