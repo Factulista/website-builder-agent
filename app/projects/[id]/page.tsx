@@ -1703,6 +1703,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
+  const [blogEditorSiteStyles, setBlogEditorSiteStyles] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const blogPendingSaveRef = useRef<{ postId: string; contentHtml: string } | null>(null)
   // Custom undo/redo for blog editor: snapshot history at the parent level
@@ -6647,6 +6648,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 return ''
               })()
               const siteStyleBlocks = [fontLinks, rootVars ? `<style>${rootVars}</style>` : ''].join('\n')
+              setBlogEditorSiteStyles(siteStyleBlocks)
               // Editor-only overrides: live blog renders inside a grid layout that provides
               // horizontal padding; the editor doesn't, so add it here to keep list markers
               // (bullets/numbers) visible inside the iframe.
@@ -7788,16 +7790,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       )
                     })()}
                     {blogGenerating && selectedPost?.id === blogGenDraftId ? (
-                      <div style={{ flex: 1, overflowY: 'auto', background: 'white', padding: '32px 48px', maxWidth: '760px', margin: '0 auto', width: '100%', boxSizing: 'border-box' as const }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: '#6b7280', fontSize: '0.85rem' }}>
-                          <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span>
-                          <span>Generazione in corso…</span>
+                      <div style={{ flex: 1, overflowY: 'auto', background: 'white', width: '100%' }}>
+                        {/* inject site fonts + css vars so the live preview matches the actual blog */}
+                        {blogEditorSiteStyles
+                          ? <div dangerouslySetInnerHTML={{ __html: blogEditorSiteStyles }} />
+                          : <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" />
+                        }
+                        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+                        <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 48px', boxSizing: 'border-box' as const }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: '#6b7280', fontSize: '0.85rem' }}>
+                            <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span>
+                            <span>Generazione in corso…</span>
+                          </div>
+                          <div
+                            style={{ fontFamily: 'var(--font-body, "Space Grotesk", sans-serif)', lineHeight: 1.8, color: '#1a1a1a', fontSize: '1rem' }}
+                            dangerouslySetInnerHTML={{ __html: blogGenLiveContent || '<p style="color:#ccc">In attesa del contenuto…</p>' }}
+                          />
                         </div>
-                        <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
-                        <div
-                          style={{ fontFamily: 'Georgia, serif', lineHeight: 1.8, color: '#1a1a1a', fontSize: '1rem' }}
-                          dangerouslySetInnerHTML={{ __html: blogGenLiveContent || '<p style="color:#ccc">In attesa del contenuto…</p>' }}
-                        />
                       </div>
                     ) : blogEditorSrcDoc ? (
                       <iframe
