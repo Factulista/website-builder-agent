@@ -89,69 +89,39 @@ function buildUserConfirmation(payload: FormPayload, customMsg?: string): { subj
  */
 /** Returns only components_config — avoids loading full site_config (MB of HTML pages) */
 async function detectProjectComponentsConfig(origin: string, projectId?: string): Promise<Record<string, unknown> | null> {
-  const extract = (row: Record<string, unknown> | null): Record<string, unknown> | null => {
-    if (!row) return null
-    // Supabase returns JSONB sub-fields differently depending on client version:
-    // try both 'components_config' key and nested inside 'site_config'
-    const cc = (row as any).components_config
-      ?? (row as any).site_config?.components_config
-    return cc && typeof cc === 'object' ? cc as Record<string, unknown> : null
+  // Use raw SQL to extract ONLY components_config — avoids loading MB of HTML pages
+  const queryComponentsConfig = async (filter: { id?: string; domain?: string }): Promise<Record<string, unknown> | null> => {
+    let query = supabase
+      .from('projects')
+      .select('site_config->components_config')
+      .is('deleted_at', null)
+    if (filter.id)     query = query.eq('id', filter.id)
+    if (filter.domain) query = query.eq('custom_domain', filter.domain)
+    const { data, error } = await query.limit(1).maybeSingle()
+    if (error) { console.warn(`[forms] query error (${JSON.stringify(filter)}):`, error.message); return null }
+    if (!data) return null
+    // PostgREST returns the json path result with the last key as field name
+    const cc = (data as any).components_config
+    if (cc && typeof cc === 'object') return cc as Record<string, unknown>
+    return null
   }
 
   // Fast path: project_id provided in body
   if (projectId) {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('id, site_config')
-      .eq('id', projectId)
-      .is('deleted_at', null)
-      .maybeSingle()
-    if (error) console.warn('[forms] projectId lookup error:', error.message)
-    console.log('[forms] projectId lookup raw data keys:', data ? Object.keys(data) : 'null')
-    const cc = extract(data)
-    if (cc) { console.log('[forms] project found via project_id, cc keys:', Object.keys(cc)); return cc }
-    if (data?.site_config) {
-      // Log what's actually in site_config for debugging
-      const sc = data.site_config as Record<string, unknown>
-      console.log('[forms] site_config keys:', Object.keys(sc))
-      const directCc = sc.components_config
-      if (directCc && typeof directCc === 'object') {
-        console.log('[forms] found components_config directly, keys:', Object.keys(directCc as object))
-        return directCc as Record<string, unknown>
-      }
-    }
+    const cc = await queryComponentsConfig({ id: projectId })
+    if (cc) { console.log('[forms] found via project_id'); return cc }
+    console.warn('[forms] project_id lookup returned null for:', projectId)
   }
 
   if (!origin) return null
-
   let host: string
   try { host = new URL(origin).hostname } catch { return null }
   if (!host) return null
 
   const bareHost = host.replace(/^www\./, '')
-
   for (const domain of Array.from(new Set([host, bareHost, `www.${bareHost}`]))) {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('id, site_config')
-      .eq('custom_domain', domain)
-      .is('deleted_at', null)
-      .limit(1)
-      .maybeSingle()
-    if (error) { console.warn(`[forms] domain lookup error (${domain}):`, error.message); continue }
-    const cc = extract(data)
-    if (cc) { console.log(`[forms] project found via domain: ${domain}`); return cc }
-    if (data?.site_config) {
-      const sc = data.site_config as Record<string, unknown>
-      const directCc = sc.components_config
-      if (directCc && typeof directCc === 'object') {
-        console.log(`[forms] found via domain ${domain} (direct), cc keys:`, Object.keys(directCc as object))
-        return directCc as Record<string, unknown>
-      }
-      console.warn(`[forms] domain ${domain} matched but no components_config — sc keys: ${Object.keys(sc).join(',')}`)
-    } else {
-      console.log(`[forms] no project for domain: ${domain}`)
-    }
+    const cc = await queryComponentsConfig({ domain })
+    if (cc) { console.log(`[forms] found via domain: ${domain}`); return cc }
   }
 
   console.warn(`[forms] project not found — host: ${host}`)
