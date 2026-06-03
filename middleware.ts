@@ -7,6 +7,20 @@ export function middleware(req: NextRequest) {
   const host = (req.headers.get('host') || '').toLowerCase()
   const url = req.nextUrl.clone()
 
+  // Strip GA4 cross-domain tracking params (_gl, _ga_*) from public URLs.
+  // These are added by GTM/GA4 linker when navigating between subdomains.
+  // We redirect to the clean URL so analytics still fires (JS picks up _gl before redirect)
+  // but the final URL shown to users is clean.
+  const trackingParams = [...url.searchParams.keys()].filter(k =>
+    k === '_gl' || k === '_up' || k.startsWith('_ga')
+  )
+  if (trackingParams.length > 0) {
+    const clean = url.clone()
+    trackingParams.forEach(k => clean.searchParams.delete(k))
+    // 302 (not 301) so Google doesn't cache the redirect permanently
+    return NextResponse.redirect(clean, 302)
+  }
+
   // Pass-through for vercel.app preview deployments and localhost
   if (
     host.endsWith('.vercel.app') ||
