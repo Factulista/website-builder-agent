@@ -8132,17 +8132,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     </div>
                                     <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Redirect automatico 2 secondi dopo l&apos;invio</p>
                                   </div>
-                                  <div style={{ padding: '12px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+                                  <div style={{ padding: '10px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: cfTurnstileSiteKey ? '0' : '8px' }}>
                                       <span>🛡️</span>
-                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Cloudflare Turnstile</span>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em', flex: 1 }}>Cloudflare Turnstile</span>
+                                      {cfTurnstileSiteKey && <span style={{ fontSize: '0.69rem', color: '#166534', background: '#dcfce7', padding: '1px 7px', borderRadius: '10px', fontWeight: 600 }}>✓ Configurata</span>}
                                     </div>
+                                    {!cfTurnstileSiteKey && (
+                                      <p style={{ margin: '0 0 8px', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
+                                        {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
+                                        {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
+                                      </p>
+                                    )}
                                     <input type="text" placeholder="0x4AAAAAAA... (Site Key pubblica)" value={cfTurnstileSiteKey} onChange={e => setCfTurnstileSiteKey(e.target.value)}
-                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
-                                    <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
-                                      {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
-                                      {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
-                                    </p>
+                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, marginTop: cfTurnstileSiteKey ? '8px' : '0' }} />
                                   </div>
                                   <div style={{ paddingTop: '4px' }}>
                                     <button onClick={() => void saveContactFormConfig()} disabled={cfSaving === 'saving'}
@@ -8182,17 +8185,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     </div>
                                     <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Redirect automatico 2 secondi dopo l&apos;invio</p>
                                   </div>
-                                  <div style={{ padding: '12px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+                                  <div style={{ padding: '10px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: crmTurnstileSiteKey ? '0' : '8px' }}>
                                       <span>🛡️</span>
-                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Cloudflare Turnstile</span>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em', flex: 1 }}>Cloudflare Turnstile</span>
+                                      {crmTurnstileSiteKey && <span style={{ fontSize: '0.69rem', color: '#166534', background: '#dcfce7', padding: '1px 7px', borderRadius: '10px', fontWeight: 600 }}>✓ Configurata</span>}
                                     </div>
+                                    {!crmTurnstileSiteKey && (
+                                      <p style={{ margin: '0 0 8px', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
+                                        {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
+                                        {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
+                                      </p>
+                                    )}
                                     <input type="text" placeholder="0x4AAAAAAA... (Site Key pubblica)" value={crmTurnstileSiteKey} onChange={e => setCrmTurnstileSiteKey(e.target.value)}
-                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
-                                    <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
-                                      {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
-                                      {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
-                                    </p>
+                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, marginTop: crmTurnstileSiteKey ? '8px' : '0' }} />
                                   </div>
                                   <div style={{ paddingTop: '4px' }}>
                                     <button onClick={() => void saveCrmConfig()} disabled={crmSaving === 'saving'}
@@ -8232,17 +8238,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     </div>
                                     <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Redirect automatico 2 secondi dopo l&apos;invio</p>
                                   </div>
-                                  <div style={{ padding: '12px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+                                  <div style={{ padding: '10px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: suggestTurnstileSiteKey ? '0' : '8px' }}>
                                       <span>🛡️</span>
-                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Cloudflare Turnstile</span>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em', flex: 1 }}>Cloudflare Turnstile</span>
+                                      {suggestTurnstileSiteKey && <span style={{ fontSize: '0.69rem', color: '#166534', background: '#dcfce7', padding: '1px 7px', borderRadius: '10px', fontWeight: 600 }}>✓ Configurata</span>}
                                     </div>
+                                    {!suggestTurnstileSiteKey && (
+                                      <p style={{ margin: '0 0 8px', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
+                                        {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
+                                        {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
+                                      </p>
+                                    )}
                                     <input type="text" placeholder="0x4AAAAAAA... (Site Key pubblica)" value={suggestTurnstileSiteKey} onChange={e => setSuggestTurnstileSiteKey(e.target.value)}
-                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
-                                    <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
-                                      {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
-                                      {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
-                                    </p>
+                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, marginTop: suggestTurnstileSiteKey ? '8px' : '0' }} />
                                   </div>
                                   <div style={{ paddingTop: '4px' }}>
                                     <button onClick={() => void saveSuggestConfig()} disabled={suggestSaving === 'saving'}
