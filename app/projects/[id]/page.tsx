@@ -1662,9 +1662,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [cfTurnstileSiteKey, setCfTurnstileSiteKey] = useState('')
   const [cfSaving, setCfSaving]                   = useState<'idle'|'saving'|'saved'>('idle')
   // CRM interest form config
-  const [crmAdminEmail, setCrmAdminEmail]         = useState('')
-  const [crmConfirmMsg, setCrmConfirmMsg]         = useState('')
-  const [crmSaving, setCrmSaving]                 = useState<'idle'|'saving'|'saved'>('idle')
+  const [crmAdminEmail, setCrmAdminEmail]             = useState('')
+  const [crmConfirmMsg, setCrmConfirmMsg]             = useState('')
+  const [crmConfirmEmailMsg, setCrmConfirmEmailMsg]   = useState('')
+  const [crmRedirectUrl, setCrmRedirectUrl]           = useState('')
+  const [crmTurnstileSiteKey, setCrmTurnstileSiteKey] = useState('')
+  const [crmSaving, setCrmSaving]                     = useState<'idle'|'saving'|'saved'>('idle')
   const [activeComponent, setActiveComponent]     = useState<'contact_form'|'crm_form'|null>(null)
   const [renamingSlug, setRenamingSlug] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -2209,8 +2212,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         components_config: {
           ...existingComponents,
           crm_form: {
-            admin_email:     crmAdminEmail.trim(),
-            confirm_message: crmConfirmMsg.trim(),
+            admin_email:           crmAdminEmail.trim(),
+            confirm_message:       crmConfirmMsg.trim(),
+            confirm_email_message: crmConfirmEmailMsg.trim(),
+            redirect_url:          crmRedirectUrl.trim(),
+            turnstile_site_key:    crmTurnstileSiteKey.trim(),
           }
         }
       },
@@ -2576,6 +2582,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const crmConfig = ((config as any)?.components_config?.crm_form ?? {}) as Record<string, unknown>
       setCrmAdminEmail((crmConfig.admin_email as string) ?? '')
       setCrmConfirmMsg((crmConfig.confirm_message as string) ?? '')
+      setCrmConfirmEmailMsg((crmConfig.confirm_email_message as string) ?? '')
+      setCrmRedirectUrl((crmConfig.redirect_url as string) ?? '')
+      setCrmTurnstileSiteKey((crmConfig.turnstile_site_key as string) ?? '')
       // Load shared nav / footer refs for editor preview injection.
       // One-time migration: if missing, extract from home page and persist immediately.
       if ((config as any)?.shared_nav_html) {
@@ -8090,16 +8099,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               {comp.key === 'crm_form' && (
                                 <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '14px' }}>
                                   <div>
-                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Email notifica CRM</label>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Email notifica interna</label>
                                     <input type="email" placeholder={cfAdminEmail || 'info@tuosito.com'} value={crmAdminEmail} onChange={e => setCrmAdminEmail(e.target.value)}
                                       style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
                                     <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Lascia vuoto per usare la stessa della Contact Form</p>
                                   </div>
                                   <div>
-                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio di conferma</label>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio di conferma (pagina)</label>
                                     <input type="text" placeholder="¡Gracias! Te avisaremos cuando esté disponible." value={crmConfirmMsg} onChange={e => setCrmConfirmMsg(e.target.value)}
                                       style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
-                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo nel modal dopo l&apos;invio</p>
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato dopo l&apos;invio</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Messaggio email di conferma</label>
+                                    <textarea placeholder="Hola [nombre], Hemos recibido tu interés en el CRM. Te avisaremos a [email]." value={crmConfirmEmailMsg} onChange={e => setCrmConfirmEmailMsg(e.target.value)}
+                                      style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text, minHeight: '60px', resize: 'none' }} />
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>{'Usa [nombre] e [email] come placeholder'}</p>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>URL pagina di destinazione</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '0.8rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>./</span>
+                                      <input type="text" placeholder="gracias-por-tu-interes" value={crmRedirectUrl} onChange={e => setCrmRedirectUrl(e.target.value)}
+                                        style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '8px 12px', fontSize: '0.85rem', fontFamily: 'monospace', outline: 'none', background: C.white, color: C.text }} />
+                                    </div>
+                                    <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Redirect automatico 2 secondi dopo l&apos;invio</p>
+                                  </div>
+                                  <div style={{ padding: '12px 14px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+                                      <span>🛡️</span>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3730a3', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Cloudflare Turnstile</span>
+                                    </div>
+                                    <input type="text" placeholder="0x4AAAAAAA... (Site Key pubblica)" value={crmTurnstileSiteKey} onChange={e => setCrmTurnstileSiteKey(e.target.value)}
+                                      style={{ width: '100%', border: '1px solid #c7d2fe', borderRadius: '7px', padding: '8px 12px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const, background: C.white, color: C.text }} />
+                                    <p style={{ margin: '6px 0 0', fontSize: '0.69rem', color: '#4338ca', lineHeight: '1.5' }}>
+                                      {'dash.cloudflare.com → Turnstile → crea widget → copia Site Key'}<br/>
+                                      {'Secret Key → Vercel env var: CLOUDFLARE_TURNSTILE_SECRET'}
+                                    </p>
                                   </div>
                                   <div style={{ paddingTop: '4px' }}>
                                     <button onClick={() => void saveCrmConfig()} disabled={crmSaving === 'saving'}

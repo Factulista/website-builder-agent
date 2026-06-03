@@ -264,6 +264,8 @@ export async function POST(req: NextRequest) {
         if (crmConfig.admin_email) projectAdminEmail = crmConfig.admin_email
         else if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
         if (crmConfig.confirm_message) projectConfirmMsg = crmConfig.confirm_message
+        if (crmConfig.confirm_email_message) projectConfirmEmailMsg = crmConfig.confirm_email_message
+        if (crmConfig.redirect_url) projectRedirectUrl = crmConfig.redirect_url
       } else {
         if (cfConfig.admin_email) projectAdminEmail = cfConfig.admin_email
         if (cfConfig.confirm_message) projectConfirmMsg = cfConfig.confirm_message
