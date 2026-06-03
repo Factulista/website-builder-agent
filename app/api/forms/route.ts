@@ -102,13 +102,24 @@ async function detectProjectComponentsConfig(origin: string, projectId?: string)
   if (projectId) {
     const { data, error } = await supabase
       .from('projects')
-      .select('site_config->components_config')
+      .select('id, site_config')
       .eq('id', projectId)
       .is('deleted_at', null)
       .maybeSingle()
     if (error) console.warn('[forms] projectId lookup error:', error.message)
+    console.log('[forms] projectId lookup raw data keys:', data ? Object.keys(data) : 'null')
     const cc = extract(data)
-    if (cc) { console.log('[forms] project found via project_id'); return cc }
+    if (cc) { console.log('[forms] project found via project_id, cc keys:', Object.keys(cc)); return cc }
+    if (data?.site_config) {
+      // Log what's actually in site_config for debugging
+      const sc = data.site_config as Record<string, unknown>
+      console.log('[forms] site_config keys:', Object.keys(sc))
+      const directCc = sc.components_config
+      if (directCc && typeof directCc === 'object') {
+        console.log('[forms] found components_config directly, keys:', Object.keys(directCc as object))
+        return directCc as Record<string, unknown>
+      }
+    }
   }
 
   if (!origin) return null
@@ -122,7 +133,7 @@ async function detectProjectComponentsConfig(origin: string, projectId?: string)
   for (const domain of Array.from(new Set([host, bareHost, `www.${bareHost}`]))) {
     const { data, error } = await supabase
       .from('projects')
-      .select('site_config->components_config')
+      .select('id, site_config')
       .eq('custom_domain', domain)
       .is('deleted_at', null)
       .limit(1)
@@ -130,7 +141,17 @@ async function detectProjectComponentsConfig(origin: string, projectId?: string)
     if (error) { console.warn(`[forms] domain lookup error (${domain}):`, error.message); continue }
     const cc = extract(data)
     if (cc) { console.log(`[forms] project found via domain: ${domain}`); return cc }
-    console.log(`[forms] no match for domain: ${domain}, data:`, JSON.stringify(data))
+    if (data?.site_config) {
+      const sc = data.site_config as Record<string, unknown>
+      const directCc = sc.components_config
+      if (directCc && typeof directCc === 'object') {
+        console.log(`[forms] found via domain ${domain} (direct), cc keys:`, Object.keys(directCc as object))
+        return directCc as Record<string, unknown>
+      }
+      console.warn(`[forms] domain ${domain} matched but no components_config — sc keys: ${Object.keys(sc).join(',')}`)
+    } else {
+      console.log(`[forms] no project for domain: ${domain}`)
+    }
   }
 
   console.warn(`[forms] project not found — host: ${host}`)
