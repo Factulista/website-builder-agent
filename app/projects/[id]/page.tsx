@@ -6793,50 +6793,40 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 if (!reader) { setBlogGenerating(false); return }
 
                 const decoder = new TextDecoder()
-                let fullText = ''
+                let buffer = ''
                 let completePost = null
+                let accumulatedHtml = ''
 
                 while (true) {
                   const { done, value } = await reader.read()
                   if (done) break
 
-                  const chunk = decoder.decode(value)
-                  const lines = chunk.split('\n')
+                  buffer += decoder.decode(value, { stream: true })
 
-                  for (const line of lines) {
-                    if (line.startsWith('event: text')) {
-                      // Extract data from next line
-                      const dataMatch = line.match(/event: text\ndata: (.+)/)
-                      if (dataMatch) {
-                        try {
-                          const evt = JSON.parse(dataMatch[1])
-                          fullText += evt.text
-                          // Only update preview with HTML content
-                          if (evt.text.includes('<')) {
-                            setBlogGenLiveContent(fullText)
-                          }
-                        } catch (e) {}
+                  // Process complete SSE events (separated by double newline)
+                  const events = buffer.split('\n\n')
+                  buffer = events.pop() ?? '' // keep last incomplete chunk
+
+                  for (const event of events) {
+                    const lines = event.split('\n')
+                    const eventType = lines.find(l => l.startsWith('event:'))?.slice(7).trim()
+                    const dataLine = lines.find(l => l.startsWith('data:'))?.slice(5).trim()
+                    if (!dataLine) continue
+
+                    try {
+                      const data = JSON.parse(dataLine)
+                      if (eventType === 'text') {
+                        accumulatedHtml += data.text ?? ''
+                        // Update live content preview in editor
+                        setBlogGenLiveContent(accumulatedHtml)
+                      } else if (eventType === 'complete') {
+                        completePost = data.post
+                      } else if (eventType === 'error') {
+                        await alertDialog({ title: 'Errore generazione', message: data.error, variant: 'danger' })
+                        setBlogGenerating(false)
+                        return
                       }
-                    } else if (line.startsWith('event: complete')) {
-                      // Extract complete post
-                      try {
-                        const dataLine = lines[lines.indexOf(line) + 1]
-                        if (dataLine?.startsWith('data: ')) {
-                          const data = JSON.parse(dataLine.slice(6))
-                          completePost = data.post
-                        }
-                      } catch (e) {}
-                    } else if (line.startsWith('event: error')) {
-                      try {
-                        const dataLine = lines[lines.indexOf(line) + 1]
-                        if (dataLine?.startsWith('data: ')) {
-                          const data = JSON.parse(dataLine.slice(6))
-                          await alertDialog({ title: 'Errore generazione', message: data.error, variant: 'danger' })
-                        }
-                      } catch (e) {}
-                      setBlogGenerating(false)
-                      return
-                    }
+                    } catch (e) {}
                   }
                 }
 
@@ -7797,7 +7787,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         </div>
                       )
                     })()}
-                    {blogEditorSrcDoc && (
+                    {blogGenerating && selectedPost?.id === blogGenDraftId ? (
+                      <div style={{ flex: 1, overflowY: 'auto', background: 'white', padding: '32px 48px', maxWidth: '760px', margin: '0 auto', width: '100%', boxSizing: 'border-box' as const }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', color: '#6b7280', fontSize: '0.85rem' }}>
+                          <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span>
+                          <span>Generazione in corso…</span>
+                        </div>
+                        <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+                        <div
+                          style={{ fontFamily: 'Georgia, serif', lineHeight: 1.8, color: '#1a1a1a', fontSize: '1rem' }}
+                          dangerouslySetInnerHTML={{ __html: blogGenLiveContent || '<p style="color:#ccc">In attesa del contenuto…</p>' }}
+                        />
+                      </div>
+                    ) : blogEditorSrcDoc ? (
                       <iframe
                         ref={blogIframeRef}
                         srcDoc={blogEditorSrcDoc + `<script id="fact-edit-script">${INLINE_EDIT_SCRIPT}</script>`}
@@ -7805,7 +7807,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         title="Blog Editor"
                         sandbox="allow-scripts allow-same-origin"
                       />
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
