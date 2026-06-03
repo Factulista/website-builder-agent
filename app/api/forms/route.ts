@@ -1,9 +1,16 @@
 import { NextRequest } from 'next/server'
 import { Resend } from 'resend'
+import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../../../lib/supabase'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+// Service-role client — bypasses RLS so we can read project config from public form submissions
+const getAdminSupabase = () => createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+)
 
 // Instantiated lazily inside the handler so missing env vars don't crash the build
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'info@factulista.com'
@@ -89,9 +96,12 @@ function buildUserConfirmation(payload: FormPayload, customMsg?: string): { subj
  */
 /** Returns only components_config — avoids loading full site_config (MB of HTML pages) */
 async function detectProjectComponentsConfig(origin: string, projectId?: string): Promise<Record<string, unknown> | null> {
-  // Use raw SQL to extract ONLY components_config — avoids loading MB of HTML pages
+  // Service-role client bypasses RLS — necessary for unauthenticated form submissions
+  const db = getAdminSupabase()
+
+  // Use JSON path select to extract ONLY components_config — avoids loading MB of HTML pages
   const queryComponentsConfig = async (filter: { id?: string; domain?: string }): Promise<Record<string, unknown> | null> => {
-    let query = supabase
+    let query = db
       .from('projects')
       .select('site_config->components_config')
       .is('deleted_at', null)
@@ -100,7 +110,6 @@ async function detectProjectComponentsConfig(origin: string, projectId?: string)
     const { data, error } = await query.limit(1).maybeSingle()
     if (error) { console.warn(`[forms] query error (${JSON.stringify(filter)}):`, error.message); return null }
     if (!data) return null
-    // PostgREST returns the json path result with the last key as field name
     const cc = (data as any).components_config
     if (cc && typeof cc === 'object') return cc as Record<string, unknown>
     return null
@@ -211,7 +220,7 @@ export async function POST(req: NextRequest) {
       if (bHost) {
         const bareH = bHost.replace(/^www\./, '')
         for (const d of [bHost, bareH, `www.${bareH}`]) {
-          const { data } = await supabase.from('projects').select('site_config->integrations').eq('custom_domain', d).is('deleted_at', null).limit(1).maybeSingle()
+          const { data } = await getAdminSupabase().from('projects').select('site_config->integrations').eq('custom_domain', d).is('deleted_at', null).limit(1).maybeSingle()
           if (data?.integrations) { brevoSiteConfig = { integrations: data.integrations }; break }
         }
       }
