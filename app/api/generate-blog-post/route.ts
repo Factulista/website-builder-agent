@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 function getSupabase() {
   return createClient(
@@ -179,7 +179,7 @@ Restituisci SOLO questo JSON (nessun testo fuori dal JSON):
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
+      max_tokens: 16000,
       system,
       messages: [{ role: 'user', content: userMessage }],
     }),
