@@ -112,11 +112,6 @@ Contesto del sito:
     ? `\n\nTONO DI VOCE — prendi spunto da questi articoli già pubblicati per replicare lo stesso stile, registro e lunghezza delle frasi:\n${toneOfVoice}`
     : ''
 
-  // Build H2 sections instruction
-  const h2Sections = Array.from({ length: paragraphCount }, (_, i) =>
-    `<h2>Sezione ${i + 1}: [titolo con keyword]</h2>\n<p>[contenuto...]</p>`
-  ).join('\n')
-
   const system = `Sei un esperto copywriter, SEO specialist e GEO (Generative Engine Optimization) specialist.
 Scrivi articoli di blog professionali, ottimizzati per Google e per i motori AI (ChatGPT, Perplexity, Google AI Overview).
 Rispondi SEMPRE in ${langLabel}.
