@@ -1739,6 +1739,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogGenKeywords, setBlogGenKeywords] = useState('')
   const [blogGenWordCount, setBlogGenWordCount] = useState(1200)
   const [blogGenParaCount, setBlogGenParaCount] = useState(4)
+  const [blogGenFlags, setBlogGenFlags] = useState({
+    table: true,
+    summary: true,
+    takeaways: true,
+    faq: true,
+    cta: false,
+    callout: false,
+    stats: false,
+  })
   const [showBlogGenPrompt, setShowBlogGenPrompt] = useState(false)
   const [blogMetaEdits, setBlogMetaEdits] = useState<Partial<BlogPost>>({})
   const blogAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -6742,7 +6751,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 const res = await fetch('/api/generate-blog-post', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, projectId: id, context: projectContext }),
+                  body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, flags: blogGenFlags, projectId: id, context: projectContext }),
                 })
                 const json = await res.json()
                 if (!json.post) {
@@ -6851,7 +6860,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           disabled={blogGenerating || !blogGenTopic.trim()}
                           style={{ background: blogGenTopic.trim() && !blogGenerating ? C.blue : '#93c5fd', color: 'white', border: 'none', padding: '7px 18px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: blogGenTopic.trim() && !blogGenerating ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' as const }}
                         >{blogGenerating ? '⏳ Generazione...' : '✦ Genera'}</button>
-                        <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0 }}>✕</button>
+                        <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0, lineHeight: 1 }}>✕</button>
                       </div>
                       {/* Row 3: word count + paragraph count */}
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -6864,13 +6873,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </select>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.78rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>Paragrafi H2:</span>
+                          <span style={{ fontSize: '0.78rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>Sezioni H2:</span>
                           <select value={blogGenParaCount} onChange={e => setBlogGenParaCount(Number(e.target.value))}
                             style={{ border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', background: C.white, cursor: 'pointer' }}>
                             {[2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
                         </div>
-                        <span style={{ fontSize: '0.68rem', color: '#6b7280', marginLeft: '4px' }}>· Tono di voce preso dagli articoli esistenti · SEO + GEO</span>
+                      </div>
+
+                      {/* Row 4: content flags */}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' as const }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px' }}>📝 Includi</span>
+                        {([
+                          { key: 'summary',   label: '📋 Riassunto',      title: 'Box riassunto sotto il titolo' },
+                          { key: 'takeaways', label: '💡 Key takeaways',  title: 'Box con 3-5 punti chiave in cima' },
+                          { key: 'table',     label: '📊 Tabella',        title: 'Almeno una tabella nel contenuto' },
+                          { key: 'faq',       label: '❓ FAQ',             title: 'Sezione domande frequenti (ottima per GEO)' },
+                          { key: 'callout',   label: '📌 Callout',        title: 'Box evidenza per concetti importanti' },
+                          { key: 'stats',     label: '📈 Dati/Statistiche', title: 'Includi dati numerici e statistiche' },
+                          { key: 'cta',       label: '📣 CTA finale',     title: 'Blocco call-to-action alla fine' },
+                        ] as { key: keyof typeof blogGenFlags; label: string; title: string }[]).map(({ key, label, title }) => {
+                          const active = blogGenFlags[key]
+                          return (
+                            <button
+                              key={key}
+                              title={title}
+                              onClick={() => setBlogGenFlags(f => ({ ...f, [key]: !f[key] }))}
+                              style={{
+                                padding: '4px 10px', borderRadius: '20px', border: `1px solid ${active ? C.blue : C.border}`,
+                                background: active ? '#eff6ff' : C.white, color: active ? C.blue : C.textFaint,
+                                fontSize: '0.75rem', fontWeight: active ? 600 : 400, cursor: 'pointer',
+                                fontFamily: 'inherit', transition: 'all 0.15s',
+                              }}
+                            >{label}</button>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
