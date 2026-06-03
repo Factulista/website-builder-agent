@@ -96,21 +96,66 @@ function checkMetaDescription(html: string): CheckResult {
   }
 }
 
-function checkCanonical(html: string): CheckResult {
+// Patterns that indicate a staging/preview canonical — always wrong in production
+const STAGING_PATTERNS = [
+  /\.vercel\.app/i,
+  /\/preview\//i,
+  /myweb\./i,
+  /localhost/i,
+  /127\.0\.0\.1/i,
+  /ngrok/i,
+]
+
+function checkCanonical(html: string, ctx?: { siteUrl?: string; pageSlug?: string }): CheckResult {
   const has = /<link\b[^>]*rel=["']canonical["'][^>]*>/i.test(html)
   const url = html.match(/<link\b[^>]*rel=["']canonical["'][^>]*href=["']([^"']*)["']/i)?.[1] ?? ''
-  // A canonical tag is only valid if it has an absolute URL (http/https)
-  const isValid = has && /^https?:\/\//i.test(url)
-  const score = isValid ? 100 : 0
-  const status: CheckResult['status'] = isValid ? 'pass' : 'fail'
-  let detail: string
-  if (!has) detail = 'Tag canonical mancante'
-  else if (!isValid) detail = `canonical non valido: "${url}" (deve essere URL assoluto)`
-  else detail = `canonical: ${url}`
+  const isAbsolute = has && /^https?:\/\//i.test(url)
+
+  let score = 0
+  let status: CheckResult['status'] = 'fail'
+  let detail = ''
+
+  if (!has) {
+    detail = 'Tag canonical mancante'
+  } else if (!isAbsolute) {
+    detail = `canonical non valido: "${url}" (deve essere URL assoluto)`
+  } else {
+    // Check for staging URLs — always wrong
+    const isStaging = STAGING_PATTERNS.some(p => p.test(url))
+    if (isStaging) {
+      detail = `⚠️ canonical punta a URL di staging: "${url}" — deve puntare al dominio di produzione`
+      score = 0
+      status = 'fail'
+    } else {
+      // Check if matches expected site URL if known
+      const { siteUrl, pageSlug } = ctx ?? {}
+      if (siteUrl) {
+        const expectedSlug = !pageSlug || pageSlug === 'home' ? '' : `/${pageSlug}`
+        const expectedUrl = `${siteUrl.replace(/\/$/, '')}${expectedSlug}`
+        // Normalize trailing slash for comparison
+        const normalize = (u: string) => u.replace(/\/$/, '').toLowerCase()
+        if (normalize(url) !== normalize(expectedUrl)) {
+          detail = `⚠️ canonical non corrisponde all'URL atteso: "${url}" (atteso: "${expectedUrl}")`
+          score = 50 // partial — at least it's not staging
+          status = 'warn'
+        } else {
+          detail = `canonical: ${url}`
+          score = 100
+          status = 'pass'
+        }
+      } else {
+        // No siteUrl to compare — at least it's absolute and not staging
+        detail = `canonical: ${url}`
+        score = 100
+        status = 'pass'
+      }
+    }
+  }
+
   return {
     checkId: 'canonical', score, status,
     detail,
-    data: { has, url, isValid },
+    data: { has, url, isAbsolute },
   }
 }
 
@@ -642,12 +687,13 @@ export function analyzePage(
   pageName: string,
   html: string,
   allSlugs?: Set<string>,
-  ctx?: { faviconUrl?: string }
+  ctx?: { faviconUrl?: string; siteUrl?: string }
 ): PageAnalysis {
   const slugs = allSlugs ?? new Set<string>()
   const results: CheckResult[] = SEO_CHECKS.map(check => {
     if (check.id === 'broken-links') return checkBrokenLinks(html, slugs)
     if (check.id === 'favicon') return checkFavicon(html, ctx?.faviconUrl)
+    if (check.id === 'canonical') return checkCanonical(html, { siteUrl: ctx?.siteUrl, pageSlug })
     return ANALYZERS[check.id](html)
   })
 
@@ -665,7 +711,7 @@ export function analyzePage(
 
 export function analyzeAllPages(
   pages: { slug: string; name: string; html: string }[],
-  ctx?: { faviconUrl?: string }
+  ctx?: { faviconUrl?: string; siteUrl?: string }
 ): PageAnalysis[] {
   // Build slug set from non-blog pages for broken-link detection
   const allSlugs = new Set(pages.map(p => p.slug).filter(s => !s.startsWith('blog/')))
