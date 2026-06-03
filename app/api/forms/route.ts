@@ -89,15 +89,26 @@ function buildUserConfirmation(payload: FormPayload, customMsg?: string): { subj
  */
 /** Returns only components_config — avoids loading full site_config (MB of HTML pages) */
 async function detectProjectComponentsConfig(origin: string, projectId?: string): Promise<Record<string, unknown> | null> {
+  const extract = (row: Record<string, unknown> | null): Record<string, unknown> | null => {
+    if (!row) return null
+    // Supabase returns JSONB sub-fields differently depending on client version:
+    // try both 'components_config' key and nested inside 'site_config'
+    const cc = (row as any).components_config
+      ?? (row as any).site_config?.components_config
+    return cc && typeof cc === 'object' ? cc as Record<string, unknown> : null
+  }
+
   // Fast path: project_id provided in body
   if (projectId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('projects')
       .select('site_config->components_config')
       .eq('id', projectId)
       .is('deleted_at', null)
       .maybeSingle()
-    if (data?.components_config) return data.components_config as Record<string, unknown>
+    if (error) console.warn('[forms] projectId lookup error:', error.message)
+    const cc = extract(data)
+    if (cc) { console.log('[forms] project found via project_id'); return cc }
   }
 
   if (!origin) return null
@@ -108,8 +119,7 @@ async function detectProjectComponentsConfig(origin: string, projectId?: string)
 
   const bareHost = host.replace(/^www\./, '')
 
-  // Try exact match first, then www-stripped — two cheap queries instead of .in() + maybeSingle()
-  for (const domain of [host, bareHost, `www.${bareHost}`]) {
+  for (const domain of Array.from(new Set([host, bareHost, `www.${bareHost}`]))) {
     const { data, error } = await supabase
       .from('projects')
       .select('site_config->components_config')
@@ -117,11 +127,10 @@ async function detectProjectComponentsConfig(origin: string, projectId?: string)
       .is('deleted_at', null)
       .limit(1)
       .maybeSingle()
-    if (error) { console.warn('[forms] detectProject query error:', error.message); continue }
-    if (data?.components_config) {
-      console.log(`[forms] project found via domain: ${domain}`)
-      return data.components_config as Record<string, unknown>
-    }
+    if (error) { console.warn(`[forms] domain lookup error (${domain}):`, error.message); continue }
+    const cc = extract(data)
+    if (cc) { console.log(`[forms] project found via domain: ${domain}`); return cc }
+    console.log(`[forms] no match for domain: ${domain}, data:`, JSON.stringify(data))
   }
 
   console.warn(`[forms] project not found — host: ${host}`)
