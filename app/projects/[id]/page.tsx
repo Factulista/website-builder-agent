@@ -1578,16 +1578,15 @@ const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
   a:  { fontFamily: 'inherit', fontSize: 'inherit', fontWeight: '500', color: '#2563eb', lineHeight: 'inherit', letterSpacing: '0' },
 }
 
-function generateDesignSystemCSS(ds: DesignSystem): string {
+function generateDesignSystemCSS(ds: DesignSystem): { rules: string; fontFamilies: string[] } {
   const googleFonts = new Set<string>()
+  const systemFonts = new Set(['Georgia','Times New Roman','Arial','Helvetica','Verdana','Trebuchet MS','Courier New'])
   const rule = (tag: string, c: TypoConfig) => {
     const props: string[] = []
     if (c.fontFamily && c.fontFamily !== 'inherit') {
-      const systemFonts = new Set(['Georgia','Times New Roman','Arial','Helvetica','Verdana','Trebuchet MS','Courier New'])
       if (!systemFonts.has(c.fontFamily)) googleFonts.add(c.fontFamily)
       props.push(`font-family:'${c.fontFamily}',sans-serif`)
     }
-    // For links, skip fontSize so they inherit from context; only set color/weight
     if (tag !== 'a') {
       if (c.fontSize   && c.fontSize   !== 'inherit') props.push(`font-size:${c.fontSize}`)
     }
@@ -1597,29 +1596,34 @@ function generateDesignSystemCSS(ds: DesignSystem): string {
       if (c.lineHeight && c.lineHeight !== 'inherit') props.push(`line-height:${c.lineHeight}`)
       if (c.letterSpacing && c.letterSpacing !== '0' && c.letterSpacing !== 'inherit') props.push(`letter-spacing:${c.letterSpacing}`)
     }
-    // :where() for site pages (specificity 0, page-level selectors always win)
-    // .blog-post-content selector for blog posts (same specificity as blog CSS rules)
     if (!props.length) return ''
+    // :where() — specificity 0 for site pages
     const base = `:where(${tag}){${props.join(';')}}`
-    // For block-level text tags, also target inside blog content so DS wins over blog defaults
+    // .blog-post-content selectors — same specificity as blog CSS, so DS wins in blog too
     const blogTags = new Set(['h1','h2','h3','h4','h5','h6','p'])
     const blogRule = blogTags.has(tag) ? `.blog-post-content ${tag}{${props.join(';')}}` : ''
-    // li/ul/ol inherit from p — add explicit li rule to match p size
-    const liRule = tag === 'p' ? `.blog-post-content li{${props.join(';')}}` : ''
+    const liRule   = tag === 'p'       ? `.blog-post-content li{${props.join(';')}}` : ''
     return [base, blogRule, liRule].filter(Boolean).join('\n')
   }
   const tags = ['h1','h2','h3','h4','h5','h6','p','a'] as const
   const cssRules = tags.map(t => rule(t, ds[t])).filter(Boolean).join('\n')
+  return { rules: cssRules, fontFamilies: [...googleFonts] }
+}
+
+/** Build the full CSS string including @import at top (needed when injecting into a <style> block) */
+function buildDesignSystemCSSString(ds: DesignSystem): string {
+  const { rules, fontFamilies } = generateDesignSystemCSS(ds)
+  if (!rules.trim()) return ''
   let imports = ''
-  if (googleFonts.size > 0) {
-    const families = [...googleFonts].map(f => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800`).join('&')
+  if (fontFamilies.length > 0) {
+    const families = fontFamilies.map(f => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800`).join('&')
     imports = `@import url('https://fonts.googleapis.com/css2?${families}&display=swap');\n`
   }
-  return imports + cssRules
+  return imports + rules
 }
 
 function applyDesignSystemToPages(ds: DesignSystem, currentPages: Page[]): Page[] {
-  const css = generateDesignSystemCSS(ds)
+  const css = buildDesignSystemCSSString(ds)
   if (!css.trim()) return currentPages
   const styleTag = `<style id="fact-design-system">\n/* Factulista Design System - auto-generated */\n${css}\n</style>`
   return currentPages.map(p => {
@@ -1946,6 +1950,22 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => { blogSidebarBannerUrlRef.current = blogSidebarBannerUrl }, [blogSidebarBannerUrl])
   useEffect(() => { blogSidebarBannerLinkRef.current = blogSidebarBannerLink }, [blogSidebarBannerLink])
   useEffect(() => { projectContextRef.current = projectContext }, [projectContext])
+
+  // Inject Google Fonts into parent document for Design System preview
+  useEffect(() => {
+    const { fontFamilies } = generateDesignSystemCSS(designSystem)
+    if (fontFamilies.length === 0) return
+    const id = 'fact-ds-preview-fonts'
+    let link = document.getElementById(id) as HTMLLinkElement | null
+    if (!link) {
+      link = document.createElement('link')
+      link.id = id
+      link.rel = 'stylesheet'
+      document.head.appendChild(link)
+    }
+    const families = fontFamilies.map(f => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800`).join('&')
+    link.href = `https://fonts.googleapis.com/css2?${families}&display=swap`
+  }, [designSystem])
 
   // Typing animation: animate new assistant messages character-by-character
   useEffect(() => {
@@ -3203,14 +3223,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
 
     // Merge Design System CSS into shared_css so blog posts inherit it too.
-    // We strip any previous DS block (between the sentinel comments) and append fresh.
-    const dsCSS = generateDesignSystemCSS(ds)
+    // @import MUST be first in any CSS block — so we put DS block at the TOP of shared_css,
+    // before any other existing rules, to avoid browsers silently ignoring the @import.
+    const { rules: dsRules, fontFamilies } = generateDesignSystemCSS(ds)
     const existingSharedCss = (typeof currentConfig.shared_css === 'string' ? currentConfig.shared_css : '') as string
     const DS_START = '/* fact-design-system:start */'
     const DS_END   = '/* fact-design-system:end */'
     const stripped = existingSharedCss.replace(new RegExp(`${DS_START}[\\s\\S]*?${DS_END}`, 'g'), '').trim()
-    const newSharedCss = dsCSS.trim()
-      ? `${stripped}\n${DS_START}\n${dsCSS}\n${DS_END}`.trim()
+    // Build font @import separately so it's always first
+    const fontImport = fontFamilies.length > 0
+      ? `@import url('https://fonts.googleapis.com/css2?${fontFamilies.map(f => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800`).join('&')}&display=swap');\n`
+      : ''
+    const newSharedCss = dsRules.trim()
+      ? `${fontImport}${DS_START}\n${dsRules}\n${DS_END}\n${stripped}`.trim()
       : stripped
 
     await supabase.from('projects').update({
@@ -4309,7 +4334,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
 
     // Auto-inject design system into AI-updated pages
-    if (designSystem && generateDesignSystemCSS(designSystem).trim()) {
+    if (designSystem && generateDesignSystemCSS(designSystem).rules.trim()) {
       newPages = applyDesignSystemToPages(designSystem, newPages)
     }
     setPages(newPages)
