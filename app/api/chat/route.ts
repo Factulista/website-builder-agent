@@ -133,19 +133,56 @@ function makeStream(
   return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson' } })
 }
 
+/**
+ * Session compaction — prevents context overflow on long conversations.
+ * Keeps the first message (setup context) + last N messages.
+ * Middle messages are summarised into a single assistant note.
+ */
+function compactMessages(
+  messages: { role: string; content: string }[]
+): { role: string; content: string }[] {
+  const MAX_CHARS = 120_000 // ~30k tokens — leave headroom for system prompt + response
+  const total = messages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : 0), 0)
+  if (total <= MAX_CHARS) return messages
+
+  const TAIL = 12 // always keep last 12 messages verbatim
+  const head = messages.slice(0, 1)  // first message = initial context
+  const tail = messages.slice(-TAIL)
+  const middle = messages.slice(1, -TAIL)
+
+  if (middle.length === 0) return messages
+
+  // Summarise middle: extract page slugs mentioned, key decisions
+  const pageRefs = [...new Set(middle.flatMap(m =>
+    (typeof m.content === 'string' ? m.content.match(/slug[": ]+(\w[-\w]*)/g) ?? [] : [])
+  ))].join(', ')
+  const summary = `[Riepilogo automatico di ${middle.length} messaggi precedenti]
+Pagine modificate/menzionate: ${pageRefs || 'varie'}
+Nota: per dettagli su queste operazioni, consulta la cronologia completa.`
+
+  return [
+    ...head,
+    { role: 'assistant', content: summary },
+    ...tail,
+  ]
+}
+
 export async function POST(req: NextRequest) {
   // Declared outside try so the catch block can call failRun on any error
   let runId = ''
   let runStartTime = Date.now()
 
   try {
-    const { projectId, messages, pages, activePageSlug, customDomain } = await req.json() as {
+    const { projectId, messages: rawMessages, pages, activePageSlug, customDomain } = await req.json() as {
       projectId: string
       messages: { role: string; content: string }[]
       pages: Page[]
       activePageSlug: string | null
       customDomain?: string | null
     }
+
+    // Apply compaction before passing to agents
+    const messages = compactMessages(rawMessages)
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
@@ -178,6 +215,21 @@ export async function POST(req: NextRequest) {
     const siteConfig = (project?.site_config ?? {}) as Record<string, unknown>
     const context: ProjectContext = (siteConfig.context as ProjectContext) ?? {}
     const mediaMeta = (siteConfig.media ?? {}) as Record<string, { alt?: string; title?: string }>
+    const designSystem = (siteConfig.designSystem ?? null) as Record<string, { fontSize?: string; fontWeight?: string; color?: string; lineHeight?: string; fontFamily?: string }> | null
+    const sharedCss = (siteConfig.shared_css ?? '') as string
+
+    // Load recent blog posts for tone-of-voice context (non-blocking, max 3)
+    let blogPosts: Array<{ title: string; content_html: string }> = []
+    try {
+      const { data: bps } = await supabase
+        .from('blog_posts')
+        .select('title, content_html')
+        .eq('project_id', projectId)
+        .not('content_html', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(3)
+      blogPosts = bps ?? []
+    } catch { /* non-critical */ }
 
     // List project media so agents can reference user-uploaded images
     // List project media for agent context — capped at 5s timeout so a slow
@@ -552,7 +604,11 @@ export async function POST(req: NextRequest) {
         : messages
 
       const injectPoints = (siteConfig.inject_points ?? {}) as Record<string, string>
-      const result = await runHtmlAgent(agentMessages, pages ?? [], activePageSlug, apiKey, projectMedia, contextLogo, injectPoints, userLang, siteLang, context)
+      const result = await runHtmlAgent(
+        agentMessages, pages ?? [], activePageSlug, apiKey,
+        projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
+        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts }
+      )
 
       // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
       if (result.tool === 'create_site' && result.input?.pages) {

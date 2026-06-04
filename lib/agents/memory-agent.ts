@@ -84,10 +84,28 @@ REGOLE:
   }
 }
 
+export type RichContext = {
+  context: ProjectContext
+  pages?: Array<{ slug: string; name: string; html: string }>
+  designSystem?: Record<string, { fontSize?: string; fontWeight?: string; color?: string; lineHeight?: string; fontFamily?: string }>
+  sharedCss?: string
+  blogPosts?: Array<{ title: string; content_html: string }>
+}
+
 export function buildContextPrompt(context: ProjectContext): string {
+  return buildRichContextPrompt({ context })
+}
+
+/**
+ * Builds the full project context prompt including Design System, pages, blog tone.
+ * The richer the input, the better the agent's output quality.
+ */
+export function buildRichContextPrompt({ context, pages, designSystem, sharedCss, blogPosts }: RichContext): string {
   if (!context || Object.keys(context).length === 0) return ''
 
   const parts: string[] = ['## CONTESTO PROGETTO (usa sempre queste informazioni):']
+
+  // ── Business info ──
   if (context.businessName) parts.push(`- Nome: ${context.businessName}`)
   if (context.businessType) parts.push(`- Settore: ${context.businessType}`)
   if (context.language) parts.push(`- Lingua sito: ${context.language} — scrivi SEMPRE in questa lingua`)
@@ -105,7 +123,7 @@ export function buildContextPrompt(context: ProjectContext): string {
     if (ci.address) parts.push(`- Indirizzo: ${ci.address}`)
   }
 
-  // Logo — esplicitato così l'HTML agent e il Design agent possono riutilizzarlo
+  // ── Logo ──
   const logo = context.design?.tokens?.logo
   if (logo) {
     if (logo.type === 'text') {
@@ -115,6 +133,51 @@ export function buildContextPrompt(context: ProjectContext): string {
     } else if (logo.type === 'img') {
       parts.push(`- Logo: immagine URL "${logo.content}"`)
     }
+  }
+
+  // ── Pages list ──
+  if (pages && pages.length > 0) {
+    parts.push(`\n## PAGINE ESISTENTI (${pages.length} pagine):`)
+    parts.push(pages.map(p => `- /${p.slug === 'home' ? '' : p.slug} → "${p.name}"`).join('\n'))
+  }
+
+  // ── Design System ──
+  if (designSystem) {
+    const ds = designSystem
+    const fmt = (tag: string) => {
+      const c = ds[tag]
+      if (!c) return null
+      const p = []
+      if (c.fontFamily && c.fontFamily !== 'inherit') p.push(`font: ${c.fontFamily}`)
+      if (c.fontSize   && c.fontSize   !== 'inherit') p.push(`size: ${c.fontSize}`)
+      if (c.fontWeight && c.fontWeight !== 'inherit') p.push(`weight: ${c.fontWeight}`)
+      if (c.color      && c.color      !== 'inherit') p.push(`color: ${c.color}`)
+      if (c.lineHeight && c.lineHeight !== 'inherit') p.push(`lh: ${c.lineHeight}`)
+      return p.length ? `${tag.toUpperCase()}: ${p.join(' | ')}` : null
+    }
+    const dsLines = ['h1','h2','h3','h4','p','li','a'].map(fmt).filter(Boolean)
+    if (dsLines.length > 0) {
+      parts.push(`\n## DESIGN SYSTEM ATTUALE (rispetta sempre questi valori tipografici):`)
+      parts.push(dsLines.join('\n'))
+    }
+  }
+
+  // ── Shared CSS summary (extract :root vars only to save tokens) ──
+  if (sharedCss) {
+    const rootMatch = sharedCss.match(/:root\s*\{([^}]+)\}/)
+    if (rootMatch) {
+      parts.push(`\n## CSS VARIABILI GLOBALI (:root):\n:root {\n${rootMatch[1].trim().slice(0, 800)}\n}`)
+    }
+  }
+
+  // ── Blog tone of voice (first 2 posts, 300 chars each) ──
+  if (blogPosts && blogPosts.length > 0) {
+    const samples = blogPosts.slice(0, 2).map(b => {
+      const text = b.content_html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+      return `"${b.title}": ${text}…`
+    }).join('\n')
+    parts.push(`\n## STILE EDITORIALE (articoli già pubblicati — replica questo tone of voice):`)
+    parts.push(samples)
   }
 
   return parts.join('\n')

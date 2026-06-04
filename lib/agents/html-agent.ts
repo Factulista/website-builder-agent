@@ -3,7 +3,7 @@ import { fetchWithRetry } from './fetch-retry'
 import { extractImageUrls } from './site-analyzer'
 import type { LogoDefinition } from './design-agent'
 import { langName } from './detect-lang'
-import { buildContextPrompt, type ProjectContext } from './memory-agent'
+import { buildRichContextPrompt, type ProjectContext, type RichContext } from './memory-agent'
 
 /** Fetches an image URL and returns it as base64 for multimodal API calls. */
 async function fetchImageAsBase64(url: string): Promise<{ data: string; media_type: string } | null> {
@@ -422,6 +422,18 @@ const HTML_TOOLS = [
     },
   },
   {
+    name: 'validate_html',
+    description: 'Valida l\'HTML generato prima di salvarlo. Controlla H1 multipli, inline style, img senza alt, link assoluti. Chiama questo tool dopo ogni edit_page o create_site prima di restituire il risultato finale.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        html: { type: 'string', description: 'HTML da validare' },
+        pageSlug: { type: 'string', description: 'Slug della pagina (per il contesto)' },
+      },
+      required: ['html'],
+    },
+  },
+  {
     name: 'insert_component',
     description: 'Inserisce un componente parametrico pre-costruito in UNA O PIÙ pagine in un colpo solo. PREFERISCI QUESTO TOOL rispetto a generare HTML da zero quando il pattern richiesto è uno di quelli supportati — risparmi token e garantisci consistenza visiva. Per modifiche nav (es. mega-menu), passa SEMPRE tutti gli slug delle pagine che hanno la stessa nav. Vedi sezione "COMPONENTI PARAMETRICI" nel system prompt per la lista completa.',
     input_schema: {
@@ -748,7 +760,8 @@ export async function runHtmlAgent(
   injectPoints?: Record<string, string>,
   userLang = 'it',
   siteLang = 'it',
-  context: ProjectContext = {}
+  context: ProjectContext = {},
+  richContext?: Omit<RichContext, 'context'>
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -1188,7 +1201,7 @@ ${(() => {
 })()}
 Usa set_inject_point per aggiungere/aggiornare/rimuovere embed, script o iframe in questi slot — senza toccare l'HTML delle pagine.
 
-${buildContextPrompt(context)}
+${buildRichContextPrompt({ context, ...richContext })}
 
 ${designSystemBlock}
 
@@ -1218,7 +1231,7 @@ COME MODIFICARE — scegli il modo giusto:
   find: usa ancore strutturali (href, class, id, src) — mai testo lungo che potrebbe essere troncato.
   Esempio elimina link menu: find '<a href="./pagina">Testo</a>' replace ''
 
-${buildContextPrompt(context)}
+${buildRichContextPrompt({ context, ...richContext })}
 
 ${designSystemBlock}
 
@@ -1359,7 +1372,50 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
     delete inp.typed_edits
   }
 
+  // If agent called validate_html, run it and feed result back for correction
+  if (toolUse.name === 'validate_html') {
+    const html = inp.html as string ?? ''
+    const issues = runHtmlValidation(html)
+    const validationResult = issues.length === 0
+      ? '✅ HTML valido — nessun problema rilevato.'
+      : `Problemi trovati:\n${issues.join('\n')}\nCorreggi questi problemi e salva la pagina.`
+
+    // Feed validation result back and get the corrected tool call
+    const correctionMessages = [
+      ...apiMessages,
+      { role: 'assistant' as const, content: data.content },
+      {
+        role: 'user' as const,
+        content: [{
+          type: 'tool_result' as const,
+          tool_use_id: toolUse.id,
+          content: validationResult,
+        }],
+      },
+    ]
+    const corrRes = await callClaude('html', system, correctionMessages as { role: string; content: string }[], HTML_TOOLS, apiKey)
+    if (corrRes.ok) {
+      const corrData = await corrRes.json()
+      const corrTool = corrData.content?.find((b: { type: string }) => b.type === 'tool_use')
+      if (corrTool) return { tool: corrTool.name, input: corrTool.input, usage: corrData.usage }
+    }
+  }
+
   return { tool: toolUse.name, input: inp, usage: data.usage }
+}
+
+/** Validate HTML and return array of issue strings (empty = valid) */
+function runHtmlValidation(html: string): string[] {
+  const issues: string[] = []
+  const h1Count = (html.match(/<h1[\s>]/gi) ?? []).length
+  if (h1Count > 1) issues.push(`⚠️ ${h1Count} tag <h1> trovati — deve essere esattamente 1`)
+  if (h1Count === 0) issues.push('⚠️ Nessun <h1> trovato — obbligatorio per SEO')
+  const inlineStyles = (html.match(/\bstyle="/gi) ?? []).length
+  if (inlineStyles > 0) issues.push(`⚠️ ${inlineStyles} attributi style="" inline — usa il Design System CSS`)
+  const imgNoAlt = (html.match(/<img(?![^>]*\balt=)[^>]*>/gi) ?? []).length
+  if (imgNoAlt > 0) issues.push(`⚠️ ${imgNoAlt} <img> senza attributo alt=""`)
+  if (/href="\/[^"#?]/.test(html)) issues.push('⚠️ Link interni assoluti (href="/...") — usa href="./slug"')
+  return issues
 }
 
 /** Remove blank lines from HTML — keeps output compact and readable in the code view. */
