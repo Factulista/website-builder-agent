@@ -1,11 +1,9 @@
 import { NextRequest } from 'next/server'
-import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
-import type { PipelineResult } from '../../../lib/agents/orchestrator'
-type AgentType = 'pipeline' | 'html' | 'design-update' | 'content-update' | 'seo' | 'images'
+import { classify } from '../../../lib/agents/orchestrator'
+type AgentType = 'html' | 'seo'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
-import { runClarifier } from '../../../lib/agents/clarifier'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun, noActionRun } from '../../../lib/agents/run-logger'
@@ -292,46 +290,15 @@ export async function POST(req: NextRequest) {
       .eq('status', 'running')
       .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
 
-    // Se il contesto ha un URL di ispirazione in sospeso e il messaggio contiene immagini,
-    // forza il pipeline agent per gestire Round 2 (analisi screenshot + generazione template)
-    const hasInspiration = !!context.lastInspirationUrl
-    const hasAttachedImages = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
+    // Single master agent: HTML Agent handles everything
+    // - Creates new sites from scratch (create_site tool)
+    // - Modifies existing pages (edit_page, add_page, delete_page tools)
+    // - Can use available templates if provided
+    // - Can analyze inspiration URLs/screenshots if available
+    const agent: AgentType = 'html'
 
-    // Phase 5: Single master agent — no routing needed.
-    // The master agent (html-agent + skill tools) decides autonomously
-    // which tools to use. Only pipeline (create site from scratch) stays separate.
-    // Pipeline only for: inspiration+screenshots, empty site, or explicit creation keywords
-    const needsPipeline = (hasInspiration && hasAttachedImages)
-      || !pages?.length
-      || classify(lastUserMessage, pages?.length > 0, hasAttachedImages) === 'pipeline'
-    const agent: AgentType = needsPipeline ? 'pipeline' : 'html'
-
-    // Clarifier — runs before any agent if the request is ambiguous
-    const clarifierConfig = dbConfigs.find(c => c.name === 'clarifier')
-    const clarifierEnabled = clarifierConfig?.enabled !== false
-    if (clarifierEnabled) {
-      const clarification = await runClarifier(
-        lastUserMessage,
-        (pages ?? []).map(p => ({ slug: p.slug, name: p.name })),
-        context,
-        apiKey,
-        agent,
-        userLang
-      ).catch(() => ({ proceed: true as const }))
-
-      if (!clarification.proceed) {
-        return Response.json({
-          tool: 'create_site',
-          input: { pages: pages ?? [], summary: clarification.message },
-          agent,
-          steps: [clarification.message],
-          requestClarification: true,
-        })
-      }
-    }
-
-    // Check if the html agent is disabled before running html-only requests
-    if (agent === 'html' && dbConfigs.length > 0) {
+    // Check if the html agent is disabled
+    if (dbConfigs.length > 0) {
       const htmlConfig = dbConfigs.find(c => c.name === 'html')
       if (htmlConfig && !htmlConfig.enabled) {
         return Response.json(
@@ -390,95 +357,7 @@ export async function POST(req: NextRequest) {
       console.error('[run-logger] startRun failed:', String(runErr))
     }
 
-    if (agent === 'pipeline') {
-      const startTime = Date.now()
-      const encoder = new TextEncoder()
-
-      let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
-
-      const stream = new ReadableStream<Uint8Array>({
-        start(controller) { streamController = controller },
-      })
-
-      const emit = (step: string) => {
-        if (!streamController) return
-        const msg: ProgressMessage = {
-          type: 'progress',
-          step,
-          time: formatTime(Date.now() - startTime),
-          tokens: 0,
-        }
-        streamController.enqueue(encoder.encode(encodeMessage(msg)))
-      }
-
-      // Esegui il pipeline in background, emettendo progressi real-time
-      runFullPipeline(lastUserMessage, pages ?? [], apiKey, context, emit)
-        .then(async (result) => {
-          if (result.updatedContext) {
-            // Re-read fresh siteConfig right before update to minimise lost-update
-            // window against concurrent requests on the same project
-            const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-            const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
-            await supabase.from('projects').update({
-              site_config: { ...freshConfig, context: result.updatedContext },
-            }).eq('id', projectId)
-          }
-          // Se il pipeline ha generato un template, salvalo nel DB (non-blocking)
-          if (result.generatedTemplate) {
-            const t = result.generatedTemplate
-            supabase.from('templates').insert({
-              name: t.name,
-              sector: t.sector,
-              keywords: t.keywords,
-              html: t.html,
-              source_url: t.sourceUrl ?? null,
-            }).then(({ error }) => {
-              if (error) console.error('[template-save] error:', error.message)
-              else console.log('[template-save] saved:', t.name)
-            })
-          }
-          // Log completion + consume credits
-          const pipelineUsage = result.usage as Usage
-          consumeUsage(pipelineUsage)
-          if (runId) {
-            const pageCount = (result.input?.pages?.length ?? 0)
-            completeRun(runId, {
-              output_summary: `pipeline: ${pageCount} pagine`,
-              input_tokens: pipelineUsage?.input_tokens ?? 0,
-              output_tokens: pipelineUsage?.output_tokens ?? 0,
-              cache_read_tokens: pipelineUsage?.cache_read_input_tokens ?? 0,
-              duration_ms: Date.now() - runStartTime,
-              output_data: {
-                tool: result.tool ?? 'pipeline',
-                pages_affected: ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug),
-                summary: result.input?.summary as string ?? undefined,
-              },
-            }).catch(() => null)
-          }
-          // Normalize internal links before sending to client
-          if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
-          const done: DoneMessage = { type: 'done', result }
-          streamController?.enqueue(encoder.encode(encodeMessage(done)))
-          streamController?.close()
-        })
-        .catch((err) => {
-          if (runId) {
-            failRun(runId, {
-              error_message: String(err).slice(0, 500),
-              duration_ms: Date.now() - runStartTime,
-            }).catch(() => null)
-          }
-          const error = { type: 'error', error: String(err) }
-          streamController?.enqueue(encoder.encode(JSON.stringify(error) + '\n'))
-          streamController?.close()
-        })
-
-      return new Response(stream, {
-        headers: { 'Content-Type': 'application/x-ndjson' },
-      })
-    }
-
-    // Legacy agent branches kept as dead code for rollback — never reached (agent is 'pipeline'|'html')
+    // Legacy agent branches kept as dead code for rollback — never reached (agent is 'html')
     if ((agent as string) === 'design-update') {
       return makeStream(async (emit) => {
         emit('🎨 Aggiornando CSS del sito…')
