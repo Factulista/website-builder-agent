@@ -17,11 +17,11 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Find project by slug
+  // Find project by slug (exact match first, then name fallback)
   const { data: projects } = await supabase
     .from('projects')
-    .select('id, name, site_config')
-    .ilike('slug', `%${projectSlug}%`)
+    .select('id, name, slug, site_config')
+    .or(`slug.eq.${projectSlug},name.ilike.%${projectSlug}%`)
     .limit(5)
 
   if (!projects?.length) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       const home = pages.find(p => p.slug === 'home')
       const idx = home?.html.indexOf('btn-accent-nav') ?? -1
       const snippet = idx >= 0 ? home!.html.slice(Math.max(0, idx - 10), idx + 300) : 'not found'
-      results.push({ id: project.id, name: project.name, snippet })
+      results.push({ id: project.id, name: project.name, slug: (project as any).slug, snippet })
       continue
     }
 
