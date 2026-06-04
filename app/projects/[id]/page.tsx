@@ -26,25 +26,26 @@ import { renderComponentById } from '../../../lib/components/index'
 
 /** Format HTML with indentation for the code editor. Also fixes &quot; inside style attributes. */
 function prettifyHtml(raw: string): string {
-  // Fix &quot; inside style/class attributes → real double quotes
+  // Fix &quot; inside style attributes → real double quotes
   let html = raw.replace(/(<[^>]+style="[^"]*?)&quot;([^"]*?")/g, '$1"$2')
   html = html.replace(/&quot;/g, '"')
   // Collapse all whitespace between tags first
   html = html.replace(/>\s+</g, '><').trim()
 
-  const VOID = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'])
-  const INLINE = new Set(['a','abbr','acronym','b','bdo','big','br','cite','code','dfn','em','i','img','input','kbd','label','map','object','output','q','s','samp','select','small','span','strong','sub','sup','textarea','time','tt','u','var'])
-  const PRE = new Set(['script','style','pre','textarea'])
+  const VOID    = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'])
+  const INLINE  = new Set(['a','abbr','b','bdo','big','br','cite','code','dfn','em','i','img','input','kbd','label','map','output','q','s','samp','select','small','span','strong','sub','sup','textarea','time','tt','u','var'])
+  const PRE     = new Set(['script','style','pre','textarea'])
 
   const tab = '  '
   let indent = 0
   let result = ''
   let inPre = false
 
-  // Split keeping delimiters
+  // Tokenise: tags + text nodes
   const tokens = html.split(/(<[^>]+>|<!--[\s\S]*?-->)/g)
 
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
     if (!token) continue
 
     if (token.startsWith('<!--')) {
@@ -54,21 +55,51 @@ function prettifyHtml(raw: string): string {
 
     if (token.startsWith('<')) {
       const tag = (token.match(/^<\/?([a-zA-Z][a-zA-Z0-9]*)/) ?? [])[1]?.toLowerCase() ?? ''
-      const isClose = token.startsWith('</')
+      const isClose    = token.startsWith('</')
       const isSelfClose = token.endsWith('/>') || VOID.has(tag)
-      const isInline = INLINE.has(tag)
-      const isPre = PRE.has(tag)
+      const isInline   = INLINE.has(tag)
+      const isPre      = PRE.has(tag)
 
       if (isPre && !isClose) inPre = true
-      if (isPre && isClose) inPre = false
+      if (isPre &&  isClose) inPre = false
 
       if (inPre || isInline) {
         result += token
-      } else if (isClose) {
+        continue
+      }
+
+      if (isClose) {
+        // Check if the previous output already has content after the last newline
+        // → if closing tag immediately follows text on same indent level, put it inline
+        const lastNewline = result.lastIndexOf('\n')
+        const lastLine = result.slice(lastNewline + 1)
+        const lastLineIndent = lastLine.match(/^(\s*)/)?.[1] ?? ''
         indent = Math.max(0, indent - 1)
+        // If the last line is plain text (no tags) at child indent → collapse to same line
+        if (!lastLine.trimStart().startsWith('<') && lastLineIndent.length > indent * tab.length) {
+          result += token  // inline closing tag after text
+        } else {
+          result += '\n' + tab.repeat(indent) + token
+        }
+        continue
+      }
+
+      if (isSelfClose) {
         result += '\n' + tab.repeat(indent) + token
-      } else if (isSelfClose) {
-        result += '\n' + tab.repeat(indent) + token
+        continue
+      }
+
+      // Opening block tag — peek ahead: does it contain ONLY text (no child tags) before closing?
+      // Pattern: tokens[i] = <tag>, tokens[i+1] = text, tokens[i+2] = </tag>
+      const nextText  = tokens[i + 1] ?? ''
+      const nextClose = tokens[i + 2] ?? ''
+      const closeTag  = `</${tag}>`
+      const hasOnlyText = nextClose.toLowerCase() === closeTag && !nextText.startsWith('<')
+
+      if (hasOnlyText && nextText.trim()) {
+        // Render as single line: <tag>text</tag>
+        result += '\n' + tab.repeat(indent) + token + nextText.trim() + closeTag
+        i += 2 // skip text + closing tag tokens
       } else {
         result += '\n' + tab.repeat(indent) + token
         indent++
@@ -77,11 +108,7 @@ function prettifyHtml(raw: string): string {
       // Text node
       const text = token.trim()
       if (!text) continue
-      if (inPre) {
-        result += token
-      } else {
-        result += '\n' + tab.repeat(indent) + text
-      }
+      result += inPre ? token : '\n' + tab.repeat(indent) + text
     }
   }
 
