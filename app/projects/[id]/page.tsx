@@ -5150,24 +5150,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </button>
                     )
                   })}
-                  {/* Blog routes */}
+                  {/* Blog articles — show only if blog posts exist */}
                   {blogPosts.length > 0 && (
                     <>
                       <div style={{ height: '1px', background: C.border, margin: '2px 0' }} />
-                      <button onClick={() => { setViewMode('blog'); setSelectedPost(null); setShowUrlDropdown(false) }}
-                        style={{
-                          display: 'block', width: '100%', textAlign: 'left',
-                          padding: '7px 12px', border: 'none',
-                          background: viewMode === 'blog' && !selectedPost ? '#f0f4ff' : 'transparent',
-                          fontSize: '0.75rem', fontFamily: 'monospace',
-                          color: viewMode === 'blog' && !selectedPost ? C.blue : C.text,
-                          cursor: 'pointer', fontWeight: 400,
-                        }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = viewMode === 'blog' && !selectedPost ? '#f0f4ff' : 'transparent' }}
-                      >
-                        /blog
-                      </button>
                       {blogPosts.map(post => {
                         const postPath = post.categories?.[0] ? `blog/${slugify(post.categories[0])}/${post.slug}` : `blog/${post.slug}`
                         const isSelected = (viewMode === 'blog' && selectedPost?.id === post.id) || (viewMode === 'code' && activeCodeBlogPostId === post.id) || (viewMode === 'preview' && previewIframePath === '/' + postPath)
