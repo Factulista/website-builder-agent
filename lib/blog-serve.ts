@@ -524,7 +524,15 @@ export function buildBlogPostPage(
   }
 
   // Extract H2s for TOC and inject IDs
-  const { contentWithIds, tocItems } = buildTocFromContent(post.content_html)
+  // Strip H1 tags from content (page header already provides the H1).
+  // Any <h1> inside content_html is a duplicate — downgrade to <h2>.
+  // Also unwrap <h1> tags that illegally wrap block elements.
+  const contentSanitized = post.content_html
+    // Downgrade all <h1> → <h2> (preserve any id/class attrs)
+    .replace(/<h1(\s[^>]*)?>/gi, (_, attrs) => `<h2${attrs ?? ''}>`)
+    .replace(/<\/h1>/gi, '</h2>')
+
+  const { contentWithIds, tocItems } = buildTocFromContent(contentSanitized)
 
   // Build TOC HTML
   const tocInner = tocItems.length > 0
@@ -585,6 +593,9 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   <meta name="description" content="${escapeHtml(seoDesc)}">
   <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
   ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
+  <!-- FCP: preconnect to font origins before any stylesheet loads -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <meta property="og:title" content="${escapeHtml(seoTitle)}">
   <meta property="og:description" content="${escapeHtml(seoDesc)}">
   ${post.featured_image ? `<meta property="og:image" content="${safeUrl(post.featured_image)}">` : ''}

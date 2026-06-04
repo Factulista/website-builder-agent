@@ -56,11 +56,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     if (dsStartIdx !== -1 && dsEndIdx !== -1) {
       const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
       baseCss = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
-      const dsImports = (sharedCss.match(/@import[^;]+;/gi) ?? []).join('\n')
+      // Convert @import font URLs to async <link> tags (better FCP)
+      const rawImports = sharedCss.match(/@import url\(['"][^'"]+['"]\)[^;]*;/gi) ?? []
+      const asyncFontLinks = rawImports.map(i => {
+        const url = i.match(/@import url\(['"]([^'"]+)['"]\)/i)?.[1] ?? ''
+        return url ? `<link rel="stylesheet" href="${url}" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="${url}"></noscript>` : ''
+      }).filter(Boolean).join('\n')
       // Strip :where() global rules — they bleed into footer/nav.
       const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
-      dsBlock = `<style>${dsImports}
-${scopedOnly}</style>`
+      dsBlock = `${asyncFontLinks}\n<style>${scopedOnly}</style>`
     }
   }
   const siteStyle = baseCss
