@@ -70,17 +70,16 @@ function applyMetaToHtml(html: string, mediaByUrl: Map<string, MediaMeta>): { ht
 }
 
 export async function POST(req: NextRequest) {
-  const { token, projectSlug, dryRun = false } = await req.json()
+  const { token, projectSlug, projectId, dryRun = false } = await req.json()
   if (token !== 'factulista-patch-2025') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const supabase = getSupabase()
 
-  // Find project
-  const { data: projects } = await supabase
-    .from('projects')
-    .select('id, name, slug, site_config')
-    .or(`slug.eq.${projectSlug},name.ilike.%${projectSlug}%`)
-    .limit(5)
+  // Find project — by ID if provided (more precise), otherwise by slug
+  const query = supabase.from('projects').select('id, name, slug, site_config')
+  const { data: projects } = projectId
+    ? await query.eq('id', projectId).limit(1)
+    : await query.or(`slug.eq.${projectSlug},name.ilike.%${projectSlug}%`).limit(5)
 
   if (!projects?.length) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
