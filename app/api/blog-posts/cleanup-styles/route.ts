@@ -18,49 +18,45 @@ async function getUser(req: NextRequest) {
 }
 
 /**
- * Remove redundant inline typography styles from blog post HTML.
- * These were injected by the AI before the Design System was in place.
- *
- * Rules:
- * 1. Remove font-family declarations from all style attributes
- * 2. Remove font-size declarations that duplicate what the DS sets (h1/h2/h3/p/li)
- * 3. If a style attribute becomes empty → remove it entirely
- * 4. If a <span> has no remaining attributes → unwrap it (keep text content)
- * 5. Fix &quot; inside style attributes → real quotes
+ * Aggressively clean typography inline styles from blog post HTML.
+ * The Design System handles all typography globally — inline styles are redundant.
  */
 function cleanInlineStyles(html: string): string {
-  // Fix HTML-encoded quotes in style attributes first
-  let result = html.replace(/style="([^"]*)"/g, (_, styleVal) => {
-    const fixed = styleVal.replace(/&quot;/g, '"').replace(/&#34;/g, '"')
-    return `style="${fixed}"`
+  let r = html
+
+  // 1. Fix &quot; / &#34; inside style attributes → real quotes
+  r = r.replace(/style="([^"]*)"/g, (_, v) =>
+    `style="${v.replace(/&quot;/g, '"').replace(/&#34;/g, '"')}"`)
+
+  // 2. Unwrap <font> tags entirely (old HTML4 tag, never appropriate in blog content)
+  r = r.replace(/<font[^>]*>([\s\S]*?)<\/font>/gi, '$1')
+
+  // 3. Remove all inline typography props from style attributes
+  //    (font-family, font-size, font-weight, color, line-height, letter-spacing)
+  //    These are all owned by the Design System.
+  const TYPO_PROPS = /(?:font-family|font-size|font-weight|line-height|letter-spacing)\s*:\s*[^;]+;?\s*/gi
+  r = r.replace(/style="([^"]*)"/g, (_, v) => {
+    let cleaned = v.replace(TYPO_PROPS, '').trim().replace(/;+$/, '').trim()
+    // Also strip standalone color if it's a plain text color that DS owns
+    cleaned = cleaned.replace(/\bcolor\s*:\s*#(?:1a1a1a|374151|000000|000)\s*;?\s*/gi, '').trim()
+    return cleaned ? `style="${cleaned}"` : ''
   })
 
-  // Remove specific typography props from style attributes
-  // These are now handled by the Design System globally
-  const REMOVABLE_PROPS = [
-    /font-family\s*:\s*[^;]+;?\s*/gi,
-    // Only remove font-size from inline <span> (not block elements — those are structural)
-  ]
+  // 4. Remove stray font-family text artifacts that leaked out of broken style attributes
+  //    e.g.  <span Space Grotesk"; font-size:1rem;">  or  <h3><span "Space Grotesk";">
+  r = r.replace(/<(span|h[1-6]|p|div|li)([^>]*?)\s+"?(?:Space Grotesk|Inter|Lato|Roboto|Open Sans|Montserrat)"?\s*;[^>]*>/gi,
+    (_, tag, rest) => `<${tag}${rest.trim() ? ' ' + rest.trim() : ''}>`)
 
-  result = result.replace(/style="([^"]*)"/g, (match, styleVal) => {
-    let cleaned = styleVal
-    for (const re of REMOVABLE_PROPS) {
-      cleaned = cleaned.replace(re, '')
-    }
-    cleaned = cleaned.trim().replace(/;+$/, '').trim()
-    if (!cleaned) return '' // remove empty style=""
-    return `style="${cleaned}"`
-  })
+  // 5. Unwrap <span> with no remaining attributes → keep text only
+  //    Loop twice to handle nested empty spans
+  for (let i = 0; i < 3; i++) {
+    r = r.replace(/<span>([\s\S]*?)<\/span>/g, '$1')
+  }
 
-  // Unwrap <span> tags that have no attributes left
-  // e.g. <span>text</span> → text
-  // Be careful: only unwrap spans with NO attributes at all
-  result = result.replace(/<span>([\s\S]*?)<\/span>/g, '$1')
+  // 6. Clean up double spaces in tag attributes left by removals
+  r = r.replace(/<(span|div|h[1-6]|p|li)\s{2,}/g, '<$1 ')
 
-  // Clean up extra whitespace from removed attributes (e.g. <span  class=...)
-  result = result.replace(/<span\s{2,}/g, '<span ')
-
-  return result
+  return r
 }
 
 export async function POST(req: NextRequest) {

@@ -154,7 +154,12 @@ export const BLOG_POST_CONTENT_CSS = `
      The Design System sets font-size on p via .blog-post-content p selector in shared_css,
      and li/ul/ol inherit from that context. This way DS and blog are always in sync. */
   .blog-post-content p{line-height:1.7;margin:0 0 1.25rem !important;color:#1a1a1a}
-  .blog-post-content ul,.blog-post-content ol{margin:0 0 1.35rem !important;padding-left:1.5rem !important}
+  /* ul: custom small bullet centred with text line */
+  .blog-post-content ul{list-style:none !important;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
+  .blog-post-content ul>li{position:relative;padding-left:.05em}
+  .blog-post-content ul>li::before{content:"•";position:absolute;left:-1em;top:.52em;font-size:.55em;line-height:1;color:currentColor}
+  /* ol keeps decimal numbering */
+  .blog-post-content ol{list-style:decimal;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
   .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7;color:#1a1a1a}
   /* When browsers apply insertUnorderedList/insertOrderedList on block content
      they often wrap it as <li><p>text</p></li> or <li><h1>text</h1></li>.
@@ -173,9 +178,7 @@ export const BLOG_POST_CONTENT_CSS = `
     line-height:1.7 !important;margin:0 !important;padding:0 !important;
     display:inline !important;
   }
-  /* List markers inherit font-size from li (no explicit font-size → no giant bold numbers in ol) */
-  .blog-post-content ul{list-style:disc}
-  .blog-post-content ol{list-style:decimal}
+  /* ol marker size — inherits from li, no override needed */
   .blog-post-content img{max-width:100% !important;height:auto !important;border-radius:10px !important;margin:1.75rem 0 !important;display:block}
   .blog-post-content a{color:var(--color-accent,#2563eb) !important;text-decoration:underline}
   .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.75rem 0;padding:.85rem 1.35rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}
