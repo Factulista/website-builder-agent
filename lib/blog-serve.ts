@@ -163,17 +163,16 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-content h4{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem !important;color:#1a1a1a}
   /* p: margin stays !important (structural). font-size/line-height/color: NO !important.
      Note: span-level font-size overrides from editor still work (target child <span>). */
-  /* p/li/ul/ol: NO font-size set here — they inherit from .blog-post-content base (1.05rem).
-     The Design System sets font-size on p via .blog-post-content p selector in shared_css,
-     and li/ul/ol inherit from that context. This way DS and blog are always in sync. */
-  .blog-post-content p{line-height:1.7;margin:0 0 1.25rem !important;color:#1a1a1a}
+  /* p and li: explicit identical font-size so they always match regardless of site CSS.
+     The DS (injected AFTER this block) overrides both with the user-configured value. */
+  .blog-post-content p{font-size:1rem;line-height:1.7;margin:0 0 1.25rem !important;color:#1a1a1a}
+  .blog-post-content li{font-size:1rem !important;margin-bottom:.45rem !important;line-height:1.7;color:#1a1a1a}
   /* ul: custom small bullet centred with text line */
   .blog-post-content ul{list-style:none !important;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
   .blog-post-content ul>li{position:relative;padding-left:.05em}
   .blog-post-content ul>li::before{content:"•";position:absolute;left:-1em;top:.52em;font-size:.55em;line-height:1;color:currentColor}
   /* ol keeps decimal numbering */
   .blog-post-content ol{list-style:decimal;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
-  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7;color:#1a1a1a}
   /* When browsers apply insertUnorderedList/insertOrderedList on block content
      they often wrap it as <li><p>text</p></li> or <li><h1>text</h1></li>.
      JS unwraps these on creation, but this CSS is a safety net for saved content.

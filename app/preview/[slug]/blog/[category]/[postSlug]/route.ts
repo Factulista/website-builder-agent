@@ -46,7 +46,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     : (homePage ? extractFooter(homePage.html) : '')
   const sharedCss = typeof config.shared_css === 'string' ? config.shared_css : null
   const fontLinks = (homePage?.html ?? '').match(/<link[^>]*(googleapis\.com|gstatic\.com)[^>]*>/gi)?.join('\n') ?? ''
-  const siteStyle = sharedCss ? `${fontLinks}\n<style>${sharedCss}</style>` : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
+  const DS_START = '/* fact-design-system:start */'
+  const DS_END   = '/* fact-design-system:end */'
+  let baseCss = sharedCss ?? ''
+  let dsBlock = ''
+  if (sharedCss) {
+    const dsStartIdx = sharedCss.indexOf(DS_START)
+    const dsEndIdx   = sharedCss.indexOf(DS_END)
+    if (dsStartIdx !== -1 && dsEndIdx !== -1) {
+      const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
+      baseCss = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
+      const dsImports = (sharedCss.match(/@import[^;]+;/gi) ?? []).join('\n')
+      dsBlock = `${dsImports}\n<style>${dsContent}</style>`
+    }
+  }
+  const siteStyle = baseCss
+    ? `${fontLinks}\n<style>${baseCss}</style>`
+    : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
 
   const { data: post } = await supabase
     .from('blog_posts')
@@ -61,6 +77,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const injectPoints = (config.inject_points as InjectPoints | undefined)
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
-  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, undefined, injectPoints)
+  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, undefined, injectPoints, dsBlock)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
