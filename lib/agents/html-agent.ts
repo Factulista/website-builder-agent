@@ -1298,6 +1298,34 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
   const hasImages = apiMessages.some(m => Array.isArray(m.content))
   const model = hasImages ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001'
 
+  // Adaptive max_tokens — sized to the actual task, not a global ceiling.
+  //
+  // Rationale: Sonnet output tokens cost ~5x input. Over-allocating on micro-edits
+  // (which produce 200-800 tokens) wastes nothing in practice, but under-allocating
+  // on create_site (which can easily reach 20k+ tokens for a 4-page site) causes
+  // silent truncation — the model stops mid-HTML without an error.
+  //
+  // Tiers:
+  //   4k  — micro-edit: delete element, change CSS var, update text (typed_edits)
+  //   10k — standard edit_page: add/replace a section, CSS change with context
+  //   24k — add_page: full new page with its own <style> + sections
+  //   32k — create_site ≤3 pages OR vision mockup (analyze image + generate block)
+  //   64k — create_site >3 pages, first site (no existing pages), or site + images
+  const pageCount = pages.length
+  const maxTokens = (() => {
+    if (isMicroEdit)                          return  4_000
+    if (isDesignFromMockup)                   return 32_000  // vision: analyze + generate
+    if (!hasPages)                            return 64_000  // first site, no constraints
+    if (isAddPageRequest)                     return 24_000  // one full page
+    if (hasImages)                            return 32_000  // vision tasks
+    // create_site with existing pages — scale with page count
+    // (agent may regenerate all pages)
+    if (pageCount === 0)                      return 64_000
+    if (pageCount <= 3)                       return 32_000
+    if (pageCount <= 6)                       return 48_000
+    return 12_000                             // edit_page standard
+  })()
+
   const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -1307,7 +1335,7 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
     },
     body: JSON.stringify({
       model,
-      max_tokens: 16384,
+      max_tokens: maxTokens,
       system,
       tools: HTML_TOOLS,
       tool_choice: { type: 'any' },
