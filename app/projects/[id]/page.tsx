@@ -1597,8 +1597,16 @@ function generateDesignSystemCSS(ds: DesignSystem): string {
       if (c.lineHeight && c.lineHeight !== 'inherit') props.push(`line-height:${c.lineHeight}`)
       if (c.letterSpacing && c.letterSpacing !== '0' && c.letterSpacing !== 'inherit') props.push(`letter-spacing:${c.letterSpacing}`)
     }
-    // Wrap with :where() so specificity is 0 and page-level class selectors always win
-    return props.length ? `:where(${tag}){${props.join(';')}}` : ''
+    // :where() for site pages (specificity 0, page-level selectors always win)
+    // .blog-post-content selector for blog posts (same specificity as blog CSS rules)
+    if (!props.length) return ''
+    const base = `:where(${tag}){${props.join(';')}}`
+    // For block-level text tags, also target inside blog content so DS wins over blog defaults
+    const blogTags = new Set(['h1','h2','h3','h4','h5','h6','p'])
+    const blogRule = blogTags.has(tag) ? `.blog-post-content ${tag}{${props.join(';')}}` : ''
+    // li/ul/ol inherit from p — add explicit li rule to match p size
+    const liRule = tag === 'p' ? `.blog-post-content li{${props.join(';')}}` : ''
+    return [base, blogRule, liRule].filter(Boolean).join('\n')
   }
   const tags = ['h1','h2','h3','h4','h5','h6','p','a'] as const
   const cssRules = tags.map(t => rule(t, ds[t])).filter(Boolean).join('\n')

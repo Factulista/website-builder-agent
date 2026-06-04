@@ -150,10 +150,12 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-content h4{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem !important;color:#1a1a1a}
   /* p: margin stays !important (structural). font-size/line-height/color: NO !important.
      Note: span-level font-size overrides from editor still work (target child <span>). */
-  .blog-post-content p{font-size:1rem;line-height:1.7;margin:0 0 1.25rem !important;color:#1a1a1a}
+  /* p/li/ul/ol: NO font-size set here — they inherit from .blog-post-content base (1.05rem).
+     The Design System sets font-size on p via .blog-post-content p selector in shared_css,
+     and li/ul/ol inherit from that context. This way DS and blog are always in sync. */
+  .blog-post-content p{line-height:1.7;margin:0 0 1.25rem !important;color:#1a1a1a}
   .blog-post-content ul,.blog-post-content ol{margin:0 0 1.35rem !important;padding-left:1.5rem !important}
-  /* li: margin stays !important. font-size/line-height/color: NO !important → DS wins */
-  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7;font-size:1rem;color:#1a1a1a}
+  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7;color:#1a1a1a}
   /* When browsers apply insertUnorderedList/insertOrderedList on block content
      they often wrap it as <li><p>text</p></li> or <li><h1>text</h1></li>.
      JS unwraps these on creation, but this CSS is a safety net for saved content.
@@ -171,9 +173,7 @@ export const BLOG_POST_CONTENT_CSS = `
     line-height:1.7 !important;margin:0 !important;padding:0 !important;
     display:inline !important;
   }
-  /* List marker sizing — explicit so ::marker inherits from <li> not from
-     any inner block element (prevents giant bold numbers in <ol>) */
-  .blog-post-content ul,.blog-post-content ol{font-size:1rem;margin:1rem 0 1rem 1.5rem !important;padding:0}
+  /* List markers inherit font-size from li (no explicit font-size → no giant bold numbers in ol) */
   .blog-post-content ul{list-style:disc}
   .blog-post-content ol{list-style:decimal}
   .blog-post-content img{max-width:100% !important;height:auto !important;border-radius:10px !important;margin:1.75rem 0 !important;display:block}
