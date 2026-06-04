@@ -1630,9 +1630,11 @@ function generateDesignSystemCSS(ds: DesignSystem): { rules: string; fontFamilie
     // .blog-post-content selectors — same specificity as blog CSS so DS wins in blog too
     const blogTags = new Set(['h1','h2','h3','h4','h5','h6','p','li'])
     const blogRule = blogTags.has(tag) ? `.blog-post-content ${tag}{${props.join(';')}}` : ''
-    // li also targets span inside li to override old inline font-size remnants
-    const liSpanRule = tag === 'li' ? `.blog-post-content li span{font-size:inherit}` : ''
-    return [base, blogRule, liSpanRule].filter(Boolean).join('\n')
+    // p rule also targets div (old AI content uses <div> instead of <p> for paragraphs)
+    const divRule = tag === 'p' ? `.blog-post-content div{${props.join(';')}}` : ''
+    // li: force children to inherit color/size to prevent site CSS leaking in
+    const liSpanRule = tag === 'li' ? `.blog-post-content li span,.blog-post-content li b,.blog-post-content li strong{font-size:inherit;color:inherit}` : ''
+    return [base, blogRule, divRule, liSpanRule].filter(Boolean).join('\n')
   }
   const tags = ['h1','h2','h3','h4','h5','h6','p','li','a'] as const
   const cssRules = tags.map(t => rule(t, ds[t])).filter(Boolean).join('\n')
