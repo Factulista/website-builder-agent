@@ -13,6 +13,7 @@ import { detectLangFromText } from '../../../lib/agents/detect-lang'
 import { checkHtmlQuality, reconstructEditedHtml, formatReportForAgent } from '../../../lib/agents/html-quality'
 import { runRulesLearner, quickLearnRules } from '../../../lib/agents/rules-learner'
 import { DEFAULT_FACTULISTA_RULES, formatRulesForAgent, type ProjectRules } from '../../../lib/agents/project-rules'
+import { extractDesignSystem, buildDesignSystemBlock, mergeDesignSystemIntoSharedCss } from '../../../lib/agents/design-extractor'
 
 type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
 function totalTokens(u: Usage): number {
@@ -504,6 +505,40 @@ export async function POST(req: NextRequest) {
       if (result.tool === 'add_page' && result.input?.html) {
         const normalized = normalizeInternalLinks([{ slug: result.input.slug as string, name: result.input.name as string, html: result.input.html as string }, ...(pages ?? [])])
         result.input.html = normalized[0].html
+      }
+
+      // ── Agent → Platform: sync Design System after site creation ──────────
+      // When the agent generates a new site, extract typography + palette from
+      // the home page HTML and write back to siteConfig so the platform's
+      // Design System panel reflects what the agent created.
+      // Only on create_site: edit_page is surgical and shouldn't reset the DS.
+      if (result.tool === 'create_site' && result.input?.pages) {
+        const newPages = result.input.pages as Page[]
+        const homePage = newPages.find((p: Page) => p.slug === 'home') ?? newPages[0]
+        if (homePage?.html) {
+          // Extract typography + CSS vars from the generated HTML
+          const extracted = extractDesignSystem(homePage.html)
+          // Build the fact-design-system CSS block
+          const dsBlock = buildDesignSystemBlock(extracted)
+          // Merge into shared_css (non-blocking background write)
+          const freshSharedCss = sharedCss || ''
+          const newSharedCss = mergeDesignSystemIntoSharedCss(freshSharedCss, dsBlock)
+          // Strip the _learned metadata before saving (not needed in designSystem)
+          const { cssVars: _vars, googleFonts: _fonts, ...dsToSave } = extracted
+          // Write back to DB in background (don't block the response)
+          Promise.resolve(
+            supabase.from('projects').select('site_config').eq('id', projectId).single()
+          ).then(async ({ data: fresh }) => {
+            const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
+            await supabase.from('projects').update({
+              site_config: {
+                ...freshConfig,
+                designSystem: dsToSave,
+                shared_css: newSharedCss,
+              },
+            }).eq('id', projectId)
+          }).catch(() => null) // non-blocking — UI will still show correct HTML
+        }
       }
 
       const htmlUsage = result.usage as Usage

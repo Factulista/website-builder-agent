@@ -153,6 +153,8 @@ export function buildRichContextPrompt({ context, pages, designSystem, sharedCss
   }
 
   // ── Design System ──
+  // ⚠️ When the user edits the Design System in the platform UI, these values
+  // are the AUTHORITATIVE source. The agent MUST use them on all new content.
   if (designSystem) {
     const ds = designSystem
     const fmt = (tag: string) => {
@@ -168,8 +170,9 @@ export function buildRichContextPrompt({ context, pages, designSystem, sharedCss
     }
     const dsLines = ['h1','h2','h3','h4','p','li','a'].map(fmt).filter(Boolean)
     if (dsLines.length > 0) {
-      parts.push(`\n## DESIGN SYSTEM ATTUALE (rispetta sempre questi valori tipografici):`)
+      parts.push(`\n## DESIGN SYSTEM ATTUALE — VALORI AUTORITATIVI (usa SEMPRE questi, mai sovrascrivere):`)
       parts.push(dsLines.join('\n'))
+      parts.push(`⚠️ Questi valori sono stati impostati dall'utente nel pannello Design. Non cambiarli MAI — nemmeno su create_site. Usali come fonte di verità per font, dimensioni e colori.`)
     }
   }
 
