@@ -24,6 +24,70 @@ import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } 
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById } from '../../../lib/components/index'
 
+/** Format HTML with indentation for the code editor. Also fixes &quot; inside style attributes. */
+function prettifyHtml(raw: string): string {
+  // Fix &quot; inside style/class attributes → real double quotes
+  let html = raw.replace(/(<[^>]+style="[^"]*?)&quot;([^"]*?")/g, '$1"$2')
+  html = html.replace(/&quot;/g, '"')
+  // Collapse all whitespace between tags first
+  html = html.replace(/>\s+</g, '><').trim()
+
+  const VOID = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'])
+  const INLINE = new Set(['a','abbr','acronym','b','bdo','big','br','cite','code','dfn','em','i','img','input','kbd','label','map','object','output','q','s','samp','select','small','span','strong','sub','sup','textarea','time','tt','u','var'])
+  const PRE = new Set(['script','style','pre','textarea'])
+
+  const tab = '  '
+  let indent = 0
+  let result = ''
+  let inPre = false
+
+  // Split keeping delimiters
+  const tokens = html.split(/(<[^>]+>|<!--[\s\S]*?-->)/g)
+
+  for (const token of tokens) {
+    if (!token) continue
+
+    if (token.startsWith('<!--')) {
+      result += '\n' + tab.repeat(indent) + token
+      continue
+    }
+
+    if (token.startsWith('<')) {
+      const tag = (token.match(/^<\/?([a-zA-Z][a-zA-Z0-9]*)/) ?? [])[1]?.toLowerCase() ?? ''
+      const isClose = token.startsWith('</')
+      const isSelfClose = token.endsWith('/>') || VOID.has(tag)
+      const isInline = INLINE.has(tag)
+      const isPre = PRE.has(tag)
+
+      if (isPre && !isClose) inPre = true
+      if (isPre && isClose) inPre = false
+
+      if (inPre || isInline) {
+        result += token
+      } else if (isClose) {
+        indent = Math.max(0, indent - 1)
+        result += '\n' + tab.repeat(indent) + token
+      } else if (isSelfClose) {
+        result += '\n' + tab.repeat(indent) + token
+      } else {
+        result += '\n' + tab.repeat(indent) + token
+        indent++
+      }
+    } else {
+      // Text node
+      const text = token.trim()
+      if (!text) continue
+      if (inPre) {
+        result += token
+      } else {
+        result += '\n' + tab.repeat(indent) + text
+      }
+    }
+  }
+
+  return result.trim()
+}
+
 type Message = { id: string; role: 'user' | 'assistant'; content: string; images?: string[]; progressSteps?: { step: string; time: string }[]; failed?: boolean; retryInput?: string; retryImages?: string[]; timestamp?: string }
 // Versions live in their own `project_versions` table (not in site_config) to keep
 // the hot-path save payload small. `pages` is loaded lazily — only on restore — so
@@ -6283,7 +6347,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 if (!token) return
                 const res = await fetch(`/api/blog-posts/${postId}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
                 const json = await res.json()
-                setCodeContent(json.post?.content_html ?? '')
+                setCodeContent(prettifyHtml(json.post?.content_html ?? ''))
               }}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
