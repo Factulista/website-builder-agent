@@ -4607,9 +4607,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customDomainStatus === 'pending'])
 
-  // Insert image URL into the correct editor iframe
-  const insertMediaImageUrl = (url: string) => {
-    const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${url}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
+  // Build semantic <figure> HTML from a URL + optional metadata
+  const buildImageHtml = (url: string, meta?: MediaMeta) => {
+    const alt     = meta?.alt     ? ` alt="${meta.alt.replace(/"/g, '&quot;')}"` : ' alt=""'
+    const title   = meta?.title   ? ` title="${meta.title.replace(/"/g, '&quot;')}"` : ''
+    const caption = meta?.caption ? `<figcaption style="font-size:0.85rem;color:#666;margin-top:6px;text-align:center">${meta.caption}</figcaption>` : ''
+    return `<figure style="margin:1.5rem 0;text-align:center;"><img src="${url}"${alt}${title} style="max-width:100%;height:auto;border-radius:8px;display:inline-block;">${caption}</figure>`
+  }
+
+  // Insert image into the correct editor iframe — always carrying metadata
+  const insertMediaImageUrl = (url: string, meta?: MediaMeta) => {
+    const imgHtml = buildImageHtml(url, meta)
     if (mediaPickerTarget === 'blog') {
       blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
     } else if (mediaPickerTarget === 'inline') {
@@ -6133,7 +6141,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
                   if (error) return
                   const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
-                  const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${publicUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
+                  const imgHtml = buildImageHtml(publicUrl)
                   win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
                   // Generate SEO meta for the media library entry (non-blocking)
                   generateAndSaveImageMeta(path, publicUrl)
@@ -7737,7 +7745,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
                         if (error) return
                         const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
-                        const imgHtml = `<figure style="margin:1.5rem 0;text-align:center;"><img src="${publicUrl}" alt="" style="max-width:100%;height:auto;border-radius:8px;display:inline-block;"></figure>`
+                        const imgHtml = buildImageHtml(publicUrl)
                         win()?.postMessage({ type: 'fact-format', cmd: 'insertHTML', val: imgHtml }, '*')
                         generateAndSaveImageMeta(path, publicUrl)
                       }
@@ -9131,7 +9139,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       src={item.url}
                       alt={item.name}
                       title={item.name}
-                      onClick={() => insertMediaImageUrl(item.url)}
+                      onClick={() => insertMediaImageUrl(item.url, mediaMeta[item.path])}
                       style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: `1px solid ${C.border}`, transition: 'transform 0.1s, box-shadow 0.1s' }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.04)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '' }}
