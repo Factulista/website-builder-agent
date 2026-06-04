@@ -13,6 +13,7 @@ import { findComponentByKeywords } from '../../../lib/components/index'
 import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 import { detectLangFromText } from '../../../lib/agents/detect-lang'
+import { checkHtmlQuality, reconstructEditedHtml, formatReportForAgent } from '../../../lib/agents/html-quality'
 
 type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
 function totalTokens(u: Usage): number {
@@ -613,11 +614,57 @@ export async function POST(req: NextRequest) {
         : messages
 
       const injectPoints = (siteConfig.inject_points ?? {}) as Record<string, string>
-      const result = await runHtmlAgent(
+
+      // Run agent with quality feedback loop (max 1 retry on critical issues)
+      let result = await runHtmlAgent(
         agentMessages, pages ?? [], activePageSlug, apiKey,
         projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
         { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts }
       )
+
+      // Quality check loop: if critical issues found, retry once with feedback
+      let qualityRetried = false
+      if ((result.tool === 'edit_page' || result.tool === 'create_site') && !qualityRetried) {
+        emit('🔍 Verificando qualità HTML…')
+
+        // Reconstruct final HTML from operations/edits
+        let htmlToCheck = ''
+        let checkPages = pages ?? []
+
+        if (result.tool === 'create_site' && result.input?.pages) {
+          checkPages = result.input.pages as Page[]
+          htmlToCheck = checkPages.map(p => p.html).join('\n')
+        } else if (result.tool === 'edit_page') {
+          const targetPage = (pages ?? []).find(p => p.slug === (result.input?.pageSlug as string))
+          if (targetPage) {
+            const ops = (result.input?.operations ?? []) as Array<{op: 'insert_after'|'insert_before'|'replace'; target: string; html: string}>
+            const edits = (result.input?.edits ?? []) as Array<{find: string; replace: string}>
+            htmlToCheck = reconstructEditedHtml(targetPage.html, ops, edits)
+          }
+        }
+
+        const report = checkHtmlQuality(htmlToCheck, checkPages)
+
+        if (report.critical.length > 0) {
+          emit(`⚠️ Correggo ${report.critical.length} problema/i rilevato/i…`)
+
+          // Format feedback and retry agent once
+          const feedbackMsg = formatReportForAgent(report, (result.input?.pageSlug || result.input?.slug || 'sconosciuta') as string)
+          const correctionMessages = [
+            ...agentMessages,
+            { role: 'assistant', content: JSON.stringify(result) },
+            { role: 'user', content: feedbackMsg },
+          ]
+
+          // Retry with correction feedback
+          result = await runHtmlAgent(
+            correctionMessages, pages ?? [], activePageSlug, apiKey,
+            projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
+            { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts }
+          )
+          qualityRetried = true
+        }
+      }
 
       // Normalize internal links on create_site and add_page (edit_page is fine — it's surgical)
       if (result.tool === 'create_site' && result.input?.pages) {
