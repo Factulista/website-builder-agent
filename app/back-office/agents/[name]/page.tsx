@@ -677,6 +677,72 @@ CREATE TABLE agent_prompt_versions (
             )
           })()}
 
+          {/* Adaptive token budget table — html agent only */}
+          {name === 'html' && (
+            <div style={{
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '10px',
+              padding: '14px 16px',
+              marginBottom: '24px',
+            }}>
+              <p style={{
+                margin: '0 0 12px',
+                fontSize: '0.68rem',
+                color: '#14532d',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+              }}>
+                ⚡ Token Budget Adattivo
+              </p>
+              <p style={{ margin: '0 0 12px', fontSize: '0.8rem', color: '#166534', lineHeight: 1.5 }}>
+                Il max_tokens sopra è il <strong>ceiling globale</strong>. A runtime, ogni richiesta riceve il budget minimo necessario per il suo tipo — micro-edit non spreca token di create_site.
+              </p>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #bbf7d0' }}>
+                      {['Tipo richiesta', 'Budget', 'Output atteso', 'Trigger'].map(h => (
+                        <th key={h} style={{
+                          padding: '6px 10px',
+                          textAlign: 'left',
+                          fontSize: '0.65rem',
+                          fontWeight: 700,
+                          color: '#14532d',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          whiteSpace: 'nowrap',
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { tipo: 'micro-edit', budget: '4k', output: '200–800 tok', trigger: 'elimina / CSS var / testo', color: '#dcfce7' },
+                      { tipo: 'edit_page standard', budget: '12k', output: '2–6k tok', trigger: 'default con pagine esistenti', color: null },
+                      { tipo: 'add_page', budget: '24k', output: '6–12k tok', trigger: 'keyword "nuova pagina"', color: null },
+                      { tipo: 'vision / mockup', budget: '32k', output: 'analisi + HTML', trigger: 'immagine allegata', color: null },
+                      { tipo: 'create_site ≤3 pagine', budget: '32k', output: '10–20k tok', trigger: 'sito con 1–3 pagine esistenti', color: null },
+                      { tipo: 'create_site 4–6 pagine', budget: '48k', output: '20–35k tok', trigger: 'sito con 4–6 pagine esistenti', color: null },
+                      { tipo: 'primo sito (0 pagine)', budget: '64k', output: 'libero', trigger: 'nessuna pagina nel progetto', color: '#fef9c3' },
+                    ].map((row, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #dcfce7', background: row.color ?? 'transparent' }}>
+                        <td style={{ padding: '7px 10px', fontWeight: 600, color: '#1a1a1a', whiteSpace: 'nowrap' }}>{row.tipo}</td>
+                        <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}>{row.budget}</td>
+                        <td style={{ padding: '7px 10px', color: '#6b7280', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{row.output}</td>
+                        <td style={{ padding: '7px 10px', color: '#6b6563', fontSize: '0.74rem' }}>{row.trigger}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ margin: '10px 0 0', fontSize: '0.68rem', color: '#6b7280' }}>
+                Logica in <code style={{ fontFamily: 'monospace', background: '#dcfce7', padding: '1px 4px', borderRadius: '3px' }}>lib/agents/html-agent.ts</code> — modificabile solo via codice
+              </p>
+            </div>
+          )}
+
           {/* Stats row: model + max_tokens */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '24px' }}>
             {/* Model dropdown */}
