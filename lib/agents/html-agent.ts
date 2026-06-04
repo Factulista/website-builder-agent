@@ -851,6 +851,10 @@ export async function runHtmlAgent(
   const isAddPageRequest = /\b(add_page|nuova pagina|nueva página|new page|aggiungi pagina|añade página)\b/i.test(userMsg)
   const needsFullCss = colorRequest || isAddPageRequest
 
+  // true when design is being created (not edited): create_site or add_page.
+  // Used to inject design principles, select Sonnet, enable extended thinking.
+  const isCreationTask = !hasPages || isAddPageRequest
+
   const extractCssVariables = (html: string): string => {
     const styleMatch = html.match(/<style[\s\S]*?<\/style>/i)
     if (!styleMatch) return ''
@@ -979,8 +983,51 @@ REGOLE:
 - 🎯 SCOPE DICHIARATO: nel campo "scope" di edit_page, elenca SOLO le sezioni che stai effettivamente modificando.
 - ✅ PREFERISCI typed_edits per: colori (css_var), font-size (css_prop), link href (attr), testi brevi (text) — NON generare HTML per questi casi.`
 
-  const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
+  // Design principles block — injected only for creation tasks (create_site / add_page).
+  // Not included in micro-edit or standard edit_page: it adds tokens with no benefit there.
+  const designPrinciplesBlock = isCreationTask ? `
+PRINCIPI DI DESIGN — IDENTITÀ VISIVA (applica su ogni sito che crei da zero):
 
+TRADUZIONE BUSINESS → PALETTE:
+- Ristorante / food: terracotta #C27A5A, avorio #F8F3ED, verde muschio #4A6741 — caldo, appetitoso
+- Studio legale / consulenza: navy #1E3A5F, slate #64748B, bianco #F8FAFC — sobrio, autorevole
+- Tech / SaaS: indigo #4F46E5, slate #0F172A, bianco #F8FAFC — innovativo, chiaro
+- Benessere / yoga: salvia #7D9B76, beige #F5EFE6, écru #E8DCC8 — naturale, calmo
+- Lusso / gioielleria: nero #0A0A0A, gold #C9A84C, avorio #F8F5F0 — elegante, esclusivo
+- Artigianato / handmade: terracotta #C4704A, crema #FAF3E8, marrone #4A3728 — autentico, caldo
+- Clinica / salute: celeste #E0F2FE, blu medico #0284C7, bianco #FFFFFF — pulito, rassicurante
+- Immobiliare: grafite #2D3748, oro #B7935A, bianco #F7F7F5 — premium, affidabile
+Se il business non rientra in una categoria, scegli una palette da 3 colori: 1 brand + 1 accent + 2 neutri.
+
+TIPOGRAFIA — MAX 2 FONT GOOGLE:
+- Lusso / eleganza: Cormorant Garamond + Jost; oppure Playfair Display + Inter
+- Tech / moderno: Inter + Inter; oppure DM Sans + DM Mono (monospace accent)
+- Artigianato / calore: Fraunces + Lato; oppure Crimson Pro + Source Sans 3
+- Corporate / professionale: Libre Baskerville + Source Sans 3; oppure Merriweather + Open Sans
+- Minimalista: Inter weight 300/700 da solo; oppure Plus Jakarta Sans
+Regola: heading = personalità del brand; body = massima leggibilità. Mai più di 2 font.
+
+SPAZIO E GERARCHIA:
+- Sezioni separate da padding 80px–120px. Whitespace abbondante = qualità percepita.
+- H1: 3rem–4.5rem, weight 700–800. Deve dominare la pagina.
+- H2: 1.8rem–2.4rem, weight 600–700. Chiaro ma subordinato a H1.
+- P: 1rem–1.1rem, line-height 1.6–1.8. Mai inferiore a 0.9rem.
+- Bottoni: padding 12px 28px minimum. Sempre con border-radius coerente al brand (0 = formale, 8px = moderno, 999px = friendly).
+
+LAYOUT HERO:
+- Prima sezione: impatto visivo immediato. H1 + sottotitolo + CTA. Mai solo testo.
+- Full-height hero (100vh): per luxury/portfolio. Impatto massimo.
+- Split hero (50/50 img+testo): per SaaS/corporate. Equilibrato, professionale.
+- Centered hero: per startup/landing. Pulito, focalizzato.
+
+CONSISTENZA:
+- Tutti i colori via var(--accent), var(--bg), var(--text), var(--surface). MAI valori hard-coded nel CSS delle sezioni.
+- Border-radius identico su tutti i bottoni e card. Decidi UNA misura e usala ovunque.
+- Bottoni filled per CTA primario. Outline per secondario. Mai due filled diversi colorati.
+` : ''
+
+  const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
+${designPrinciplesBlock}
 🔍 REGOLA TESTO ESATTO — PRIMA DI MODIFICARE UN ELEMENTO:
 Se l'utente chiede di modificare un bottone, link o testo specifico (es: "il bottone Activar PRO") e non trovi quel testo ESATTO nell'HTML:
 1. NON generare un edit vuoto (0 operations, 0 edits) — causa confusione all'utente
@@ -1293,10 +1340,27 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
     })
   )
 
-  // Use Sonnet when images are attached (better vision/OCR than Haiku).
-  // Asset-replacement tasks already skipped base64 above → will use Haiku.
   const hasImages = apiMessages.some(m => Array.isArray(m.content))
-  const model = hasImages ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001'
+
+  // Adaptive model selection:
+  //   Haiku  → micro-edits (fast, cheap: delete/CSS var/text with no images)
+  //   Sonnet → everything that requires design judgment:
+  //            create_site, add_page, standard edits, vision tasks
+  // Rationale: Haiku produces functionally correct but visually generic sites.
+  // Sonnet has the design reasoning needed to translate "gioielleria italiana" into
+  // an actual visual identity (palette, typography, spacing, hero layout).
+  const model = (() => {
+    if (isMicroEdit && !hasImages) return 'claude-haiku-4-5-20251001'
+    if (isCreationTask || hasImages) return 'claude-sonnet-4-6'
+    return 'claude-sonnet-4-6'   // standard edit — Sonnet for quality
+  })()
+
+  // Extended Thinking — only on first-site creation (no existing pages).
+  // Gives the model 8k tokens to reason about the design before generating HTML:
+  // business type → visual identity → palette → typography → layout structure.
+  // Requires temperature=1 (Anthropic constraint) and the interleaved-thinking beta.
+  // NOT used on edits or add_page (overkill; slow) — only on the most impactful task.
+  const useExtendedThinking = !hasPages && !isMicroEdit && model === 'claude-sonnet-4-6'
 
   // Adaptive max_tokens — sized to the actual task, not a global ceiling.
   //
@@ -1332,10 +1396,17 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
+      // Required for extended thinking with tool use
+      ...(useExtendedThinking ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' } : {}),
     },
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
+      // Extended thinking: temperature must be exactly 1 (Anthropic requirement)
+      temperature: useExtendedThinking ? 1 : undefined,
+      ...(useExtendedThinking ? {
+        thinking: { type: 'enabled', budget_tokens: 8000 },
+      } : {}),
       system,
       tools: HTML_TOOLS,
       tool_choice: { type: 'any' },
