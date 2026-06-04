@@ -6028,16 +6028,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             )
           })()
         ) : viewMode === 'edit' && activePage ? (
-          /* Inline editor v2 — contentEditable inside iframe with sidebar */
+          /* Inline editor v2 — contentEditable inside iframe */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-            <EditorSidebar
-              pages={pages}
-              activeSlug={activeSlug}
-              onPageSelect={(slug) => setActiveSlug(slug)}
-              hasBlog={hasBlogNavLink(pages) || blogPosts.length > 0}
-              isBlogActive={false}
-              onBlogSelect={() => setViewMode('blog')}
-            />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.bg }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -6415,41 +6407,53 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             </div>
           </div>
         ) : viewMode === 'code' ? (
-          /* Code editor with sidebar */
+          /* Code editor — no sidebar, page selected via top dropdown */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#1e1e1e' }}>
-            <EditorSidebar
-              pages={pages}
-              activeSlug={activeSlug}
-              onPageSelect={(slug) => {
-                setActiveCodeBlogPostId(null)
-                setActiveSlug(slug)
-                setCodeContent(pages.find(p => p.slug === slug)?.html ?? '')
-                setCodeSaving('idle')
-              }}
-              hasBlog={hasBlogNavLink(pages) || blogPosts.length > 0}
-              isBlogActive={false}
-              onBlogSelect={() => setViewMode('blog')}
-              blogPosts={blogPosts.map(p => ({ id: p.id, title: p.title, status: p.status }))}
-              activeBlogPostId={activeCodeBlogPostId}
-              onBlogPostSelect={async (postId, title) => {
-                setCodeSaving('idle')
-                setActiveCodeBlogPostId(postId)
-                setActiveCodeBlogPostTitle(title)
-                // Fetch fresh content_html
-                const { data: { session } } = await supabase.auth.getSession()
-                const token = session?.access_token
-                if (!token) return
-                const res = await fetch(`/api/blog-posts/${postId}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
-                const json = await res.json()
-                setCodeContent(prettifyHtml(json.post?.content_html ?? ''))
-              }}
-            />
+            {/* hidden helper to keep onBlogPostSelect logic intact */}
+            {false && <EditorSidebar
+              pages={pages} activeSlug={activeSlug}
+              onPageSelect={() => {}} hasBlog={false} isBlogActive={false}
+              blogPosts={[]} activeBlogPostId={null}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>
+              {/* Code editor header — file name + optional blog post selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>
                 {activeCodeBlogPostId
-                  ? <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace' }}>blog/{activeCodeBlogPostTitle || activeCodeBlogPostId}.html <span style={{ color: '#4b9eff', marginLeft: '8px' }}>content_html</span></span>
-                  : <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace' }}>{activePage?.slug ?? ''}.html</span>
+                  ? <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace', flex: 1 }}>blog/{activeCodeBlogPostTitle || activeCodeBlogPostId}.html <span style={{ color: '#4b9eff', marginLeft: '8px' }}>content_html</span></span>
+                  : <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace', flex: 1 }}>{activePage?.slug ?? ''}.html</span>
                 }
+                {/* Blog post selector — only shown if there are blog posts */}
+                {blogPosts.length > 0 && (
+                  <select
+                    value={activeCodeBlogPostId ?? ''}
+                    onChange={async e => {
+                      const postId = e.target.value
+                      if (!postId) {
+                        setActiveCodeBlogPostId(null)
+                        setCodeContent(pages.find(p => p.slug === activeSlug)?.html ?? '')
+                        setCodeSaving('idle')
+                        return
+                      }
+                      const post = blogPosts.find(p => p.id === postId)
+                      setCodeSaving('idle')
+                      setActiveCodeBlogPostId(postId)
+                      setActiveCodeBlogPostTitle(post?.title ?? '')
+                      const { data: { session } } = await supabase.auth.getSession()
+                      const token = session?.access_token
+                      if (!token) return
+                      const res = await fetch(`/api/blog-posts/${postId}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+                      const json = await res.json()
+                      setCodeContent(prettifyHtml(json.post?.content_html ?? ''))
+                    }}
+                    style={{ fontSize: '0.72rem', background: '#3e3e3e', color: '#ccc', border: '1px solid #555', borderRadius: '5px', padding: '3px 6px', fontFamily: 'monospace', cursor: 'pointer', maxWidth: '200px' }}
+                  >
+                    <option value="">— pagina —</option>
+                    <optgroup label="Articoli blog">
+                      {blogPosts.map(p => (
+                        <option key={p.id} value={p.id}>{p.title.slice(0, 40)}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                )}
               </div>
               <HtmlCodeEditor
                 content={codeContent}
