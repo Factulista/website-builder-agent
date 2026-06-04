@@ -1,5 +1,5 @@
 import { callClaude } from './config'
-import { SEO_KNOWLEDGE } from './knowledge/seo'
+// SEO_KNOWLEDGE removed — Sonnet-4.6 knows SEO best practices natively
 import { buildContextPrompt, type ProjectContext } from './memory-agent'
 
 type Page = { slug: string; name: string; html: string }
@@ -69,8 +69,6 @@ export async function runSeoAgent(
   }).join('\n')
 
   const system = `Sei un esperto SEO. Ottimizzi siti web HTML per i motori di ricerca.
-
-${SEO_KNOWLEDGE}
 
 ${buildContextPrompt(context)}
 
@@ -144,8 +142,6 @@ export async function runBlogSeoAgent(
   ).join('\n')
 
   const system = `Sei un esperto SEO. Ottimizzi i meta tag degli articoli di un blog per massimizzare il CTR e il posizionamento.
-
-${SEO_KNOWLEDGE}
 
 ${buildContextPrompt(context)}
 

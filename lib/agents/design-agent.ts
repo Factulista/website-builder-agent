@@ -1,5 +1,5 @@
 import { callClaude } from './config'
-import { DESIGN_KNOWLEDGE } from './knowledge/design'
+// DESIGN_KNOWLEDGE removed — Sonnet-4.6 knows design natively
 import { buildContextPrompt, type ProjectContext } from './memory-agent'
 import { buildInspirationPrompt, type DesignBrief } from './site-analyzer'
 import type { SitePlan } from './planner'
@@ -104,7 +104,7 @@ export async function runDesignAgent(
 ): Promise<DesignOutput> {
   const system = `Sei un UI designer esperto. Crei design system coerenti e moderni per siti web.
 
-${DESIGN_KNOWLEDGE}
+
 
 ${buildContextPrompt(context)}
 

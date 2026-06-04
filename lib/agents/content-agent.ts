@@ -1,5 +1,5 @@
 import { callClaude } from './config'
-import { CONTENT_KNOWLEDGE } from './knowledge/content'
+// CONTENT_KNOWLEDGE removed — Sonnet-4.6 knows copywriting natively
 import { buildContextPrompt, type ProjectContext } from './memory-agent'
 import type { SitePlan } from './planner'
 
@@ -98,7 +98,7 @@ export async function runContentAgent(
 
   const system = `Sei un copywriter esperto in ${langName}. Scrivi testi persuasivi, chiari e ottimizzati SEO per siti web.
 
-${CONTENT_KNOWLEDGE}
+
 
 ${buildContextPrompt(context)}
 
@@ -186,7 +186,7 @@ export async function runContentAgentUpdate(
 
   const system = `Sei un copywriter esperto in italiano. Aggiorni i testi di siti web esistenti tramite find/replace mirati.
 
-${CONTENT_KNOWLEDGE}
+
 
 ${buildContextPrompt(context)}
 

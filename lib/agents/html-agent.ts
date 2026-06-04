@@ -434,45 +434,8 @@ const HTML_TOOLS = [
     },
   },
 
-  // ── SKILL TOOLS — chiamano agenti specializzati internamente ─────────────
-  {
-    name: 'update_design_globally',
-    description: 'Aggiorna palette colori, font e CSS globale di TUTTO il sito. Usa questo skill SOLO per cambiamenti globali (ridisegna palette, cambia font principale, restyle completo). Per modifiche a elementi specifici (es. "rendi il titolo blu") usa edit_page.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        instruction: { type: 'string', description: 'Descrizione del cambiamento di design da applicare. Es: "palette moderna blu e bianco, font Inter"' },
-        summary: { type: 'string' },
-      },
-      required: ['instruction', 'summary'],
-    },
-  },
-  {
-    name: 'update_seo_meta',
-    description: 'Aggiorna meta title, meta description, Open Graph e schema.org di una o più pagine. Usa questo skill quando l\'utente chiede esplicitamente ottimizzazione SEO, meta tag, schema.org o canonical.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        instruction: { type: 'string', description: 'Cosa ottimizzare — es: "migliora SEO della homepage per keyword fintech"' },
-        pageSlugs: { type: 'array', items: { type: 'string' }, description: 'Pagine da ottimizzare. Ometti per ottimizzare tutto il sito.' },
-        summary: { type: 'string' },
-      },
-      required: ['instruction', 'summary'],
-    },
-  },
-  {
-    name: 'rewrite_content',
-    description: 'Riscrivi i testi di una pagina con tono diverso, lingua diversa, o copy aggiornato. Usa questo skill per: cambio tone of voice, traduzione, riscrittura copy. NON usarlo per modifiche strutturali alla pagina.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        instruction: { type: 'string', description: 'Istruzione di riscrittura — es: "tono più professionale" o "traduci in inglese" o "riscrivi hero per puntare su autónomos"' },
-        pageSlug: { type: 'string', description: 'Slug della pagina da riscrivere.' },
-        summary: { type: 'string' },
-      },
-      required: ['instruction', 'pageSlug', 'summary'],
-    },
-  },
+  // Skill tools removed — Sonnet-4.6 handles design/SEO/content natively
+  // with full HTML context. No separate agents needed.
   {
     name: 'insert_component',
     description: 'Inserisce un componente parametrico pre-costruito in UNA O PIÙ pagine in un colpo solo. PREFERISCI QUESTO TOOL rispetto a generare HTML da zero quando il pattern richiesto è uno di quelli supportati — risparmi token e garantisci consistenza visiva. Per modifiche nav (es. mega-menu), passa SEMPRE tutti gli slug delle pagine che hanno la stessa nav. Vedi sezione "COMPONENTI PARAMETRICI" nel system prompt per la lista completa.',
@@ -966,21 +929,21 @@ Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edit
         }
       }
 
-      const skeletonHtml = isNavOrFooterEdit
-        ? buildHtmlSkeleton(p.html)
-        : buildHtmlSkeleton(stripSharedFrame(p.html))
-
+      // Pass FULL HTML for active page — 200k context window makes this possible.
+      // Full HTML = precise find/replace, correct class names, real text.
+      // Skeleton was causing ~20% edit failures due to truncated class names and text.
+      const fullHtml = isNavOrFooterEdit ? p.html : stripSharedFrame(p.html)
       const frameNote = isNavOrFooterEdit
         ? ''
-        : '\nNota: <nav> e <footer> omessi — sono gestiti dal sistema di frame condiviso. Se devi modificarli, indicalo esplicitamente.'
+        : '\nNota: <nav> e <footer> sono gestiti dal frame condiviso — modificali solo se esplicitamente richiesto.'
 
       return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
-SECTION INDEX (usa questi selettori nel campo "target" delle operations):
+SECTION INDEX (selettori per operations):
 ${sectionIndex}
 ${frameNote}
-HTML STRUTTURA (testi lunghi troncati — usa "operations" per sezioni intere, "edits" solo per attributi/CSS/src):
+HTML COMPLETO:
 \`\`\`html
-${skeletonHtml}
+${fullHtml}
 \`\`\``
     } else if (isMentioned) {
       // For explicitly mentioned pages: show skeleton + full <style> so agent can reference/copy CSS
@@ -1121,6 +1084,14 @@ COME MODIFICARE UNA PAGINA — SCEGLI IL MODO GIUSTO:
 LINK TRA PAGINE: usa link relativi senza .html — es: <a href="./">Home</a>, <a href="./chi-siamo">Chi Siamo</a>
 
 OGNI PAGINA: HTML completo, CSS inline, mobile-friendly, design moderno e coerente tra pagine.
+
+REGOLE SPECIFICHE DI QUESTO PROGETTO (non deducibili dal codice):
+- Menu mobile: usa classe CSS "open" per il toggle (classList.toggle('open')), mai "active". Il CSS deve avere .mobile-menu.open { display: flex; }
+- Link interni: SEMPRE href="./slug" (relativi con ./) — mai href="/slug" (assoluti)
+- Form contatti: usa fetch('/api/forms') POST con JSON {tipo, nombre, email, empresa, mensaje}. Se c'è Cloudflare Turnstile, aggiungi il widget e 'cf-turnstile-response' nel body
+- Colori via CSS vars: usa var(--accent), var(--bg), var(--text), var(--font) per coerenza col brand
+- Blog: mai creare pagina con slug "blog" — è un sistema dinamico separato. Aggiungi solo <a href="./blog"> nella nav
+- SEO placeholder: usa {{site_url}} per URL assoluti nei meta tag (canonical, og:url, schema.org) — il sistema lo sostituisce a runtime
 
 SEO — REGOLE DI DEFAULT (applica SEMPRE su ogni pagina che crei o modifichi):
 - <title> presente, 50–60 chars, con keyword primaria. Formato: "Keyword — Brand" o "Brand | Servizio".
@@ -1441,9 +1412,7 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
     }
   }
 
-  // ── Skill tool handlers ──────────────────────────────────────────────────
-  // When the master agent picks a skill tool, we run the specialized logic
-  // internally and return the result in the same format as html-agent tools.
+  // ── Skill tool handlers removed — base model handles these natively ─────
 
   if (toolUse.name === 'update_design_globally') {
     const instruction = inp.instruction as string
