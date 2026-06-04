@@ -438,7 +438,8 @@ export function buildBlogPostPage(
   lang = 'it',
   sidebarBanner?: BlogSidebarBanner | null,
   faviconUrl?: string,
-  injectPoints?: InjectPoints
+  injectPoints?: InjectPoints,
+  dsOverride = ''   // Design System CSS block — injected AFTER blog CSS so DS wins
 ): string {
   const backLabel = '← Blog'
   const dateStr = escapeHtml(formatDate(post.published_at, lang))
@@ -521,6 +522,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   ${injectPoints?.head ?? ''}
   ${siteStyle}
   <style>${BLOG_POST_CONTENT_CSS}</style>
+  ${dsOverride}
   <style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>
 </head>
 <body>
