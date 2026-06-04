@@ -1590,9 +1590,11 @@ type TypoConfig = {
   lineHeight: string
   letterSpacing: string
 }
+type BulletConfig = { symbol: string; size: string }
 type DesignSystem = {
   h1: TypoConfig; h2: TypoConfig; h3: TypoConfig; h4: TypoConfig
   h5: TypoConfig; h6: TypoConfig; p: TypoConfig; li: TypoConfig; a: TypoConfig
+  bullet: BulletConfig
 }
 const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
   h1: { fontFamily: 'inherit', fontSize: '2.2rem',  fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2',  letterSpacing: '-0.02em' },
@@ -1604,6 +1606,7 @@ const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
   p:  { fontFamily: 'inherit', fontSize: '0.95rem', fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
   li: { fontFamily: 'inherit', fontSize: '0.95rem', fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
   a:  { fontFamily: 'inherit', fontSize: 'inherit', fontWeight: '500', color: '#2563eb', lineHeight: 'inherit', letterSpacing: '0' },
+  bullet: { symbol: '•', size: '0.65em' },
 }
 
 function generateDesignSystemCSS(ds: DesignSystem): { rules: string; fontFamilies: string[] } {
@@ -1638,7 +1641,10 @@ function generateDesignSystemCSS(ds: DesignSystem): { rules: string; fontFamilie
   }
   const tags = ['h1','h2','h3','h4','h5','h6','p','li','a'] as const
   const cssRules = tags.map(t => rule(t, ds[t])).filter(Boolean).join('\n')
-  return { rules: cssRules, fontFamilies: [...googleFonts] }
+  // Bullet symbol & size — emitted as scoped ::before rule
+  const b = ds.bullet ?? DEFAULT_DESIGN_SYSTEM.bullet
+  const bulletRule = `.blog-post-content ul>li::before{content:"${b.symbol}";font-size:${b.size}}`
+  return { rules: cssRules + '\n' + bulletRule, fontFamilies: [...googleFonts] }
 }
 
 /** Build the full CSS string including @import at top (needed when injecting into a <style> block) */
@@ -2807,9 +2813,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         // Merge with defaults so new keys (e.g. 'li') are always present
         // even for projects saved before the key was added
         const ds: DesignSystem = { ...DEFAULT_DESIGN_SYSTEM, ...(config as any).designSystem }
-        // Ensure each tag's config is complete (new props like letterSpacing may be missing)
+        // Ensure each tag's config is complete (new props may be missing in old saved data)
         for (const tag of Object.keys(DEFAULT_DESIGN_SYSTEM) as Array<keyof DesignSystem>) {
-          ds[tag] = { ...DEFAULT_DESIGN_SYSTEM[tag], ...ds[tag] }
+          if (tag === 'bullet') {
+            ds.bullet = { ...DEFAULT_DESIGN_SYSTEM.bullet, ...(ds.bullet ?? {}) }
+          } else {
+            ds[tag] = { ...DEFAULT_DESIGN_SYSTEM[tag as keyof Omit<DesignSystem,'bullet'>], ...(ds[tag as keyof Omit<DesignSystem,'bullet'>] ?? {}) } as any
+          }
         }
         setDesignSystem(ds)
         // Re-inject design system CSS into loaded pages (ensures freshness)
@@ -8179,6 +8189,49 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   </div>
                 )
               })}
+
+              {/* ── Bullet config row ── */}
+              {(() => {
+                const b = designSystem.bullet ?? DEFAULT_DESIGN_SYSTEM.bullet
+                const SYMBOLS = [
+                  { v: '•', label: '• Bullet' }, { v: '·', label: '· Middle dot' },
+                  { v: '›', label: '› Angle' }, { v: '»', label: '» Double angle' },
+                  { v: '→', label: '→ Arrow' }, { v: '–', label: '– Dash' },
+                  { v: '◦', label: '◦ Circle' }, { v: '▸', label: '▸ Triangle' },
+                  { v: '✓', label: '✓ Check' }, { v: '★', label: '★ Star' },
+                ]
+                const SIZES = [
+                  { v: '0.45em', label: 'XS' }, { v: '0.55em', label: 'S' },
+                  { v: '0.65em', label: 'M' }, { v: '0.75em', label: 'L' },
+                  { v: '0.9em', label: 'XL' }, { v: '1em', label: 'XXL' },
+                ]
+                const controlStyle: React.CSSProperties = { height: '28px', padding: '0 6px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: '0.75rem', fontFamily: 'inherit', background: C.white, color: C.text }
+                return (
+                  <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: '10px', overflow: 'hidden' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 100px 1fr', gap: '6px', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.76rem', color: C.text }}>UL — Pallini</span>
+                      <select value={b.symbol} onChange={e => setDesignSystem(prev => ({ ...prev, bullet: { ...prev.bullet, symbol: e.target.value } }))} style={controlStyle}>
+                        {SYMBOLS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                      </select>
+                      <span style={{ fontSize: '0.72rem', color: C.textFaint, paddingLeft: '6px' }}>Dimensione</span>
+                      <select value={b.size} onChange={e => setDesignSystem(prev => ({ ...prev, bullet: { ...prev.bullet, size: e.target.value } }))} style={controlStyle}>
+                        {SIZES.map(s => <option key={s.v} value={s.v}>{s.label} ({s.v})</option>)}
+                      </select>
+                    </div>
+                    <div style={{ padding: '8px 14px 10px', background: '#fafaf9' }}>
+                      <ul style={{ margin: 0, padding: '0 0 0 1.5rem', listStyle: 'none' }}>
+                        {['Primo elemento di esempio', 'Secondo elemento'].map((t, i) => (
+                          <li key={i} style={{ position: 'relative', paddingLeft: '0.05em', fontSize: (designSystem.li?.fontSize !== 'inherit' ? designSystem.li?.fontSize : undefined), color: designSystem.li?.color, lineHeight: designSystem.li?.lineHeight !== 'inherit' ? designSystem.li?.lineHeight : undefined, marginBottom: '4px' }}>
+                            <span style={{ position: 'absolute', left: '-1.1em', top: '50%', transform: 'translateY(-50%)', fontSize: b.size, lineHeight: 1 }}>{b.symbol}</span>
+                            {t}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )
+              })()}
+
             </div>
           </div>
         ) : viewMode === 'pages' ? (

@@ -172,7 +172,13 @@ export const BLOG_POST_CONTENT_CSS = `
   /* ul: custom small bullet centred with text line */
   .blog-post-content ul{list-style:none !important;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
   .blog-post-content ul>li{position:relative;padding-left:.05em}
-  .blog-post-content ul>li::before{content:"•";position:absolute;left:-1.1em;top:.85em;transform:translateY(-50%);font-size:.7em;line-height:1;color:currentColor}
+  /* Bullet: symbol/size overridden by Design System dsOverride block */
+  .blog-post-content ul>li::before{
+    content:"•";font-size:.65em;
+    position:absolute;left:-1.1em;
+    top:50%;transform:translateY(-50%);
+    line-height:1;color:currentColor;
+  }
   /* ol keeps decimal numbering */
   .blog-post-content ol{list-style:decimal;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
   /* When browsers apply insertUnorderedList/insertOrderedList on block content
