@@ -32,6 +32,15 @@ export async function POST(req: NextRequest) {
     const pages = (config?.pages as Array<{ slug: string; html: string }>) ?? []
     let changed = false
 
+    // INSPECT mode: return snippet of CSS around btn-accent-nav from home page
+    if (find === '__INSPECT__') {
+      const home = pages.find(p => p.slug === 'home')
+      const idx = home?.html.indexOf('btn-accent-nav') ?? -1
+      const snippet = idx >= 0 ? home!.html.slice(Math.max(0, idx - 10), idx + 300) : 'not found'
+      results.push({ id: project.id, name: project.name, snippet })
+      continue
+    }
+
     const updatedPages = pages.map(page => {
       if (!page.html.includes(find)) return page
       const newHtml = page.html.split(find).join(replace)
