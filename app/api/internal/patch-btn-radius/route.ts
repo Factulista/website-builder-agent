@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     const updatedPages = pages.map(page => {
       if (!page.html.includes(find)) return page
-      const newHtml = page.html.replaceAll(find, replace)
+      const newHtml = page.html.split(find).join(replace)
       changed = true
       return { ...page, html: newHtml }
     })
