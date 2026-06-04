@@ -1,5 +1,7 @@
 import { callClaude } from './config'
 import type { DesignOutput } from './design-agent'
+import type { ProjectRules } from './project-rules'
+import { formatRulesForAgent } from './project-rules'
 
 export type ProjectContext = {
   businessName?: string
@@ -90,6 +92,7 @@ export type RichContext = {
   designSystem?: Record<string, { fontSize?: string; fontWeight?: string; color?: string; lineHeight?: string; fontFamily?: string }>
   sharedCss?: string
   blogPosts?: Array<{ title: string; content_html: string }>
+  projectRules?: ProjectRules
 }
 
 export function buildContextPrompt(context: ProjectContext): string {
@@ -100,7 +103,7 @@ export function buildContextPrompt(context: ProjectContext): string {
  * Builds the full project context prompt including Design System, pages, blog tone.
  * The richer the input, the better the agent's output quality.
  */
-export function buildRichContextPrompt({ context, pages, designSystem, sharedCss, blogPosts }: RichContext): string {
+export function buildRichContextPrompt({ context, pages, designSystem, sharedCss, blogPosts, projectRules }: RichContext): string {
   if (!context || Object.keys(context).length === 0) return ''
 
   const parts: string[] = ['## CONTESTO PROGETTO (usa sempre queste informazioni):']
@@ -178,6 +181,12 @@ export function buildRichContextPrompt({ context, pages, designSystem, sharedCss
     }).join('\n')
     parts.push(`\n## STILE EDITORIALE (articoli già pubblicati — replica questo tone of voice):`)
     parts.push(samples)
+  }
+
+  // ── Project-specific rules (conventions learned from existing pages) ──
+  if (projectRules) {
+    const rulesText = formatRulesForAgent(projectRules)
+    parts.push(`\n${rulesText}`)
   }
 
   return parts.join('\n')

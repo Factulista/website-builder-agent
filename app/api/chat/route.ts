@@ -14,6 +14,8 @@ import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-aut
 import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 import { detectLangFromText } from '../../../lib/agents/detect-lang'
 import { checkHtmlQuality, reconstructEditedHtml, formatReportForAgent } from '../../../lib/agents/html-quality'
+import { runRulesLearner, quickLearnRules } from '../../../lib/agents/rules-learner'
+import { DEFAULT_FACTULISTA_RULES, formatRulesForAgent, type ProjectRules } from '../../../lib/agents/project-rules'
 
 type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
 function totalTokens(u: Usage): number {
@@ -220,6 +222,23 @@ export async function POST(req: NextRequest) {
     const mediaMeta = (siteConfig.media ?? {}) as Record<string, { alt?: string; title?: string }>
     const designSystem = (siteConfig.designSystem ?? null) as Record<string, { fontSize?: string; fontWeight?: string; color?: string; lineHeight?: string; fontFamily?: string }> | null
     const sharedCss = (siteConfig.shared_css ?? '') as string
+
+    // Load or learn project-specific rules
+    let projectRules: ProjectRules = (siteConfig.projectRules as ProjectRules) ?? { ...DEFAULT_FACTULISTA_RULES }
+    // If rules not stored yet, quick-learn from existing pages (async, non-blocking)
+    if (!siteConfig.projectRules && (pages ?? []).length > 0) {
+      // Fire-and-forget: learn and save rules in background
+      runRulesLearner({ pages: pages ?? [], context })
+        .then(result => {
+          return supabase.from('projects').update({
+            site_config: { ...siteConfig, projectRules: result.rules },
+          }).eq('id', projectId)
+        })
+        .catch(() => {/* non-blocking error */ })
+      // Use quick-learned rules for this request (doesn't wait for full learn)
+      const quickLearned = quickLearnRules((pages ?? []))
+      projectRules = { ...projectRules, ...quickLearned }
+    }
 
     // Load recent blog posts for tone-of-voice context (non-blocking, max 3)
     let blogPosts: Array<{ title: string; content_html: string }> = []
@@ -619,7 +638,7 @@ export async function POST(req: NextRequest) {
       let result = await runHtmlAgent(
         agentMessages, pages ?? [], activePageSlug, apiKey,
         projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
-        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts }
+        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules }
       )
 
       // Quality check loop: if critical issues found, retry once with feedback
