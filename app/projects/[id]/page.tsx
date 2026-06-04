@@ -2545,18 +2545,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   })()
   const publicUrl = (() => {
     if (!publicBaseUrl) return ''
-    if (viewMode === 'blog') {
-      if (!selectedPost) return `${publicBaseUrl}/blog`
+    // Code editor with a blog post open → show the blog post URL
+    if (viewMode === 'code' && activeCodeBlogPostId) {
+      const bp = blogPosts.find(p => p.id === activeCodeBlogPostId)
+      if (bp) {
+        const pp = bp.categories?.[0] ? `blog/${slugify(bp.categories[0])}/${bp.slug}` : `blog/${bp.slug}`
+        return `${publicBaseUrl}/${pp}`
+      }
+    }
+    // Blog editor with a post selected
+    if (viewMode === 'blog' && selectedPost) {
       const cat = selectedPost.categories?.[0] ? slugify(selectedPost.categories[0]) : null
       return cat
         ? `${publicBaseUrl}/blog/${cat}/${selectedPost.slug}`
         : `${publicBaseUrl}/blog/${selectedPost.slug}`
     }
-    // If the preview iframe has navigated internally (e.g. user clicked Blog in nav),
-    // reflect that path in the URL bar
+    // Preview: reflect internal navigation (user clicked links in iframe)
     if (viewMode === 'preview' && previewIframePath && previewIframePath !== '/') {
       return `${publicBaseUrl}${previewIframePath}`
     }
+    // Default: active page
     return activeSlug === 'home' ? publicBaseUrl : `${publicBaseUrl}/${activeSlug}`
   })()
 
@@ -5132,16 +5140,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   borderRadius: '0 0 7px 7px', boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
                   maxHeight: '260px', overflowY: 'auto',
                 }}>
+                  {/* ── Pages ── */}
                   {pages.map(p => {
                     const urlPath = p.slug === 'home' ? '' : p.slug
-                    const isActive = viewMode !== 'blog' && activeSlug === p.slug
+                    // A page is active only when no blog post is selected
+                    const isActive = !activeCodeBlogPostId
+                      && viewMode !== 'blog'
+                      && activeSlug === p.slug
+                      && !(viewMode === 'preview' && previewIframePath && previewIframePath !== '/')
                     return (
-                      <button key={p.slug} onClick={() => { setActiveSlug(p.slug); if (viewMode === 'blog') setViewMode('preview'); setShowUrlDropdown(false) }}
+                      <button key={p.slug} onClick={() => {
+                        setShowUrlDropdown(false)
+                        setActiveSlug(p.slug)
+                        if (viewMode === 'code') {
+                          // code editor: load page HTML, deselect any blog post
+                          setActiveCodeBlogPostId(null)
+                          setCodeContent(pages.find(pg => pg.slug === p.slug)?.html ?? '')
+                          setCodeSaving('idle')
+                        } else if (viewMode === 'blog') {
+                          setViewMode('preview')
+                        } else if (viewMode === 'preview') {
+                          setPreviewIframePath(null)
+                        }
+                      }}
                         style={{
                           display: 'block', width: '100%', textAlign: 'left',
-                          padding: '7px 12px', border: 'none', background: isActive ? '#f0f4ff' : 'transparent',
-                          fontSize: '0.75rem', fontFamily: 'monospace', color: isActive ? C.blue : C.text,
-                          cursor: 'pointer', fontWeight: 400,
+                          padding: '7px 12px', border: 'none',
+                          background: isActive ? '#f0f4ff' : 'transparent',
+                          fontSize: '0.75rem', fontFamily: 'monospace',
+                          color: isActive ? C.blue : C.text,
+                          cursor: 'pointer', fontWeight: isActive ? 600 : 400,
                         }}
                         onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
                         onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
@@ -5150,18 +5178,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </button>
                     )
                   })}
-                  {/* Blog articles — show only if blog posts exist */}
+
+                  {/* ── Blog articles ── */}
                   {blogPosts.length > 0 && (
                     <>
                       <div style={{ height: '1px', background: C.border, margin: '2px 0' }} />
                       {blogPosts.map(post => {
-                        const postPath = post.categories?.[0] ? `blog/${slugify(post.categories[0])}/${post.slug}` : `blog/${post.slug}`
-                        const isSelected = (viewMode === 'blog' && selectedPost?.id === post.id) || (viewMode === 'code' && activeCodeBlogPostId === post.id) || (viewMode === 'preview' && previewIframePath === '/' + postPath)
+                        const postPath = post.categories?.[0]
+                          ? `blog/${slugify(post.categories[0])}/${post.slug}`
+                          : `blog/${post.slug}`
+                        const isActive =
+                          (viewMode === 'blog' && selectedPost?.id === post.id) ||
+                          (viewMode === 'code' && activeCodeBlogPostId === post.id) ||
+                          (viewMode === 'preview' && previewIframePath === '/' + postPath)
                         return (
                           <button key={post.id} onClick={async () => {
                             setShowUrlDropdown(false)
                             if (viewMode === 'code') {
-                              // In code editor: load article HTML directly
+                              // HTML editor: load article HTML
                               setActiveCodeBlogPostId(post.id)
                               setActiveCodeBlogPostTitle(post.title)
                               setCodeSaving('idle')
@@ -5172,24 +5206,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               const json = await res.json()
                               setCodeContent(prettifyHtml(json.post?.content_html ?? ''))
                             } else if (viewMode === 'preview') {
-                              // In preview mode: navigate to article preview
+                              // Preview: navigate iframe to article
                               setPreviewIframePath('/' + postPath)
                             } else {
-                              // In other modes: open blog editor
-                              setViewMode('blog'); setSelectedPost(post)
+                              // All other modes: open blog editor on this article
+                              setViewMode('blog')
+                              setSelectedPost(post)
                             }
                           }}
                             style={{
                               display: 'block', width: '100%', textAlign: 'left',
                               padding: '7px 12px', border: 'none',
-                              background: isSelected ? '#f0f4ff' : 'transparent',
+                              background: isActive ? '#f0f4ff' : 'transparent',
                               fontSize: '0.75rem', fontFamily: 'monospace',
-                              color: isSelected ? C.blue : C.text,
-                              cursor: 'pointer', fontWeight: 400,
+                              color: isActive ? C.blue : C.text,
+                              cursor: 'pointer', fontWeight: isActive ? 600 : 400,
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                             }}
-                            onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
-                            onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                            onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = '#f5f5f4' }}
+                            onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
                           >
                             /{postPath}
                           </button>
