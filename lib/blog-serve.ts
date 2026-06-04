@@ -139,7 +139,20 @@ export const BLOG_POST_CONTENT_CSS = `
   /* .blog-post-header h1: margin/layout stay !important (structural).
      font-size/weight/color/line-height: NO !important → Design System can override via :where() + sharedCss */
   .blog-post-header h1{font-size:2.4rem;font-weight:800;line-height:1.2;margin:0 0 .85rem !important;color:#1a1a1a}
-  .blog-post-excerpt{font-size:1.1rem !important;color:#555 !important;line-height:1.6 !important;margin:0 !important;font-weight:400 !important}
+  .blog-post-excerpt-box{
+    background:#fffbeb;
+    border-left:4px solid #f59e0b;
+    border-radius:0 10px 10px 0;
+    padding:16px 20px;
+    margin:0 0 2rem !important;
+  }
+  .blog-post-excerpt-box p{
+    margin:0 !important;
+    font-size:1rem;
+    line-height:1.7;
+    color:#78350f;
+    font-style:italic;
+  }
   .post-featured-img{width:100% !important;border-radius:14px !important;margin:1.75rem 0 2.25rem !important;max-height:460px !important;object-fit:cover !important;display:block !important}
   .blog-post-content{font-size:1.05rem;line-height:1.8;color:#1a1a1a}
   /* h1-h4: margin + scroll-margin stay !important (structural/UX).
@@ -539,9 +552,9 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
       <header class="blog-post-header">
         <div class="blog-post-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}${authorLine ? ` &nbsp;${authorLine}` : ''}</div>
         <h1>${escapeHtml(post.title)}</h1>
-        ${post.excerpt ? `<p class="blog-post-excerpt">${escapeHtml(post.excerpt)}</p>` : ''}
       </header>
       ${featuredImg}
+      ${post.excerpt ? `<div class="blog-post-excerpt-box"><p>${escapeHtml(post.excerpt)}</p></div>` : ''}
       <div class="blog-post-content">${contentWithIds}</div>
     </article>
     ${injectPoints?.blog_post_bottom ? `<div class="blog-inject-wrap" style="max-width:700px;margin:3rem auto 0;padding:0 1rem">${injectPoints.blog_post_bottom}</div>` : ''}
