@@ -6409,11 +6409,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ) : viewMode === 'code' ? (
           /* Code editor — no sidebar, page selected via top dropdown */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#1e1e1e' }}>
-            {/* hidden helper to keep onBlogPostSelect logic intact */}
-            {false && <EditorSidebar
-              pages={pages} activeSlug={activeSlug}
-              onPageSelect={() => {}} hasBlog={false} isBlogActive={false}
-              blogPosts={[]} activeBlogPostId={null}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {/* Code editor header — file name + optional blog post selector */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>
