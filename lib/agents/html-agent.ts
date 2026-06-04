@@ -433,6 +433,46 @@ const HTML_TOOLS = [
       required: ['html'],
     },
   },
+
+  // ── SKILL TOOLS — chiamano agenti specializzati internamente ─────────────
+  {
+    name: 'update_design_globally',
+    description: 'Aggiorna palette colori, font e CSS globale di TUTTO il sito. Usa questo skill SOLO per cambiamenti globali (ridisegna palette, cambia font principale, restyle completo). Per modifiche a elementi specifici (es. "rendi il titolo blu") usa edit_page.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        instruction: { type: 'string', description: 'Descrizione del cambiamento di design da applicare. Es: "palette moderna blu e bianco, font Inter"' },
+        summary: { type: 'string' },
+      },
+      required: ['instruction', 'summary'],
+    },
+  },
+  {
+    name: 'update_seo_meta',
+    description: 'Aggiorna meta title, meta description, Open Graph e schema.org di una o più pagine. Usa questo skill quando l\'utente chiede esplicitamente ottimizzazione SEO, meta tag, schema.org o canonical.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        instruction: { type: 'string', description: 'Cosa ottimizzare — es: "migliora SEO della homepage per keyword fintech"' },
+        pageSlugs: { type: 'array', items: { type: 'string' }, description: 'Pagine da ottimizzare. Ometti per ottimizzare tutto il sito.' },
+        summary: { type: 'string' },
+      },
+      required: ['instruction', 'summary'],
+    },
+  },
+  {
+    name: 'rewrite_content',
+    description: 'Riscrivi i testi di una pagina con tono diverso, lingua diversa, o copy aggiornato. Usa questo skill per: cambio tone of voice, traduzione, riscrittura copy. NON usarlo per modifiche strutturali alla pagina.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        instruction: { type: 'string', description: 'Istruzione di riscrittura — es: "tono più professionale" o "traduci in inglese" o "riscrivi hero per puntare su autónomos"' },
+        pageSlug: { type: 'string', description: 'Slug della pagina da riscrivere.' },
+        summary: { type: 'string' },
+      },
+      required: ['instruction', 'pageSlug', 'summary'],
+    },
+  },
   {
     name: 'insert_component',
     description: 'Inserisce un componente parametrico pre-costruito in UNA O PIÙ pagine in un colpo solo. PREFERISCI QUESTO TOOL rispetto a generare HTML da zero quando il pattern richiesto è uno di quelli supportati — risparmi token e garantisci consistenza visiva. Per modifiche nav (es. mega-menu), passa SEMPRE tutti gli slug delle pagine che hanno la stessa nav. Vedi sezione "COMPONENTI PARAMETRICI" nel system prompt per la lista completa.',
@@ -1399,6 +1439,88 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
       const corrTool = corrData.content?.find((b: { type: string }) => b.type === 'tool_use')
       if (corrTool) return { tool: corrTool.name, input: corrTool.input, usage: corrData.usage }
     }
+  }
+
+  // ── Skill tool handlers ──────────────────────────────────────────────────
+  // When the master agent picks a skill tool, we run the specialized logic
+  // internally and return the result in the same format as html-agent tools.
+
+  if (toolUse.name === 'update_design_globally') {
+    const instruction = inp.instruction as string
+    const summary = inp.summary as string ?? 'Design aggiornato'
+    try {
+      const { runDesignAgentUpdate } = await import('./design-agent')
+      // Collect current CSS from home page
+      const home = pages.find(p => p.slug === 'home') ?? pages[0]
+      const currentCss = home
+        ? (home.html.match(/<style[\s\S]*?<\/style>/gi) ?? []).map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
+        : ''
+      const designResult = await runDesignAgentUpdate(instruction, currentCss, apiKey, context)
+      if (designResult?.css) {
+        // Apply updated CSS to all pages by replacing their <style> block
+        const updatedPages = pages.map(p => {
+          const newHtml = p.html.replace(/<style>[\s\S]*?<\/style>/, `<style>${designResult.css}</style>`)
+          return { ...p, html: newHtml }
+        })
+        return {
+          tool: 'update_shared_css',
+          input: { pages: updatedPages, shared_css: designResult.css, summary: designResult.summary ?? summary },
+          usage: data.usage,
+        }
+      }
+    } catch (err) {
+      console.error('[master] update_design_globally skill failed:', err)
+    }
+    return { tool: toolUse.name, input: inp, usage: data.usage }
+  }
+
+  if (toolUse.name === 'update_seo_meta') {
+    const instruction = inp.instruction as string
+    const pageSlugs = inp.pageSlugs as string[] | undefined
+    const summary = inp.summary as string ?? 'SEO ottimizzato'
+    const targetPages = pageSlugs?.length
+      ? pages.filter(p => pageSlugs.includes(p.slug))
+      : pages
+    try {
+      const { runSeoAgent } = await import('./seo-agent')
+      const seoResult = await runSeoAgent(
+        [{ role: 'user', content: instruction }],
+        targetPages, null, apiKey, context
+      )
+      if (seoResult) {
+        return { tool: seoResult.tool, input: { ...seoResult.input, summary }, usage: data.usage }
+      }
+    } catch (err) {
+      console.error('[master] update_seo_meta skill failed:', err)
+    }
+    return { tool: toolUse.name, input: inp, usage: data.usage }
+  }
+
+  if (toolUse.name === 'rewrite_content') {
+    const instruction = inp.instruction as string
+    const pageSlug = inp.pageSlug as string
+    const summary = inp.summary as string ?? 'Contenuto riscritto'
+    const targetPage = pages.find(p => p.slug === pageSlug)
+    if (targetPage) {
+      try {
+        const { runContentAgentUpdate } = await import('./content-agent')
+        const contentResult = await runContentAgentUpdate(instruction, [targetPage], apiKey, context)
+        if (contentResult?.pages?.[0]) {
+          const newPage = contentResult.pages[0]
+          return {
+            tool: 'create_site',
+            input: {
+              pages: pages.map(p => p.slug === pageSlug ? newPage : p),
+              summary: contentResult.summary ?? summary,
+            },
+            usage: data.usage,
+          }
+        }
+      } catch (err) {
+        console.error('[master] rewrite_content skill failed:', err)
+      }
+    }
+    return { tool: toolUse.name, input: inp, usage: data.usage }
   }
 
   return { tool: toolUse.name, input: inp, usage: data.usage }

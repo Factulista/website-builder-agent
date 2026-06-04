@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server'
-import { classify, classifyWithLLM, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
+import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
+import type { PipelineResult } from '../../../lib/agents/orchestrator'
+type AgentType = 'pipeline' | 'html' | 'design-update' | 'content-update' | 'seo' | 'images'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
@@ -275,18 +277,14 @@ export async function POST(req: NextRequest) {
     const hasInspiration = !!context.lastInspirationUrl
     const hasAttachedImages = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
 
-    // Phase 4: LLM-based routing replaces keyword classify() for ambiguous cases.
-    // Hard deterministic rules (no pages, explicit template, add-page, create-site)
-    // are still handled instantly inside classifyWithLLM before calling the API.
-    const agent = (hasInspiration && hasAttachedImages)
-      ? ('pipeline' as const)
-      : await classifyWithLLM(
-          lastUserMessage,
-          (pages ?? []).map(p => ({ slug: p.slug, name: p.name })),
-          { businessName: context.businessName, businessType: context.businessType },
-          hasAttachedImages,
-          apiKey
-        )
+    // Phase 5: Single master agent — no routing needed.
+    // The master agent (html-agent + skill tools) decides autonomously
+    // which tools to use. Only pipeline (create site from scratch) stays separate.
+    // Pipeline only for: inspiration+screenshots, empty site, or explicit creation keywords
+    const needsPipeline = (hasInspiration && hasAttachedImages)
+      || !pages?.length
+      || classify(lastUserMessage, pages?.length > 0, hasAttachedImages) === 'pipeline'
+    const agent: AgentType = needsPipeline ? 'pipeline' : 'html'
 
     // Clarifier — runs before any agent if the request is ambiguous
     const clarifierConfig = dbConfigs.find(c => c.name === 'clarifier')
@@ -460,7 +458,8 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    if (agent === 'design-update') {
+    // Legacy agent branches kept as dead code for rollback — never reached (agent is 'pipeline'|'html')
+    if ((agent as string) === 'design-update') {
       return makeStream(async (emit) => {
         emit('🎨 Aggiornando CSS del sito…')
         const currentSharedCss = typeof siteConfig.shared_css === 'string'
@@ -501,7 +500,7 @@ export async function POST(req: NextRequest) {
       }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
     }
 
-    if (agent === 'content-update') {
+    if ((agent as string) === 'content-update') {
       return makeStream(async (emit) => {
         emit('✍️ Riscrivendo i testi su tutte le pagine…')
         const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
@@ -526,7 +525,7 @@ export async function POST(req: NextRequest) {
       }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
     }
 
-    if (agent === 'seo') {
+    if ((agent as string) === 'seo') {
       return makeStream(async (emit) => {
         emit('🔍 Ottimizzando SEO e meta tag…')
 
