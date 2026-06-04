@@ -2802,7 +2802,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       }
       if ((config as any)?.designSystem) {
-        const ds = (config as any).designSystem as DesignSystem
+        // Merge with defaults so new keys (e.g. 'li') are always present
+        // even for projects saved before the key was added
+        const ds: DesignSystem = { ...DEFAULT_DESIGN_SYSTEM, ...(config as any).designSystem }
+        // Ensure each tag's config is complete (new props like letterSpacing may be missing)
+        for (const tag of Object.keys(DEFAULT_DESIGN_SYSTEM) as Array<keyof DesignSystem>) {
+          ds[tag] = { ...DEFAULT_DESIGN_SYSTEM[tag], ...ds[tag] }
+        }
         setDesignSystem(ds)
         // Re-inject design system CSS into loaded pages (ensures freshness)
         loadedPages = applyDesignSystemToPages(ds, loadedPages)
