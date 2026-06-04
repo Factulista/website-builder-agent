@@ -504,6 +504,24 @@ export function buildBlogPostPage(
     : ''
   const seoTitle = post.seo_title || post.title
   const seoDesc = post.seo_description || post.excerpt || ''
+  const canonicalUrl = `${baseUrl}/blog/${post.slug}`
+
+  // Schema.org BlogPosting structured data
+  const schemaOrg = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    'headline': seoTitle,
+    'description': seoDesc || undefined,
+    'url': canonicalUrl,
+    ...(post.featured_image ? { 'image': post.featured_image } : {}),
+    ...(post.published_at ? {
+      'datePublished': post.published_at,
+      'dateModified': post.published_at,
+    } : {}),
+    ...(post.author ? { 'author': { '@type': 'Person', 'name': post.author } } : {}),
+    ...(post.categories?.length ? { 'keywords': post.categories.join(', ') } : {}),
+    'mainEntityOfPage': { '@type': 'WebPage', '@id': canonicalUrl },
+  }
 
   // Extract H2s for TOC and inject IDs
   const { contentWithIds, tocItems } = buildTocFromContent(post.content_html)
@@ -565,14 +583,15 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   <base href="${escapeHtml(baseUrl)}/">
   <title>${escapeHtml(seoTitle)}</title>
   <meta name="description" content="${escapeHtml(seoDesc)}">
-  <link rel="canonical" href="${escapeHtml(baseUrl)}/blog/${escapeHtml(post.slug)}">
+  <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
   ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
   <meta property="og:title" content="${escapeHtml(seoTitle)}">
   <meta property="og:description" content="${escapeHtml(seoDesc)}">
   ${post.featured_image ? `<meta property="og:image" content="${safeUrl(post.featured_image)}">` : ''}
-  <meta property="og:url" content="${escapeHtml(baseUrl)}/blog/${escapeHtml(post.slug)}">
+  <meta property="og:url" content="${escapeHtml(canonicalUrl)}">
   <meta property="og:type" content="article">
   ${post.published_at ? `<meta property="article:published_time" content="${escapeHtml(post.published_at)}">` : ''}
+  <script type="application/ld+json">${JSON.stringify(schemaOrg)}</script>
   ${injectPoints?.head ?? ''}
   ${siteStyle}
   <style>${BLOG_POST_CONTENT_CSS}</style>
