@@ -14,6 +14,34 @@ function extractFooter(html: string) {
   return m.length > 0 ? m[m.length - 1][0] : ''
 }
 function extractStyles(html: string) { return (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n') }
+
+function splitCriticalCss(css: string): { critical: string; deferred: string } {
+  const CRITICAL_PATTERNS = [
+    /^:root\s*\{/, /^\*\s*[\{,]/, /^html\s*[\{,]/, /^body\s*[\{,]/,
+    /nav/i, /footer/i, /\.header/i, /^header/i, /--[a-z]/, /^@/,
+  ]
+  const lines = css.split('\n')
+  const critical: string[] = []
+  const deferred: string[] = []
+  let depth = 0, blockLines: string[] = [], isCritical = false
+  for (const line of lines) {
+    const opens = (line.match(/\{/g) ?? []).length
+    const closes = (line.match(/\}/g) ?? []).length
+    if (depth === 0 && opens > 0) {
+      isCritical = CRITICAL_PATTERNS.some(p => p.test(line.trim()))
+      blockLines = []
+    }
+    blockLines.push(line)
+    depth += opens - closes
+    if (depth <= 0) {
+      depth = 0
+      ;(isCritical ? critical : deferred).push(...blockLines)
+      blockLines = []
+    }
+  }
+  if (blockLines.length) critical.push(...blockLines)
+  return { critical: critical.join('\n'), deferred: deferred.join('\n') }
+}
 function detectLang(context: Record<string, unknown>, homeHtml: string): string {
   if (typeof context.language === 'string' && context.language) return context.language
   const m = homeHtml.match(/<html[^>]+lang=["']([^"']+)["']/i)
@@ -67,9 +95,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       dsBlock = `${asyncFontLinks}\n<style>${scopedOnly}</style>`
     }
   }
-  const siteStyle = baseCss
-    ? `${fontLinks}\n<style>${baseCss}</style>`
-    : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
+  const rawSiteCss = baseCss || (homePage
+    ? (homePage.html.match(/<style[\s\S]*?<\/style>/gi) ?? []).map((s: string) => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
+    : '')
+  const { critical: criticalCss, deferred: deferredCss } = splitCriticalCss(rawSiteCss)
+  const deferredBlock = deferredCss.trim()
+    ? `<script>window.addEventListener('load',function(){var s=document.createElement('style');s.textContent=${JSON.stringify(deferredCss)};document.head.appendChild(s)});</script>`
+    : ''
+  const siteStyle = `${fontLinks}\n<style>${criticalCss}</style>${deferredBlock}`
 
   const { data: post } = await supabase
     .from('blog_posts')

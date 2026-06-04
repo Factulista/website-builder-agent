@@ -499,8 +499,9 @@ export function buildBlogPostPage(
   const dateStr = escapeHtml(formatDate(post.published_at, lang))
   const tags = (post.categories ?? []).map(c => `<span class="blog-tag">${escapeHtml(c)}</span>`).join('')
   const authorLine = post.author ? `<span class="blog-post-author">${escapeHtml(post.author)}</span>` : ''
+  // Featured image: eager load (above fold) + fetchpriority high for LCP
   const featuredImg = post.featured_image
-    ? `<img class="post-featured-img" src="${safeUrl(post.featured_image)}" alt="${escapeHtml(post.title)}" loading="lazy">`
+    ? `<img class="post-featured-img" src="${safeUrl(post.featured_image)}" alt="${escapeHtml(post.title)}" loading="eager" fetchpriority="high" width="760" height="400" decoding="async">`
     : ''
   const seoTitle = post.seo_title || post.title
   const seoDesc = post.seo_description || post.excerpt || ''
