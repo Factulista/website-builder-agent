@@ -1628,14 +1628,15 @@ function generateDesignSystemCSS(ds: DesignSystem): { rules: string; fontFamilie
       if (c.letterSpacing && c.letterSpacing !== '0' && c.letterSpacing !== 'inherit') props.push(`letter-spacing:${c.letterSpacing}`)
     }
     if (!props.length) return ''
-    // :where() — specificity 0 for site pages
-    const base = `:where(${tag}){${props.join(';')}}`
-    // .blog-post-content selectors — same specificity as blog CSS so DS wins in blog too
+    // Plain selector (not :where) — specificity (0,0,1) for tags, injected last in <head>
+    // so it wins over earlier site CSS rules at equal specificity.
+    const base = `${tag}{${props.join(';')}}`
+    // .blog-post-content selectors for blog pages (come after BLOG_POST_CONTENT_CSS)
     const blogTags = new Set(['h1','h2','h3','h4','h5','h6','p','li'])
     const blogRule = blogTags.has(tag) ? `.blog-post-content ${tag}{${props.join(';')}}` : ''
-    // p rule also targets div (old AI content uses <div> instead of <p> for paragraphs)
+    // p rule also targets div (old AI content uses <div> for paragraphs)
     const divRule = tag === 'p' ? `.blog-post-content div{${props.join(';')}}` : ''
-    // li: force children to inherit color/size to prevent site CSS leaking in
+    // li: force children to inherit so old inline styles don't leak
     const liSpanRule = tag === 'li' ? `.blog-post-content li span,.blog-post-content li b,.blog-post-content li strong{font-size:inherit;color:inherit}` : ''
     return [base, blogRule, divRule, liSpanRule].filter(Boolean).join('\n')
   }
@@ -3278,7 +3279,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const existingSharedCss = (typeof currentConfig.shared_css === 'string' ? currentConfig.shared_css : '') as string
     const DS_START = '/* fact-design-system:start */'
     const DS_END   = '/* fact-design-system:end */'
-    const stripped = existingSharedCss.replace(new RegExp(`${DS_START}[\\s\\S]*?${DS_END}`, 'g'), '').trim()
+    // Remove ALL DS blocks (global replace) + any old :where() DS rules that leaked in
+    let stripped = existingSharedCss.replace(new RegExp(`${DS_START}[\\s\\S]*?${DS_END}`, 'g'), '').trim()
+    // Also strip any stale @import lines left from previous DS saves
+    stripped = stripped.replace(/@import url\('https:\/\/fonts\.googleapis\.com[^']*'\);\n?/g, '').trim()
     // Build font @import separately so it's always first
     const fontImport = fontFamilies.length > 0
       ? `@import url('https://fonts.googleapis.com/css2?${fontFamilies.map(f => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800`).join('&')}&display=swap');\n`
