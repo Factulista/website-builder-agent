@@ -167,7 +167,7 @@ export const BLOG_POST_CONTENT_CSS = `
      div is used by old AI content instead of p — must always match.
      li children: force inherit to neutralise old inline style remnants. */
   .blog-post-content p,.blog-post-content>div{font-size:1rem;line-height:1.7;margin:0 0 1.25rem;color:#1a1a1a}
-  .blog-post-content li{font-size:1rem !important;margin-bottom:.45rem !important;line-height:1.7;color:#1a1a1a}
+  .blog-post-content li{font-size:1rem;margin-bottom:.45rem !important;line-height:1.7;color:#1a1a1a}
   .blog-post-content li span,.blog-post-content li b,.blog-post-content li strong{font-size:inherit !important;color:inherit !important}
   /* ul: custom small bullet centred with text line */
   .blog-post-content ul{list-style:none !important;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
