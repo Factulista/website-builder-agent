@@ -17,9 +17,33 @@ async function getUser(req: NextRequest) {
   return user
 }
 
+// Semantic attributes that are safe to keep
+const KEEP_ATTRS = new Set(['class','href','src','alt','id','target','rel','colspan','rowspan','width','height','scope','type','name','value','placeholder','loading','decoding'])
+
+/**
+ * Strip all non-semantic attributes from a tag's attribute string.
+ * Keeps only whitelisted attrs. Removes style, data-*, and any CSS fragment
+ * that leaked out of a broken style attribute (e.g. <h1 space="" grotesk",="">).
+ */
+function cleanTagAttrs(attrs: string): string {
+  const kept: string[] = []
+  // Match standard attr="value" pairs
+  const re = /([a-zA-Z][a-zA-Z0-9_-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g
+  let m
+  while ((m = re.exec(attrs)) !== null) {
+    const name = m[1].toLowerCase()
+    if (KEEP_ATTRS.has(name)) {
+      const val = m[2] ?? m[3] ?? m[4] ?? ''
+      kept.push(val ? `${name}="${val}"` : name)
+    }
+  }
+  return kept.join(' ')
+}
+
 /**
  * Aggressively clean typography inline styles from blog post HTML.
- * The Design System handles all typography globally — inline styles are redundant.
+ * Handles both clean style="" attrs and the severely broken case where
+ * CSS values escaped the style attribute and became fake HTML attributes.
  */
 function cleanInlineStyles(html: string): string {
   let r = html
@@ -28,33 +52,25 @@ function cleanInlineStyles(html: string): string {
   r = r.replace(/style="([^"]*)"/g, (_, v) =>
     `style="${v.replace(/&quot;/g, '"').replace(/&#34;/g, '"')}"`)
 
-  // 2. Unwrap <font> tags entirely (old HTML4 tag, never appropriate in blog content)
+  // 2. Unwrap <font> tags (obsolete HTML4)
   r = r.replace(/<font[^>]*>([\s\S]*?)<\/font>/gi, '$1')
 
-  // 3. Remove all inline typography props from style attributes
-  //    (font-family, font-size, font-weight, color, line-height, letter-spacing)
-  //    These are all owned by the Design System.
-  const TYPO_PROPS = /(?:font-family|font-size|font-weight|line-height|letter-spacing)\s*:\s*[^;]+;?\s*/gi
-  r = r.replace(/style="([^"]*)"/g, (_, v) => {
-    let cleaned = v.replace(TYPO_PROPS, '').trim().replace(/;+$/, '').trim()
-    // Also strip standalone color if it's a plain text color that DS owns
-    cleaned = cleaned.replace(/\bcolor\s*:\s*#(?:1a1a1a|374151|000000|000)\s*;?\s*/gi, '').trim()
-    return cleaned ? `style="${cleaned}"` : ''
+  // 3. Strip ALL non-semantic attributes from every opening tag.
+  //    This handles both style="" and broken CSS-fragment attributes like
+  //    <h1 space="" grotesk",="" ui-sans-serif,="">.
+  //    Only whitelisted semantic attrs (class, href, src, alt, id…) survive.
+  r = r.replace(/<([a-zA-Z][a-zA-Z0-9]*)([^>]*?)(\s*\/?)>/g, (_, tag, attrs, selfClose) => {
+    const cleaned = cleanTagAttrs(attrs)
+    return cleaned ? `<${tag} ${cleaned}${selfClose}>` : `<${tag}${selfClose}>`
   })
 
-  // 4. Remove stray font-family text artifacts that leaked out of broken style attributes
-  //    e.g.  <span Space Grotesk"; font-size:1rem;">  or  <h3><span "Space Grotesk";">
-  r = r.replace(/<(span|h[1-6]|p|div|li)([^>]*?)\s+"?(?:Space Grotesk|Inter|Lato|Roboto|Open Sans|Montserrat)"?\s*;[^>]*>/gi,
-    (_, tag, rest) => `<${tag}${rest.trim() ? ' ' + rest.trim() : ''}>`)
-
-  // 5. Unwrap <span> with no remaining attributes → keep text only
-  //    Loop twice to handle nested empty spans
+  // 4. Unwrap <span> with no attributes → keep text only (repeat for nesting)
   for (let i = 0; i < 3; i++) {
     r = r.replace(/<span>([\s\S]*?)<\/span>/g, '$1')
   }
 
-  // 6. Clean up double spaces in tag attributes left by removals
-  r = r.replace(/<(span|div|h[1-6]|p|li)\s{2,}/g, '<$1 ')
+  // 5. Remove data-astro-* and other framework artifacts that sneak in
+  r = r.replace(/\s+data-[a-z][a-z0-9-]*(?:="[^"]*")?/g, '')
 
   return r
 }
