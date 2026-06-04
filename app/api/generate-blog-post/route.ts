@@ -59,14 +59,19 @@ export async function POST(req: NextRequest) {
     keywords = [],
     wordCount = 1200,
     paragraphCount = 4,
+    h3Count = 2,
+    h4Count = 0,
     flags = {},
     projectId,
     context,
+    designSystem,
   } = body as {
     topic: string
     keywords?: string[]
     wordCount?: number
     paragraphCount?: number
+    h3Count?: number
+    h4Count?: number
     flags?: Record<string, boolean>
     projectId?: string
     context?: {
@@ -76,6 +81,7 @@ export async function POST(req: NextRequest) {
       language?: string
       targetAudience?: string
     }
+    designSystem?: Record<string, { fontSize?: string; fontWeight?: string; color?: string; lineHeight?: string }>
   }
 
   if (!topic) return NextResponse.json({ error: 'topic richiesto' }, { status: 400 })
@@ -108,13 +114,29 @@ Contesto del sito:
     ? `\n\nTONO DI VOCE — prendi spunto da questi articoli già pubblicati per replicare lo stesso stile, registro e lunghezza delle frasi:\n${toneOfVoice}`
     : ''
 
+  // Build DS typography reference for the prompt
+  const dsStyles = designSystem ? (() => {
+    const fmt = (tag: string) => {
+      const c = designSystem[tag]
+      if (!c) return null
+      const parts = []
+      if (c.fontSize   && c.fontSize   !== 'inherit') parts.push(`font-size:${c.fontSize}`)
+      if (c.fontWeight && c.fontWeight !== 'inherit') parts.push(`font-weight:${c.fontWeight}`)
+      if (c.color      && c.color      !== 'inherit') parts.push(`color:${c.color}`)
+      if (c.lineHeight && c.lineHeight !== 'inherit') parts.push(`line-height:${c.lineHeight}`)
+      return parts.length ? `${tag.toUpperCase()}: ${parts.join(', ')}` : null
+    }
+    return ['h1','h2','h3','h4','p','li'].map(fmt).filter(Boolean).join(' | ')
+  })() : ''
+
   // Blocks use only class names — NO inline style. CSS is handled by the platform.
+  const h3Desc = h3Count > 0 ? ` — ogni H2 contiene ${h3Count} sottosezione/i H3${h4Count > 0 ? `, ogni H3 contiene ${h4Count} sottosezione/i H4` : ''}` : ''
   const structureBlocks: string[] = []
   structureBlocks.push(`<h1>[titolo con keyword primaria]</h1>`)
   structureBlocks.push(`<p>[intro: definizione chiara + keyword primaria nel primo paragrafo]</p>`)
   if (f.summary)   structureBlocks.push(`<div class="article-summary"><strong>In breve:</strong><p>[2-3 frasi che riassumono l'articolo — favorisce Google AI Overview]</p></div>`)
   if (f.takeaways) structureBlocks.push(`<div class="key-takeaways"><strong>💡 Punti chiave</strong><ul>[3-5 punti chiave, brevi e diretti]</ul></div>`)
-  structureBlocks.push(`\n[${paragraphCount} sezioni H2 principali, ognuna con 2-3 <p> e keyword pertinenti]`)
+  structureBlocks.push(`\n[${paragraphCount} sezioni H2 principali${h3Desc}, ognuna con 2-3 <p> e keyword pertinenti]`)
   if (f.table)   structureBlocks.push(`[includi almeno una <table> con intestazioni <th>]`)
   if (f.callout) structureBlocks.push(`[includi 1-2 callout: <div class="callout"><strong>📌 Da sapere:</strong> [concetto chiave]</div>]`)
   if (f.stats)   structureBlocks.push(`[includi 2-3 dati/statistiche concrete — usa <strong> per i numeri]`)
@@ -143,8 +165,14 @@ ${secondaryKws.length > 0 ? `Keyword secondarie: ${secondaryKws.map(k => `"${k}"
 
 PARAMETRI OBBLIGATORI:
 - Lunghezza esatta: ${wordCount} parole (±5%) — conta le parole nel testo visibile
-- Numero di sezioni H2 principali: ${paragraphCount} (oltre a FAQ e Conclusione)
+- Sezioni H2 principali: ${paragraphCount} (oltre a FAQ e Conclusione)
+- Sottosezioni H3 per ogni H2: ${h3Count > 0 ? h3Count : 'nessuna'}
+- Sottosezioni H4 per ogni H3: ${h4Count > 0 ? h4Count : 'nessuna'}
 - Lingua: ${langLabel}
+${dsStyles ? `
+STILI TIPOGRAFICI DEL SITO (Design System) — usa questi tag con la consapevolezza del loro peso visivo:
+${dsStyles}
+Suggerimento struttura: H1 = titolo principale prominente, H2 = sezioni maggiori, H3 = sottosezioni, H4 = dettagli, P = corpo del testo` : ''}
 
 STRUTTURA HTML da seguire nell'ordine:
 ${structureBlocks.join('\n')}

@@ -1854,6 +1854,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogGenKeywords, setBlogGenKeywords] = useState('')
   const [blogGenWordCount, setBlogGenWordCount] = useState(1200)
   const [blogGenParaCount, setBlogGenParaCount] = useState(4)
+  const [blogGenH3Count, setBlogGenH3Count] = useState(2)
+  const [blogGenH4Count, setBlogGenH4Count] = useState(0)
   const [blogGenFlags, setBlogGenFlags] = useState({
     table: true,
     summary: true,
@@ -7040,7 +7042,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 const res = await fetch('/api/generate-blog-post', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, flags: blogGenFlags, projectId: id, context: projectContext }),
+                  body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, h3Count: blogGenH3Count, h4Count: blogGenH4Count, flags: blogGenFlags, projectId: id, context: projectContext, designSystem }),
                 })
 
                 if (!res.ok) {
@@ -7240,6 +7242,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <select value={blogGenParaCount} onChange={e => setBlogGenParaCount(Number(e.target.value))}
                             style={{ border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', background: C.white, cursor: 'pointer' }}>
                             {[2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.78rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>H3/H2:</span>
+                          <select value={blogGenH3Count} onChange={e => setBlogGenH3Count(Number(e.target.value))}
+                            style={{ border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', background: C.white, cursor: 'pointer' }}>
+                            {[0, 1, 2, 3].map(n => <option key={n} value={n}>{n === 0 ? 'nessuno' : n}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.78rem', color: C.textFaint, whiteSpace: 'nowrap' as const }}>H4/H3:</span>
+                          <select value={blogGenH4Count} onChange={e => setBlogGenH4Count(Number(e.target.value))}
+                            style={{ border: `1px solid ${C.border}`, borderRadius: '7px', padding: '5px 8px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', background: C.white, cursor: 'pointer' }}>
+                            {[0, 1, 2].map(n => <option key={n} value={n}>{n === 0 ? 'nessuno' : n}</option>)}
                           </select>
                         </div>
                       </div>
