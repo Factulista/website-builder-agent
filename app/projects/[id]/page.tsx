@@ -1699,6 +1699,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogListOpen, setBlogListOpen] = useState(false)
   const [blogInsertOpen, setBlogInsertOpen] = useState(false)
   const [blogAlignOpen, setBlogAlignOpen] = useState(false)
+  const [blogTableHov, setBlogTableHov] = useState<[number,number]>([0,0])
   // ── Design System state ──────────────────────────────────────────────────
   const [designSystem, setDesignSystem] = useState<DesignSystem>(DEFAULT_DESIGN_SYSTEM)
   const [designSaving, setDesignSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -7395,7 +7396,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               <div style={{ ...dropMenu, minWidth: '200px' }} onClick={e => e.stopPropagation()}>
                                 {/* Table — grid picker */}
                                 {(() => {
-                                  const [hov, setHov] = React.useState<[number,number]>([0,0])
                                   const MAX_C = 6, MAX_R = 6
                                   const buildTable = (cols: number, rows: number) => {
                                     const thCells = Array.from({length:cols},(_,i)=>`<th style="border:1px solid #d1d5db;padding:8px 12px;background:#f9fafb;text-align:left;font-weight:600">Colonna ${i+1}</th>`).join('')
@@ -7410,13 +7410,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     <div style={{ padding: '6px 12px 8px' }}>
                                       <div style={{ fontSize: '0.75rem', color: C.textMuted, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: 6 }}>
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
-                                        Tabella {hov[0]>0?`${hov[0]}×${hov[1]}`:'— scegli dimensione'}
+                                        Tabella {blogTableHov[0]>0?`${blogTableHov[0]}×${blogTableHov[1]}`:'— scegli dimensione'}
                                       </div>
                                       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${MAX_C},18px)`, gap: 2 }}>
                                         {Array.from({length:MAX_R},(_,r)=>Array.from({length:MAX_C},(_,c)=>(
                                           <div key={`${r}-${c}`}
-                                            onMouseEnter={() => setHov([c+1,r+1])}
-                                            onMouseLeave={() => setHov([0,0])}
+                                            onMouseEnter={() => setBlogTableHov([c+1,r+1])}
+                                            onMouseLeave={() => setBlogTableHov([0,0])}
                                             onMouseDown={ev => {
                                               ev.preventDefault()
                                               if(c+1>0&&r+1>0){
@@ -7424,7 +7424,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                                 setBlogInsertOpen(false)
                                               }
                                             }}
-                                            style={{ width:18,height:18,borderRadius:2,border:`1px solid ${(c+1<=hov[0]&&r+1<=hov[1])?C.blue:C.border}`,background:(c+1<=hov[0]&&r+1<=hov[1])?'#eff6ff':'transparent',cursor:'pointer',boxSizing:'border-box' }}
+                                            style={{ width:18,height:18,borderRadius:2,border:`1px solid ${(c+1<=blogTableHov[0]&&r+1<=blogTableHov[1])?C.blue:C.border}`,background:(c+1<=blogTableHov[0]&&r+1<=blogTableHov[1])?'#eff6ff':'transparent',cursor:'pointer',boxSizing:'border-box' }}
                                           />
                                         )))}
                                       </div>
