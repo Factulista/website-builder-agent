@@ -8874,7 +8874,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               {activePage ? (
                 <iframe
                   ref={previewIframeRef}
-                  srcDoc={injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined)}
+                  // When a blog article path is set, load it via src (served by blog route).
+                  // For regular pages use srcDoc (inline HTML, no round-trip needed).
+                  {...(previewIframePath && previewIframePath !== '/'
+                    ? { src: `/preview/${projectSlug}${previewIframePath}`, key: previewIframePath }
+                    : { srcDoc: injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined) }
+                  )}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"
                   sandbox="allow-scripts allow-same-origin"

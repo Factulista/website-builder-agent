@@ -78,8 +78,9 @@ ${scopedOnly}</style>`
 
   const sidebarBanner = (config.blog_sidebar_banner as { url: string; link: string } | undefined) ?? null
   const injectPoints = (config.inject_points as InjectPoints | undefined)
+  const faviconUrl = typeof config.favicon_url === 'string' ? config.favicon_url : undefined
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
-  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, undefined, injectPoints, dsBlock)
+  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
