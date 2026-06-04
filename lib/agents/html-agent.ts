@@ -1350,9 +1350,9 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
   // Sonnet has the design reasoning needed to translate "gioielleria italiana" into
   // an actual visual identity (palette, typography, spacing, hero layout).
   const model = (() => {
-    if (hasImages)       return 'claude-sonnet-4-6'   // vision: always Sonnet
-    if (isCreationTask)  return 'claude-sonnet-4-6'   // create_site / add_page: design judgment
-    return 'claude-haiku-4-5-20251001'                // edit_page (micro or standard): Haiku, fast
+    if (hasImages)       return 'claude-sonnet-4-5-20250929' // vision: Sonnet 4.5 (separate rate pool from 4.6)
+    if (isCreationTask)  return 'claude-sonnet-4-6'          // create_site / add_page: design reasoning
+    return 'claude-haiku-4-5-20251001'                       // edit_page (micro or standard): Haiku, fast
   })()
 
   // Extended Thinking — only on first-site creation (no existing pages).
