@@ -120,24 +120,110 @@ const IMAGE_AS_REFERENCE_KEYWORDS = [
   'come questa', 'simile a questa', 'ispirato a', 'come nell',
 ]
 
+/**
+ * classify() — keyword fallback kept for instant hard cases only.
+ * Soft routing is now done by classifyWithLLM() which is called first.
+ * This function handles the deterministic edge cases that don't need LLM.
+ */
 export function classify(userMessage: string, hasPages: boolean, hasAttachedImage = false): AgentType {
   const lower = userMessage.toLowerCase()
-  // Nessun sito esistente → pipeline sempre
   if (!hasPages) return 'pipeline'
-  // Template esplicito menzionato → pipeline sempre (il template richiede create_site, non edit_page)
   if (detectExplicitTemplate(userMessage)) return 'pipeline'
-  // Aggiunta pagina a sito esistente → html agent (usa add_page, non create_site)
   if (hasPages && ADD_PAGE_KEYWORDS.some(k => lower.includes(k))) return 'html'
-  // Sito esistente → pipeline SOLO se la richiesta è esplicitamente di creazione/aggiunta pagina
   if (CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
-  // Modifica sito — classifica ulteriormente quale tipo
-  // Images agent: solo per ottimizzazione esplicita, NON quando l'utente allega
-  // un'immagine come riferimento di design (in quel caso → html agent)
   if (!hasAttachedImage && IMAGES_KEYWORDS.some(k => lower.includes(k))) return 'images'
   if (SEO_KEYWORDS.some(k => lower.includes(k))) return 'seo'
   if (DESIGN_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'design-update'
   if (CONTENT_UPDATE_KEYWORDS.some(k => lower.includes(k))) return 'content-update'
   return 'html'
+}
+
+/**
+ * LLM-based intent classifier — replaces keyword matching for ambiguous cases.
+ *
+ * Uses Haiku (fast, cheap) with a single tool call to pick the right agent.
+ * Falls back to classify() on error or timeout so the system never breaks.
+ *
+ * When to use:
+ * - After hard deterministic rules pass (no template, no explicit create/add-page)
+ * - When the message is ambiguous for keyword matching (e.g. "cambia il colore del titolo"
+ *   could be design-update OR html depending on context)
+ */
+export async function classifyWithLLM(
+  userMessage: string,
+  pages: { slug: string; name: string }[],
+  context: { businessName?: string; businessType?: string },
+  hasAttachedImage: boolean,
+  apiKey: string
+): Promise<AgentType> {
+  // Hard deterministic rules first — LLM not needed
+  if (!pages.length) return 'pipeline'
+  if (detectExplicitTemplate(userMessage)) return 'pipeline'
+
+  const lower = userMessage.toLowerCase()
+  if (ADD_PAGE_KEYWORDS.some(k => lower.includes(k))) return 'html'
+  if (CREATE_KEYWORDS.some(k => lower.includes(k))) return 'pipeline'
+
+  const pageList = pages.map(p => `/${p.slug === 'home' ? '' : p.slug} (${p.name})`).join(', ')
+
+  const system = `Sei un router di intenti. Analizza la richiesta utente e scegli il giusto agente.
+Sito: ${context.businessName ?? 'sconosciuto'} (${context.businessType ?? ''})
+Pagine: ${pageList}
+Immagine allegata: ${hasAttachedImage ? 'sì' : 'no'}`
+
+  const tool = {
+    name: 'route',
+    description: 'Scegli l\'agente giusto per gestire la richiesta.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        agent: {
+          type: 'string',
+          enum: ['html', 'design-update', 'content-update', 'seo', 'images'],
+          description: `
+html: modifica HTML (aggiungi sezione, cambia testo, modifica elemento, aggiusta layout, cambia colore/stile specifico)
+design-update: ridisegna colori/font a livello globale del sito (palette, restyle completo, tema)
+content-update: riscrivi testi/copy (ton di voce, linguaggio, traduzione)
+seo: ottimizza SEO (meta tag, schema.org, sitemap, canonical)
+images: ottimizza immagini (alt text, compressione, webp)`,
+        },
+        reasoning: { type: 'string', description: 'Motivazione in 1 riga' },
+      },
+      required: ['agent', 'reasoning'],
+    },
+  }
+
+  try {
+    const { fetchWithRetry } = await import('./fetch-retry')
+    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 256,
+        temperature: 0,
+        system,
+        tools: [tool],
+        tool_choice: { type: 'tool', name: 'route' },
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    }, 'router') // no retry — speed matters for routing
+
+    if (!res.ok) throw new Error(`API ${res.status}`)
+    const data = await res.json()
+    const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+    const agent = toolUse?.input?.agent as AgentType | undefined
+    if (agent) return agent
+  } catch (err) {
+    console.warn('[classifier] LLM routing failed, falling back to keyword classify:', err)
+  }
+
+  // Fallback to keyword matching
+  return classify(userMessage, true, hasAttachedImage)
 }
 
 export type PipelineResult = {

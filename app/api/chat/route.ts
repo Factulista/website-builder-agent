@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { classify, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
+import { classify, classifyWithLLM, runFullPipeline, runDesignUpdate, runContentUpdate } from '../../../lib/agents/orchestrator'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
@@ -274,9 +274,19 @@ export async function POST(req: NextRequest) {
     // forza il pipeline agent per gestire Round 2 (analisi screenshot + generazione template)
     const hasInspiration = !!context.lastInspirationUrl
     const hasAttachedImages = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
+
+    // Phase 4: LLM-based routing replaces keyword classify() for ambiguous cases.
+    // Hard deterministic rules (no pages, explicit template, add-page, create-site)
+    // are still handled instantly inside classifyWithLLM before calling the API.
     const agent = (hasInspiration && hasAttachedImages)
       ? ('pipeline' as const)
-      : classify(lastUserMessage, pages?.length > 0, hasAttachedImages)
+      : await classifyWithLLM(
+          lastUserMessage,
+          (pages ?? []).map(p => ({ slug: p.slug, name: p.name })),
+          { businessName: context.businessName, businessType: context.businessType },
+          hasAttachedImages,
+          apiKey
+        )
 
     // Clarifier — runs before any agent if the request is ambiguous
     const clarifierConfig = dbConfigs.find(c => c.name === 'clarifier')
