@@ -1,9 +1,8 @@
 import { NextRequest } from 'next/server'
-import { classify } from '../../../lib/agents/orchestrator'
 type AgentType = 'html' | 'seo'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
-import { runMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
+import { runMemoryAgent, runSessionMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun, noActionRun } from '../../../lib/agents/run-logger'
@@ -220,6 +219,7 @@ export async function POST(req: NextRequest) {
     const mediaMeta = (siteConfig.media ?? {}) as Record<string, { alt?: string; title?: string }>
     const designSystem = (siteConfig.designSystem ?? null) as Record<string, { fontSize?: string; fontWeight?: string; color?: string; lineHeight?: string; fontFamily?: string }> | null
     const sharedCss = (siteConfig.shared_css ?? '') as string
+    const sessionMemory = (siteConfig.sessionMemory as string | undefined) ?? ''
 
     // Load or learn project-specific rules
     let projectRules: ProjectRules = (siteConfig.projectRules as ProjectRules) ?? { ...DEFAULT_FACTULISTA_RULES }
@@ -357,73 +357,6 @@ export async function POST(req: NextRequest) {
       console.error('[run-logger] startRun failed:', String(runErr))
     }
 
-    // Legacy agent branches kept as dead code for rollback — never reached (agent is 'html')
-    if ((agent as string) === 'design-update') {
-      return makeStream(async (emit) => {
-        emit('🎨 Aggiornando CSS del sito…')
-        const currentSharedCss = typeof siteConfig.shared_css === 'string'
-          ? siteConfig.shared_css
-          // Fallback: if no shared_css yet, extract from home page HTML
-          : (() => {
-              const home = (pages ?? []).find(p => p.slug === 'home') ?? (pages ?? [])[0]
-              if (!home) return ''
-              return (home.html.match(/<style[\s\S]*?<\/style>/gi) ?? [])
-                .map(s => s.replace(/<\/?style[^>]*>/gi, ''))
-                .join('\n')
-            })()
-        const result = await runDesignUpdate(lastUserMessage, pages ?? [], apiKey, context, currentSharedCss)
-        // Save shared_css directly to DB (design-update doesn't go through buildSiteConfig on client)
-        if (result.tool === 'update_shared_css' && result.input?.shared_css) {
-          const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-          const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
-          await supabase.from('projects').update({
-            site_config: { ...freshConfig, shared_css: result.input.shared_css },
-          }).eq('id', projectId)
-        }
-        const duUsage = result.usage as Usage
-        consumeUsage(duUsage)
-        if (runId) {
-          completeRun(runId, {
-            output_summary: `design-update: CSS aggiornato`,
-            input_tokens: duUsage?.input_tokens ?? 0,
-            output_tokens: duUsage?.output_tokens ?? 0,
-            cache_read_tokens: duUsage?.cache_read_input_tokens ?? 0,
-            duration_ms: Date.now() - runStartTime,
-            output_data: {
-              tool: result.tool ?? 'update_shared_css',
-              summary: result.input?.summary as string ?? undefined,
-            },
-          }).catch(() => null)
-        }
-        return result
-      }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
-    }
-
-    if ((agent as string) === 'content-update') {
-      return makeStream(async (emit) => {
-        emit('✍️ Riscrivendo i testi su tutte le pagine…')
-        const result = await runContentUpdate(lastUserMessage, pages ?? [], apiKey, context)
-        if (result.input?.pages) result.input.pages = normalizeInternalLinks(result.input.pages)
-        const cuUsage = result.usage as Usage
-        consumeUsage(cuUsage)
-        if (runId) {
-          completeRun(runId, {
-            output_summary: `content-update: ${result.input?.pages?.length ?? 0} pagine`,
-            input_tokens: cuUsage?.input_tokens ?? 0,
-            output_tokens: cuUsage?.output_tokens ?? 0,
-            cache_read_tokens: cuUsage?.cache_read_input_tokens ?? 0,
-            duration_ms: Date.now() - runStartTime,
-            output_data: {
-              tool: result.tool ?? 'content_update',
-              pages_affected: ((result.input?.pages as Array<{slug: string}>) ?? []).map((p) => p.slug),
-              summary: result.input?.summary as string ?? undefined,
-            },
-          }).catch(() => null)
-        }
-        return result
-      }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
-    }
-
     if ((agent as string) === 'seo') {
       return makeStream(async (emit) => {
         emit('🔍 Ottimizzando SEO e meta tag…')
@@ -517,7 +450,7 @@ export async function POST(req: NextRequest) {
       let result = await runHtmlAgent(
         agentMessages, pages ?? [], activePageSlug, apiKey,
         projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
-        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules }
+        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined }
       )
 
       // Quality check loop: if critical issues found, retry once with feedback
@@ -558,7 +491,7 @@ export async function POST(req: NextRequest) {
           result = await runHtmlAgent(
             correctionMessages, pages ?? [], activePageSlug, apiKey,
             projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
-            { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts }
+            { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined }
           )
           qualityRetried = true
         }
@@ -628,15 +561,24 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Run memory agent in background (non-blocking)
-      runMemoryAgent(messages, context, apiKey).then(async (updatedContext) => {
-        if (updatedContext) {
-          const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-          const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
-          await supabase.from('projects').update({
-            site_config: { ...freshConfig, context: updatedContext },
-          }).eq('id', projectId)
-        }
+      // Run memory agents in background (non-blocking) — both in parallel
+      Promise.all([
+        // Structured context (businessName, toneOfVoice, etc.)
+        runMemoryAgent(messages, context, apiKey),
+        // Session memory MD (design decisions, corrections, structure)
+        runSessionMemoryAgent(messages, sessionMemory, apiKey),
+      ]).then(async ([updatedContext, updatedMemory]) => {
+        if (!updatedContext && !updatedMemory) return
+        // Re-read fresh config to avoid lost-update race
+        const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+        const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
+        await supabase.from('projects').update({
+          site_config: {
+            ...freshConfig,
+            ...(updatedContext  ? { context: updatedContext }         : {}),
+            ...(updatedMemory   ? { sessionMemory: updatedMemory }    : {}),
+          },
+        }).eq('id', projectId)
       }).catch(() => null)
 
       // Include _runId so the client can patch html_changed once it applies the edits

@@ -93,6 +93,8 @@ export type RichContext = {
   sharedCss?: string
   blogPosts?: Array<{ title: string; content_html: string }>
   projectRules?: ProjectRules
+  /** Running design diary updated after every turn. Captures decisions, corrections, structure. */
+  sessionMemory?: string
 }
 
 export function buildContextPrompt(context: ProjectContext): string {
@@ -103,7 +105,7 @@ export function buildContextPrompt(context: ProjectContext): string {
  * Builds the full project context prompt including Design System, pages, blog tone.
  * The richer the input, the better the agent's output quality.
  */
-export function buildRichContextPrompt({ context, pages, designSystem, sharedCss, blogPosts, projectRules }: RichContext): string {
+export function buildRichContextPrompt({ context, pages, designSystem, sharedCss, blogPosts, projectRules, sessionMemory }: RichContext): string {
   if (!context || Object.keys(context).length === 0) return ''
 
   const parts: string[] = ['## CONTESTO PROGETTO (usa sempre queste informazioni):']
@@ -136,6 +138,12 @@ export function buildRichContextPrompt({ context, pages, designSystem, sharedCss
     } else if (logo.type === 'img') {
       parts.push(`- Logo: immagine URL "${logo.content}"`)
     }
+  }
+
+  // ── Session Memory (design diary — always read before pages) ──
+  if (sessionMemory && sessionMemory.trim().length > 50) {
+    parts.push(`\n## MEMORIA DI SESSIONE (decisioni prese, correzioni, struttura — leggi sempre):`)
+    parts.push(sessionMemory.trim())
   }
 
   // ── Pages list ──
@@ -190,4 +198,87 @@ export function buildRichContextPrompt({ context, pages, designSystem, sharedCss
   }
 
   return parts.join('\n')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session Memory Agent
+// Mantiene un documento markdown vivo con: decisioni di design, correzioni
+// ricevute, struttura del sito, vincoli negativi, stile/ispirazione.
+// Viene aggiornato in background dopo ogni turno dell'HTML Agent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SESSION_MEMORY_SYSTEM = `Sei un agente che mantiene il "diario di progetto" di un sito web in costruzione.
+Il diario è un documento markdown che cattura le decisioni reali prese durante la conversazione.
+
+STRUTTURA DEL DOCUMENTO (usa solo le sezioni rilevanti, non forzarle tutte):
+## Decisioni di Design
+Palette colori, font scelti, stile visivo (es: minimalista, dark, rounded), layout decisi.
+
+## Correzioni Ricevute
+Cosa l'utente ha chiesto di cambiare e come è stato risolto. Formato: "problema → soluzione".
+
+## Struttura del Sito
+Pagine create ✅, in corso 🔄, da fare ❌. Sezioni principali di ogni pagina.
+
+## Vincoli Negativi
+Cose che l'utente ha detto esplicitamente di NON volere.
+
+## Stile / Ispirazione
+Riferimenti visivi menzionati (es: "stile Linear.app", "come Stripe", "minimalista").
+
+REGOLE:
+- Aggiorna SOLO se l'ultimo exchange contiene informazioni nuove o correzioni.
+- Mantieni il documento CONCISO: max 700 token totali.
+- Aggiorna/sovrascrivi le informazioni obsolete — non duplicarle.
+- Se non ci sono nuove informazioni rilevanti, rispondi con la stringa esatta: NO_CHANGE
+- Rispondi SOLO con il documento markdown aggiornato oppure NO_CHANGE. Zero testo extra.`
+
+/**
+ * Aggiorna la session memory con le informazioni rilevanti dall'ultimo exchange.
+ * Chiamato in background (non-blocking) dopo ogni risposta dell'HTML Agent.
+ *
+ * @param messages  ultimi 10 messaggi (sufficiente contesto senza sprecare token)
+ * @param current   session memory attuale (stringa markdown, può essere vuota)
+ * @param apiKey    Anthropic API key
+ * @returns         documento markdown aggiornato, o null se niente è cambiato
+ */
+export async function runSessionMemoryAgent(
+  messages: { role: string; content: string }[],
+  current: string,
+  apiKey: string
+): Promise<string | null> {
+  // Ultimi 10 messaggi — abbastanza contesto, non eccessivo
+  const recentMessages = messages.slice(-10)
+
+  // Costruisci il messaggio per l'agente
+  // Tronca i messaggi dell'agente (contengono HTML/JSON verbose)
+  const formattedMessages = recentMessages.map(m => {
+    const isAgent = m.role === 'assistant'
+    const content = isAgent ? m.content.slice(0, 600) + (m.content.length > 600 ? '…[troncato]' : '') : m.content
+    return `[${m.role.toUpperCase()}]: ${content}`
+  }).join('\n\n---\n\n')
+
+  const userPrompt = `DOCUMENTO ATTUALE:
+${current?.trim() || '(vuoto — primo turno del progetto)'}
+
+ULTIMI MESSAGGI:
+${formattedMessages}
+
+Aggiorna il documento con le nuove informazioni rilevanti dall'ultimo exchange.`
+
+  const res = await callClaude(
+    'session-memory',
+    SESSION_MEMORY_SYSTEM,
+    [{ role: 'user', content: userPrompt }],
+    [],  // no tools — risposta testo diretto
+    apiKey
+  )
+  if (!res.ok) return null
+
+  const data = await res.json()
+  const text = data.content?.[0]?.text?.trim() ?? ''
+
+  if (!text || text === 'NO_CHANGE' || text.length < 30) return null
+
+  return text
 }

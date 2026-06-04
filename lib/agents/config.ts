@@ -95,6 +95,14 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
     temperature: 0,
     description: 'Estrae e aggiorna il contesto del progetto',
   },
+  'session-memory': {
+    // Haiku: task è semplice (leggi exchange recenti + aggiorna MD)
+    // Output: solo markdown ~600-800 tokens
+    model: 'claude-haiku-4-5-20251001',
+    maxTokens: 1200,
+    temperature: 0,
+    description: 'Mantiene la session memory MD del progetto',
+  },
 }
 
 export async function callClaude(
