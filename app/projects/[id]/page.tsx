@@ -5169,8 +5169,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         /blog
                       </button>
                       {blogPosts.map(post => {
-                        const isSelected = (viewMode === 'blog' && selectedPost?.id === post.id) || (viewMode === 'code' && activeCodeBlogPostId === post.id)
                         const postPath = post.categories?.[0] ? `blog/${slugify(post.categories[0])}/${post.slug}` : `blog/${post.slug}`
+                        const isSelected = (viewMode === 'blog' && selectedPost?.id === post.id) || (viewMode === 'code' && activeCodeBlogPostId === post.id) || (viewMode === 'preview' && previewIframePath === '/' + postPath)
                         return (
                           <button key={post.id} onClick={async () => {
                             setShowUrlDropdown(false)
@@ -5185,7 +5185,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               const res = await fetch(`/api/blog-posts/${post.id}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
                               const json = await res.json()
                               setCodeContent(prettifyHtml(json.post?.content_html ?? ''))
+                            } else if (viewMode === 'preview') {
+                              // In preview mode: navigate to article preview
+                              setPreviewIframePath('/' + postPath)
                             } else {
+                              // In other modes: open blog editor
                               setViewMode('blog'); setSelectedPost(post)
                             }
                           }}
