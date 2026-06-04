@@ -57,7 +57,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
       baseCss = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
       const dsImports = (sharedCss.match(/@import[^;]+;/gi) ?? []).join('\n')
-      dsBlock = `${dsImports}\n<style>${dsContent}</style>`
+      // Strip :where() global rules — they bleed into footer/nav.
+      const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
+      dsBlock = `${dsImports}\n<style>${scopedOnly}</style>`
     }
   }
   const siteStyle = baseCss
