@@ -76,7 +76,7 @@ export const BLOG_POST_CONTENT_CSS = `
     gap:6px;
     font-size:.82rem !important;
     font-weight:600 !important;
-    color:var(--color-accent,#2563eb) !important;
+    color:#b45309 !important;
     text-decoration:none !important;
     margin:0 0 1.4rem !important;
     padding:0 !important;
@@ -84,7 +84,7 @@ export const BLOG_POST_CONTENT_CSS = `
     border:none !important;
     line-height:1.3 !important;
   }
-  .blog-toc-back:hover{text-decoration:underline !important}
+  .blog-toc-back:hover{text-decoration:underline !important;color:#92400e !important}
   .blog-toc-title{
     font-size:.72rem !important;
     font-weight:700 !important;
@@ -99,7 +99,7 @@ export const BLOG_POST_CONTENT_CSS = `
     list-style:none !important;
     margin:0 !important;
     padding:0 !important;
-    border-left:2px solid #e8e4de !important;
+    border-left:2px solid #fde68a !important;
     display:block !important;
     background:transparent !important;
   }
@@ -125,11 +125,11 @@ export const BLOG_POST_CONTENT_CSS = `
     text-transform:none !important;
     letter-spacing:normal !important;
   }
-  .blog-toc-list a:hover{color:var(--color-accent,#2563eb) !important}
+  .blog-toc-list a:hover{color:#b45309 !important}
   .blog-toc-list a.toc-active{
-    color:var(--color-accent,#2563eb) !important;
+    color:#b45309 !important;
     font-weight:600 !important;
-    border-left-color:var(--color-accent,#2563eb) !important;
+    border-left-color:#f59e0b !important;
   }
   /* ── Content (centro) ───────────────────────────────────────────── */
   .blog-post-wrapper{min-width:0 !important;width:100% !important;max-width:none !important;margin:0 !important;padding:0 !important;background:transparent !important}
@@ -191,6 +191,35 @@ export const BLOG_POST_CONTENT_CSS = `
     display:inline !important;
   }
   /* ol marker size — inherits from li, no override needed */
+  /* ── Special blocks (class-only, no inline style) ───────────────── */
+  .blog-post-content .article-summary{
+    background:#fffbeb;border-left:4px solid #f59e0b;
+    border-radius:0 10px 10px 0;padding:14px 18px;margin:1.5rem 0;
+  }
+  .blog-post-content .article-summary p{margin:0 !important;color:#78350f;font-style:italic}
+  .blog-post-content .key-takeaways{
+    background:#fffbeb;border:1px solid #fde68a;
+    border-radius:10px;padding:16px 20px;margin:1.5rem 0;
+  }
+  .blog-post-content .key-takeaways strong{color:#92400e;display:block;margin-bottom:.5rem}
+  .blog-post-content .key-takeaways ul{margin:.5rem 0 0 !important;padding-left:1.2rem !important}
+  .blog-post-content .callout{
+    background:#fffbeb;border-left:4px solid #f59e0b;
+    border-radius:0 8px 8px 0;padding:12px 16px;margin:1.25rem 0;
+  }
+  .blog-post-content .callout strong{color:#92400e}
+  .blog-post-content .cta-box{
+    background:#92400e;color:#fff;
+    padding:28px 24px;margin:2rem 0;border-radius:14px;text-align:center;
+  }
+  .blog-post-content .cta-box h3{color:#fff !important;margin:0 0 8px !important;font-size:1.3rem}
+  .blog-post-content .cta-box p{margin:0 0 16px !important;opacity:.9;color:#fff}
+  .blog-post-content .cta-box a{
+    display:inline-block;background:#fff;color:#92400e;
+    padding:10px 26px;border-radius:50px;font-weight:700;text-decoration:none;
+    transition:opacity .15s;
+  }
+  .blog-post-content .cta-box a:hover{opacity:.88}
   .blog-post-content img{max-width:100% !important;height:auto !important;border-radius:10px !important;margin:1.75rem 0 !important;display:block}
   .blog-post-content a{color:var(--color-accent,#2563eb) !important;text-decoration:underline}
   .blog-post-content blockquote{border-left:4px solid var(--color-accent,#2563eb);margin:1.75rem 0;padding:.85rem 1.35rem;background:#f8f9ff;border-radius:0 8px 8px 0;font-style:italic;color:#444}
