@@ -163,10 +163,11 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-content h4{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem !important;color:#1a1a1a}
   /* p: margin stays !important (structural). font-size/line-height/color: NO !important.
      Note: span-level font-size overrides from editor still work (target child <span>). */
-  /* p and li: explicit identical font-size so they always match regardless of site CSS.
-     The DS (injected AFTER this block) overrides both with the user-configured value. */
+  /* p and li: same base font-size. DS (injected after this block) overrides both.
+     li span: force inherit so old inline font-size attributes are neutralised. */
   .blog-post-content p{font-size:1rem;line-height:1.7;margin:0 0 1.25rem !important;color:#1a1a1a}
   .blog-post-content li{font-size:1rem !important;margin-bottom:.45rem !important;line-height:1.7;color:#1a1a1a}
+  .blog-post-content li span,.blog-post-content li b,.blog-post-content li strong{font-size:inherit !important}
   /* ul: custom small bullet centred with text line */
   .blog-post-content ul{list-style:none !important;margin:0 0 1.35rem !important;padding-left:1.75rem !important}
   .blog-post-content ul>li{position:relative;padding-left:.05em}

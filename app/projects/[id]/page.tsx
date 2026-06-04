@@ -1592,7 +1592,7 @@ type TypoConfig = {
 }
 type DesignSystem = {
   h1: TypoConfig; h2: TypoConfig; h3: TypoConfig; h4: TypoConfig
-  h5: TypoConfig; h6: TypoConfig; p: TypoConfig; a: TypoConfig
+  h5: TypoConfig; h6: TypoConfig; p: TypoConfig; li: TypoConfig; a: TypoConfig
 }
 const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
   h1: { fontFamily: 'inherit', fontSize: '2.2rem',  fontWeight: '700', color: '#1a1a1a', lineHeight: '1.2',  letterSpacing: '-0.02em' },
@@ -1602,6 +1602,7 @@ const DEFAULT_DESIGN_SYSTEM: DesignSystem = {
   h5: { fontFamily: 'inherit', fontSize: '1rem',    fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
   h6: { fontFamily: 'inherit', fontSize: '0.9rem',  fontWeight: '600', color: '#374151', lineHeight: '1.4',  letterSpacing: '0' },
   p:  { fontFamily: 'inherit', fontSize: '0.95rem', fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
+  li: { fontFamily: 'inherit', fontSize: '0.95rem', fontWeight: '400', color: '#374151', lineHeight: '1.7',  letterSpacing: '0' },
   a:  { fontFamily: 'inherit', fontSize: 'inherit', fontWeight: '500', color: '#2563eb', lineHeight: 'inherit', letterSpacing: '0' },
 }
 
@@ -1626,13 +1627,14 @@ function generateDesignSystemCSS(ds: DesignSystem): { rules: string; fontFamilie
     if (!props.length) return ''
     // :where() — specificity 0 for site pages
     const base = `:where(${tag}){${props.join(';')}}`
-    // .blog-post-content selectors — same specificity as blog CSS, so DS wins in blog too
-    const blogTags = new Set(['h1','h2','h3','h4','h5','h6','p'])
+    // .blog-post-content selectors — same specificity as blog CSS so DS wins in blog too
+    const blogTags = new Set(['h1','h2','h3','h4','h5','h6','p','li'])
     const blogRule = blogTags.has(tag) ? `.blog-post-content ${tag}{${props.join(';')}}` : ''
-    const liRule   = tag === 'p'       ? `.blog-post-content li{${props.join(';')}}` : ''
-    return [base, blogRule, liRule].filter(Boolean).join('\n')
+    // li also targets span inside li to override old inline font-size remnants
+    const liSpanRule = tag === 'li' ? `.blog-post-content li span{font-size:inherit}` : ''
+    return [base, blogRule, liSpanRule].filter(Boolean).join('\n')
   }
-  const tags = ['h1','h2','h3','h4','h5','h6','p','a'] as const
+  const tags = ['h1','h2','h3','h4','h5','h6','p','li','a'] as const
   const cssRules = tags.map(t => rule(t, ds[t])).filter(Boolean).join('\n')
   return { rules: cssRules, fontFamilies: [...googleFonts] }
 }
@@ -8070,18 +8072,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </div>
 
               {/* Rows */}
-              {(['h1','h2','h3','h4','h5','h6','p','a'] as const).map(tag => {
+              {(['h1','h2','h3','h4','h5','h6','p','li','a'] as const).map(tag => {
                 const cfg = designSystem[tag]
                 const update = (key: keyof TypoConfig, val: string) =>
                   setDesignSystem(prev => ({ ...prev, [tag]: { ...prev[tag], [key]: val } }))
                 const labelMap: Record<string, string> = {
                   h1: 'H1 — Titolo principale', h2: 'H2 — Secondario', h3: 'H3 — Terziario',
-                  h4: 'H4', h5: 'H5', h6: 'H6', p: 'P — Paragrafo', a: 'A — Link',
+                  h4: 'H4', h5: 'H5', h6: 'H6', p: 'P — Paragrafo', li: 'LI — Elenco puntato', a: 'A — Link',
                 }
                 const previewText: Record<string, string> = {
                   h1: 'Titolo principale', h2: 'Titolo secondario', h3: 'Titolo terziario',
                   h4: 'Titolo 4', h5: 'Titolo 5', h6: 'Titolo 6',
                   p: 'Testo del paragrafo: questo è un esempio di corpo del testo con le impostazioni scelte.',
+                  li: '• Elemento elenco puntato — stessa dimensione del paragrafo',
                   a: 'Questo è un link di esempio',
                 }
                 const controlStyle: React.CSSProperties = { height: '28px', padding: '0 6px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: '0.75rem', fontFamily: 'inherit', background: C.white, color: C.text, width: '100%' }
