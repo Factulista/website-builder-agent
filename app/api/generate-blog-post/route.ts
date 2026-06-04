@@ -108,25 +108,32 @@ Contesto del sito:
     ? `\n\nTONO DI VOCE — prendi spunto da questi articoli già pubblicati per replicare lo stesso stile, registro e lunghezza delle frasi:\n${toneOfVoice}`
     : ''
 
+  // Blocks use only class names — NO inline style. CSS is handled by the platform.
   const structureBlocks: string[] = []
   structureBlocks.push(`<h1>[titolo con keyword primaria]</h1>`)
   structureBlocks.push(`<p>[intro: definizione chiara + keyword primaria nel primo paragrafo]</p>`)
-  if (f.summary) structureBlocks.push(`<div class="article-summary" style="background:#f8f9fa;border-left:4px solid #2563eb;padding:16px 20px;margin:20px 0;border-radius:0 8px 8px 0"><strong>In breve:</strong><p>[2-3 frasi che riassumono l'articolo — favorisce Google AI Overview]</p></div>`)
-  if (f.takeaways) structureBlocks.push(`<div class="key-takeaways" style="background:#eff6ff;border:1px solid #bfdbfe;padding:16px 20px;margin:20px 0;border-radius:8px"><strong>💡 Punti chiave</strong><ul>[3-5 punti chiave dell'articolo, brevi e diretti]</ul></div>`)
+  if (f.summary)   structureBlocks.push(`<div class="article-summary"><strong>In breve:</strong><p>[2-3 frasi che riassumono l'articolo — favorisce Google AI Overview]</p></div>`)
+  if (f.takeaways) structureBlocks.push(`<div class="key-takeaways"><strong>💡 Punti chiave</strong><ul>[3-5 punti chiave, brevi e diretti]</ul></div>`)
   structureBlocks.push(`\n[${paragraphCount} sezioni H2 principali, ognuna con 2-3 <p> e keyword pertinenti]`)
-  if (f.table) structureBlocks.push(`[includi almeno una <table> con intestazioni <th> in una delle sezioni dove più utile]`)
-  if (f.callout) structureBlocks.push(`[includi 1-2 callout box: <div class="callout" style="background:#fef9c3;border-left:4px solid #eab308;padding:12px 16px;margin:16px 0;border-radius:0 8px 8px 0"><strong>📌 Da sapere:</strong> [concetto chiave]</div>]`)
-  if (f.stats) structureBlocks.push(`[includi 2-3 dati/statistiche concrete con fonte generica es. "Secondo uno studio del 2024..." — usa <strong> per i numeri]`)
-  if (f.faq) structureBlocks.push(`<h2>Domande frequenti su [topic]</h2>\n[3-4 domande come <h3> con risposta in <p> — risposte autonome e complete per AI Overview]`)
+  if (f.table)   structureBlocks.push(`[includi almeno una <table> con intestazioni <th>]`)
+  if (f.callout) structureBlocks.push(`[includi 1-2 callout: <div class="callout"><strong>📌 Da sapere:</strong> [concetto chiave]</div>]`)
+  if (f.stats)   structureBlocks.push(`[includi 2-3 dati/statistiche concrete — usa <strong> per i numeri]`)
+  if (f.faq)     structureBlocks.push(`<h2>Domande frequenti su [topic]</h2>\n[3-4 domande come <h3> con risposta in <p>]`)
   structureBlocks.push(`<h2>Conclusione</h2>\n<p>[sintesi con keyword primaria]</p>`)
-  if (f.cta) structureBlocks.push(`<div class="cta-box" style="background:#1e40af;color:#fff;padding:24px;margin:24px 0;border-radius:12px;text-align:center"><h3 style="color:#fff;margin:0 0 8px">[headline CTA]</h3><p style="margin:0 0 16px;opacity:0.9">[sottotitolo CTA]</p><a href="#" style="background:#fff;color:#1e40af;padding:10px 24px;border-radius:6px;font-weight:700;text-decoration:none">[testo bottone]</a></div>`)
+  if (f.cta) structureBlocks.push(`<div class="cta-box"><h3>[headline CTA]</h3><p>[sottotitolo CTA]</p><a href="#">[testo bottone]</a></div>`)
 
   const system = `Sei un esperto copywriter, SEO specialist e GEO (Generative Engine Optimization) specialist.
 Scrivi articoli di blog professionali, ottimizzati per Google e per i motori AI (ChatGPT, Perplexity, Google AI Overview).
 Rispondi SEMPRE in ${langLabel}.
 Rispondi SOLO con JSON valido, senza markdown o testo extra.
 
-REGOLA HTML FONDAMENTALE: NON usare mai attributi style="" inline nei tag. Il sito ha un Design System CSS globale che applica automaticamente font, colori e dimensioni ai tag semantici (h1, h2, h3, p, ul, li, ecc.). Usa solo tag semantici puri senza alcun attributo style.
+REGOLA ASSOLUTA — HTML SEMANTICO PURO:
+- ZERO attributi style="" in qualsiasi tag. Mai. Nemmeno uno.
+- ZERO attributi font, color, size, face, class con valori di stile.
+- Usa SOLO tag semantici: h1 h2 h3 h4 p ul ol li strong em blockquote table thead tbody tr th td div.
+- Per i blocchi speciali usa SOLO l'attributo class (es. class="article-summary") senza style.
+- Il Design System CSS della piattaforma gestisce TUTTO: font, colori, dimensioni, spaziatura.
+- Un articolo con style="" inline è SBAGLIATO e inutilizzabile.
 ${businessCtx}${toneSection}`
 
   const userMessage = `Scrivi un articolo di blog su: "${topic}"
@@ -235,11 +242,24 @@ Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro
           }
         }
 
-        // Parse final JSON
+        // Parse final JSON + sanitize: strip any inline style/font attrs the AI smuggled in
         try {
           const jsonMatch = currentJson.match(/\{[\s\S]*\}/)
           if (!jsonMatch) throw new Error('No JSON found')
           const post = JSON.parse(jsonMatch[0])
+          if (typeof post.content_html === 'string') {
+            post.content_html = post.content_html
+              // Remove ALL style="" attributes
+              .replace(/\s*style="[^"]*"/gi, '')
+              // Remove font face/size/color HTML4 attrs
+              .replace(/\s*(?:face|color|size)="[^"]*"/gi, '')
+              // Unwrap <font> tags
+              .replace(/<font[^>]*>([\s\S]*?)<\/font>/gi, '$1')
+              // Remove empty class attributes
+              .replace(/\s*class=""/gi, '')
+              // Fix &quot; inside remaining attrs
+              .replace(/&quot;/g, '"')
+          }
           controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({ post })}\n\n`))
         } catch (e) {
           controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'JSON parse failed' })}\n\n`))
