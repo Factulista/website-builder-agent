@@ -5169,10 +5169,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         /blog
                       </button>
                       {blogPosts.map(post => {
-                        const isSelected = viewMode === 'blog' && selectedPost?.id === post.id
+                        const isSelected = (viewMode === 'blog' && selectedPost?.id === post.id) || (viewMode === 'code' && activeCodeBlogPostId === post.id)
                         const postPath = post.categories?.[0] ? `blog/${slugify(post.categories[0])}/${post.slug}` : `blog/${post.slug}`
                         return (
-                          <button key={post.id} onClick={() => { setViewMode('blog'); setSelectedPost(post); setShowUrlDropdown(false) }}
+                          <button key={post.id} onClick={async () => {
+                            setShowUrlDropdown(false)
+                            if (viewMode === 'code') {
+                              // In code editor: load article HTML directly
+                              setActiveCodeBlogPostId(post.id)
+                              setActiveCodeBlogPostTitle(post.title)
+                              setCodeSaving('idle')
+                              const { data: { session } } = await supabase.auth.getSession()
+                              const token = session?.access_token
+                              if (!token) return
+                              const res = await fetch(`/api/blog-posts/${post.id}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+                              const json = await res.json()
+                              setCodeContent(prettifyHtml(json.post?.content_html ?? ''))
+                            } else {
+                              setViewMode('blog'); setSelectedPost(post)
+                            }
+                          }}
                             style={{
                               display: 'block', width: '100%', textAlign: 'left',
                               padding: '7px 12px', border: 'none',
