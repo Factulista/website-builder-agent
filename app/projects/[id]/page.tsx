@@ -7032,6 +7032,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </button>
                     </div>
                     <div style={{ flex: 1 }} />
+                    {blogPosts.length > 0 && (
+                      <button
+                        title="Rimuovi font-family e altri stili inline ridondanti dagli articoli esistenti (il Design System li applica già globalmente)"
+                        onClick={async () => {
+                          const ok = await confirmDialog({ title: 'Pulizia stili inline', message: `Rimuovi font-family e stili tipografici inline ridondanti da ${blogPosts.length} articoli?\n\nNon cambia il contenuto, solo l'HTML.`, confirmLabel: 'Pulisci', variant: 'default' })
+                          if (!ok) return
+                          const { data: { session } } = await supabase.auth.getSession()
+                          const token = session?.access_token
+                          if (!token) return
+                          const res = await fetch('/api/blog-posts/cleanup-styles', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ projectId: id }),
+                          })
+                          const json = await res.json()
+                          await alertDialog({ title: 'Pulizia completata', message: `${json.updated} articoli su ${json.total} aggiornati.`, variant: 'default' })
+                        }}
+                        style={{ background: 'transparent', color: C.textFaint, border: `1px solid ${C.border}`, padding: '6px 10px', borderRadius: '7px', fontWeight: 500, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                      >🧹 Pulisci stili</button>
+                    )}
                     <button
                       onClick={() => setShowBlogGenPrompt(v => !v)}
                       style={{ background: 'transparent', color: C.blue, border: `1px solid ${C.blue}`, padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
