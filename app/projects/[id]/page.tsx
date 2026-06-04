@@ -1930,6 +1930,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mediaSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestPagesRef = useRef<Page[]>([])
   // Track slugs explicitly deleted in this session so the merge doesn't bring them back
@@ -3382,11 +3383,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (updatedPages !== pages) setPages(updatedPages)
       }
     }
-    // Debounce save
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
-    autoSaveTimer.current = setTimeout(() => {
+    // Persist media meta immediately (short debounce to batch rapid field edits)
+    // Don't share the page autosave timer — media meta must save independently
+    if (mediaSaveTimer.current) clearTimeout(mediaSaveTimer.current)
+    mediaSaveTimer.current = setTimeout(() => {
       saveState(messages, latestPagesRef.current, versions, updated)
-    }, 1000)
+    }, 600)
   }
 
   const deleteMedia = async (item: MediaItem) => {
