@@ -13,6 +13,8 @@ const C = {
   blue: '#2563eb',
 }
 
+type BlogPostMini = { id: string; title: string; status: 'draft' | 'published' }
+
 export function EditorSidebar({
   pages,
   activeSlug,
@@ -20,6 +22,9 @@ export function EditorSidebar({
   hasBlog,
   isBlogActive,
   onBlogSelect,
+  blogPosts = [],
+  activeBlogPostId,
+  onBlogPostSelect,
 }: {
   pages: Page[]
   activeSlug: string
@@ -27,6 +32,9 @@ export function EditorSidebar({
   hasBlog?: boolean
   isBlogActive?: boolean
   onBlogSelect?: () => void
+  blogPosts?: BlogPostMini[]
+  activeBlogPostId?: string | null
+  onBlogPostSelect?: (id: string, title: string) => void
 }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['pages']))
 
@@ -36,6 +44,9 @@ export function EditorSidebar({
     else newSet.add(section)
     setExpandedSections(newSet)
   }
+
+  const isPageActive = !activeBlogPostId
+  const isBlogPostActive = (id: string) => activeBlogPostId === id
 
   return (
     <div style={{
@@ -56,6 +67,8 @@ export function EditorSidebar({
 
       {/* Pages list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
+
+        {/* — Pagine section — */}
         <div style={{ marginBottom: '4px' }}>
           <button
             onClick={() => toggleSection('pages')}
@@ -77,16 +90,16 @@ export function EditorSidebar({
                     width: 'calc(100% - 8px)',
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '6px 8px', margin: '2px 0',
-                    background: !isBlogActive && page.slug === activeSlug ? C.blue : 'transparent',
-                    border: `1px solid ${!isBlogActive && page.slug === activeSlug ? C.blue : 'transparent'}`,
+                    background: isPageActive && !isBlogActive && page.slug === activeSlug ? C.blue : 'transparent',
+                    border: `1px solid ${isPageActive && !isBlogActive && page.slug === activeSlug ? C.blue : 'transparent'}`,
                     borderRadius: '6px', cursor: 'pointer',
-                    color: !isBlogActive && page.slug === activeSlug ? 'white' : C.text,
-                    fontSize: '0.8rem', fontWeight: !isBlogActive && page.slug === activeSlug ? 600 : 400,
+                    color: isPageActive && !isBlogActive && page.slug === activeSlug ? 'white' : C.text,
+                    fontSize: '0.8rem', fontWeight: isPageActive && !isBlogActive && page.slug === activeSlug ? 600 : 400,
                     fontFamily: 'inherit', textAlign: 'left',
                     transition: 'background 0.12s, color 0.12s',
                   }}
-                  onMouseEnter={(e) => { if (isBlogActive || page.slug !== activeSlug) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
-                  onMouseLeave={(e) => { if (isBlogActive || page.slug !== activeSlug) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                  onMouseEnter={(e) => { if (isBlogActive || page.slug !== activeSlug || activeBlogPostId) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+                  onMouseLeave={(e) => { if (isBlogActive || page.slug !== activeSlug || activeBlogPostId) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                   title={page.name}
                 >
                   <span style={{ fontSize: '0.75rem' }}>📄</span>
@@ -130,9 +143,55 @@ export function EditorSidebar({
           )}
         </div>
 
+        {/* — Articoli Blog section — */}
+        {blogPosts.length > 0 && onBlogPostSelect && (
+          <div style={{ marginBottom: '4px', marginTop: '8px' }}>
+            <button
+              onClick={() => toggleSection('blog-posts')}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: C.textMuted, fontSize: '0.8rem', fontWeight: 600, fontFamily: 'inherit', textAlign: 'left' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <span style={{ fontSize: '0.7rem' }}>{expandedSections.has('blog-posts') ? '▼' : '▶'}</span>
+              <span>Articoli ({blogPosts.length})</span>
+            </button>
+
+            {expandedSections.has('blog-posts') && (
+              <div style={{ marginLeft: '12px' }}>
+                {blogPosts.map((post) => (
+                  <button
+                    key={post.id}
+                    onClick={() => onBlogPostSelect(post.id, post.title)}
+                    style={{
+                      width: 'calc(100% - 8px)',
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '6px 8px', margin: '2px 0',
+                      background: isBlogPostActive(post.id) ? C.blue : 'transparent',
+                      border: `1px solid ${isBlogPostActive(post.id) ? C.blue : 'transparent'}`,
+                      borderRadius: '6px', cursor: 'pointer',
+                      color: isBlogPostActive(post.id) ? 'white' : C.text,
+                      fontSize: '0.8rem', fontWeight: isBlogPostActive(post.id) ? 600 : 400,
+                      fontFamily: 'inherit', textAlign: 'left',
+                      transition: 'background 0.12s, color 0.12s',
+                    }}
+                    onMouseEnter={(e) => { if (!isBlogPostActive(post.id)) (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)' }}
+                    onMouseLeave={(e) => { if (!isBlogPostActive(post.id)) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                    title={post.title}
+                  >
+                    <span style={{ fontSize: '0.75rem' }}>{post.status === 'published' ? '✅' : '📋'}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {post.title}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(0,0,0,0.02)', borderRadius: '6px', borderLeft: `2px solid ${C.blue}` }}>
           <p style={{ margin: 0, fontSize: '0.7rem', color: C.textFaint, lineHeight: '1.4' }}>
-            Clicca su una pagina per editarla nel pannello a destra
+            Clicca su una pagina o articolo per editarlo nel pannello a destra
           </p>
         </div>
       </div>

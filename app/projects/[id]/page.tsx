@@ -1795,6 +1795,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [showPaywall, setShowPaywall] = useState(false)
   const [mediaUrlCopied, setMediaUrlCopied] = useState(false)
   const [codeContent, setCodeContent] = useState('')
+  const [activeCodeBlogPostId, setActiveCodeBlogPostId] = useState<string | null>(null)
+  const [activeCodeBlogPostTitle, setActiveCodeBlogPostTitle] = useState<string>('')
   const [versions, setVersions] = useState<Version[]>([])
   const [showVersionHistory, setShowVersionHistory] = useState(false)
   const [hoveredVersionId, setHoveredVersionId] = useState<string | null>(null)
@@ -2302,7 +2304,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }, [blogSidebarBannerUrl, blogSidebarBannerLink])
 
   useEffect(() => {
-    if (viewMode === 'code' && activePage) {
+    if (viewMode === 'code' && activePage && !activeCodeBlogPostId) {
       setCodeContent(activePage.html)
       setCodeSaving('idle')
     }
@@ -6254,13 +6256,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               />
             </div>
           </div>
-        ) : viewMode === 'code' && activePage ? (
+        ) : viewMode === 'code' ? (
           /* Code editor with sidebar */
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: '#1e1e1e' }}>
             <EditorSidebar
               pages={pages}
               activeSlug={activeSlug}
               onPageSelect={(slug) => {
+                setActiveCodeBlogPostId(null)
                 setActiveSlug(slug)
                 setCodeContent(pages.find(p => p.slug === slug)?.html ?? '')
                 setCodeSaving('idle')
@@ -6268,37 +6271,84 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               hasBlog={hasBlogNavLink(pages) || blogPosts.length > 0}
               isBlogActive={false}
               onBlogSelect={() => setViewMode('blog')}
+              blogPosts={blogPosts.map(p => ({ id: p.id, title: p.title, status: p.status }))}
+              activeBlogPostId={activeCodeBlogPostId}
+              onBlogPostSelect={async (postId, title) => {
+                setCodeSaving('idle')
+                setActiveCodeBlogPostId(postId)
+                setActiveCodeBlogPostTitle(title)
+                // Fetch fresh content_html
+                const { data: { session } } = await supabase.auth.getSession()
+                const token = session?.access_token
+                if (!token) return
+                const res = await fetch(`/api/blog-posts/${postId}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+                const json = await res.json()
+                setCodeContent(json.post?.content_html ?? '')
+              }}
             />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #3e3e3e', flexShrink: 0, background: '#2d2d2d' }}>
-                <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace' }}>{activePage.slug}.html</span>
+                {activeCodeBlogPostId
+                  ? <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace' }}>blog/{activeCodeBlogPostTitle || activeCodeBlogPostId}.html <span style={{ color: '#4b9eff', marginLeft: '8px' }}>content_html</span></span>
+                  : <span style={{ fontSize: '0.75rem', color: '#858585', fontFamily: 'monospace' }}>{activePage?.slug ?? ''}.html</span>
+                }
               </div>
               <HtmlCodeEditor
                 content={codeContent}
-                onChange={(val) => {
+                onChange={async (val) => {
                   setCodeContent(val)
                   setCodeSaving('idle')
-                  // Immediately update pages so Preview and Text view stay in sync
-                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
-                  setPages(newPages)
-                  // Debounce only the DB save
                   if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current)
-                  codeAutoSaveTimer.current = setTimeout(async () => {
-                    setCodeSaving('saving')
-                    const curPages = latestPagesRef.current
-                    void createVersion('Modifica HTML manuale', curPages)
-                    await saveState(messages, curPages)
-                    setCodeSaving('saved')
-                    setTimeout(() => setCodeSaving('idle'), 2000)
-                  }, 2000)
+                  if (activeCodeBlogPostId) {
+                    // Blog post: debounce PATCH to blog-posts API
+                    const postId = activeCodeBlogPostId
+                    codeAutoSaveTimer.current = setTimeout(async () => {
+                      setCodeSaving('saving')
+                      const { data: { session } } = await supabase.auth.getSession()
+                      const token = session?.access_token
+                      if (!token) return
+                      await fetch(`/api/blog-posts/${postId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ content_html: val }),
+                      })
+                      setCodeSaving('saved')
+                      setTimeout(() => setCodeSaving('idle'), 2000)
+                    }, 2000)
+                  } else {
+                    // Regular page: update pages state + debounce saveState
+                    if (!activePage) return
+                    const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
+                    setPages(newPages)
+                    codeAutoSaveTimer.current = setTimeout(async () => {
+                      setCodeSaving('saving')
+                      const curPages = latestPagesRef.current
+                      void createVersion('Modifica HTML manuale', curPages)
+                      await saveState(messages, curPages)
+                      setCodeSaving('saved')
+                      setTimeout(() => setCodeSaving('idle'), 2000)
+                    }, 2000)
+                  }
                 }}
                 onSave={async (content) => {
                   setCodeSaving('saving')
-                  const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: content } : p)
-                  setPages(newPages)
-                  latestPagesRef.current = newPages
-                  void createVersion('Modifica HTML manuale', newPages)
-                  await saveState(messages, newPages)
+                  if (activeCodeBlogPostId) {
+                    const { data: { session } } = await supabase.auth.getSession()
+                    const token = session?.access_token
+                    if (!token) return
+                    await fetch(`/api/blog-posts/${activeCodeBlogPostId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ content_html: content }),
+                    })
+                  } else {
+                    if (!activePage) return
+                    const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: content } : p)
+                    setPages(newPages)
+                    latestPagesRef.current = newPages
+                    void createVersion('Modifica HTML manuale', newPages)
+                    await saveState(messages, newPages)
+                  }
                   setCodeSaving('saved')
                   setTimeout(() => setCodeSaving('idle'), 2000)
                 }}
