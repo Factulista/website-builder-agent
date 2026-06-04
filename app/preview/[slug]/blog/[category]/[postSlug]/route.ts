@@ -59,7 +59,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       const dsImports = (sharedCss.match(/@import[^;]+;/gi) ?? []).join('\n')
       // Strip :where() global rules — they bleed into footer/nav.
       const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
-      dsBlock = `${dsImports}\n<style>${scopedOnly}</style>`
+      dsBlock = `<style>${dsImports}
+${scopedOnly}</style>`
     }
   }
   const siteStyle = baseCss

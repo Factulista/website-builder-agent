@@ -71,7 +71,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
         .split('\n')
         .filter(l => !l.trim().startsWith(':where('))
         .join('\n')
-      dsBlock = `${dsImports}\n<style>${scopedOnly}</style>`
+      dsBlock = `<style>${dsImports}
+${scopedOnly}</style>`
     }
   }
   const siteStyle = baseCss
