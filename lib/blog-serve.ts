@@ -314,17 +314,22 @@ function buildTocFromContent(contentHtml: string): {
 } {
   let counter = 0
   const tocItems: { id: string; text: string }[] = []
+  const decodeEntities = (s: string) => s
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/\s+/g, ' ').trim()
+
   const contentWithIds = contentHtml.replace(/<h2([^>]*)>([\s\S]*?)<\/h2>/gi, (_, attrs, inner) => {
-    // Don't add duplicate id if one already exists
+    const text = decodeEntities(inner.replace(/<[^>]+>/g, ''))
     if (/\bid=/.test(attrs)) {
       const existingId = attrs.match(/\bid=["']([^"']+)["']/)?.[1]
       if (existingId) {
-        tocItems.push({ id: existingId, text: inner.replace(/<[^>]+>/g, '').trim() })
+        tocItems.push({ id: existingId, text })
         return `<h2${attrs}>${inner}</h2>`
       }
     }
     const id = `s${counter++}`
-    tocItems.push({ id, text: inner.replace(/<[^>]+>/g, '').trim() })
+    tocItems.push({ id, text })
     return `<h2${attrs} id="${id}">${inner}</h2>`
   })
   return { contentWithIds, tocItems }

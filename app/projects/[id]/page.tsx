@@ -6907,13 +6907,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 }
                 return ''
               })()
+              // Extract scoped DS rules from shared_css (font-family, sizes, colors for .blog-post-content)
+              const sharedCssVal = sharedCssRef.current ?? ''
+              const DS_START = '/* fact-design-system:start */'
+              const DS_END   = '/* fact-design-system:end */'
+              const dsStartIdx = sharedCssVal.indexOf(DS_START)
+              const dsEndIdx   = sharedCssVal.indexOf(DS_END)
+              let dsBlockForEditor = ''
+              if (dsStartIdx !== -1 && dsEndIdx !== -1) {
+                const dsContent = sharedCssVal.slice(dsStartIdx, dsEndIdx + DS_END.length)
+                // Only scoped .blog-post-content rules, no :where() globals that could break editor
+                const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
+                dsBlockForEditor = `<style>${scopedOnly}</style>`
+              }
               const siteStyleBlocks = [fontLinks, rootVars ? `<style>${rootVars}</style>` : ''].join('\n')
               setBlogEditorSiteStyles(siteStyleBlocks)
               // Editor-only overrides: live blog renders inside a grid layout that provides
               // horizontal padding; the editor doesn't, so add it here to keep list markers
               // (bullets/numbers) visible inside the iframe.
               const editorOnlyCss = `body{margin:0!important}.blog-post-wrapper{padding:1.5rem 2rem 3rem!important;max-width:760px!important;margin:0 auto!important}`
-              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style><style>${editorOnlyCss}</style></head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
+              // DS block comes LAST so it wins over BLOG_POST_CONTENT_CSS (same specificity, source order)
+              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style><style>${editorOnlyCss}</style>${dsBlockForEditor}</head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
               setBlogEditorSrcDoc(editorHtml)
               blogBaseHtmlRef.current = editorHtml
               // Initialise undo history with the loaded content as the first snapshot
