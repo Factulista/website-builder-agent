@@ -143,3 +143,4 @@ vite.config.ts.timestamp-*
 .vite/
 scripts/_blog-editor-test.html
 .vercel
+.env*
