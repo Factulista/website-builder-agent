@@ -3229,6 +3229,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }, [id, projectContext])
 
   useEffect(() => {
+    // Always load blog posts on first render so the URL dropdown shows articles
+    // in preview/edit/code modes without needing to switch to blog mode first
+    if (blogPosts.length === 0) loadBlogPosts()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (viewMode !== 'blog' && viewMode !== 'code') return
     if (viewMode === 'blog') {
       supabase.auth.getSession().then(({ data: { session } }) => {
