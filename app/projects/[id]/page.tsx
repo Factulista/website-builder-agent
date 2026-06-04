@@ -3173,14 +3173,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }, [id, projectContext])
 
   useEffect(() => {
-    if (viewMode !== 'blog') return
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const meta = session.user.user_metadata ?? {}
-        setUserFullName([meta.first_name, meta.last_name].filter(Boolean).join(' ') || session.user.email?.split('@')[0] || '')
-      }
-    })
-    loadBlogPosts()
+    if (viewMode !== 'blog' && viewMode !== 'code') return
+    if (viewMode === 'blog') {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          const meta = session.user.user_metadata ?? {}
+          setUserFullName([meta.first_name, meta.last_name].filter(Boolean).join(' ') || session.user.email?.split('@')[0] || '')
+        }
+      })
+    }
+    if (blogPosts.length === 0) loadBlogPosts()
     // Auto-aggiungi link Blog al menu se non presente
     if (pages.length > 0 && !hasBlogNavLink(pages)) {
       const lang = projectContext.language ?? 'it'
