@@ -136,20 +136,24 @@ export const BLOG_POST_CONTENT_CSS = `
   .blog-post-header{margin:0 0 2rem !important;padding:0 !important}
   .blog-post-meta{font-size:.78rem;color:#888;margin-bottom:.7rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .blog-tag{background:#f3f4f6;color:#374151;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:600}
-  .blog-post-header h1{font-size:2.4rem !important;font-weight:800 !important;line-height:1.2 !important;margin:0 0 .85rem !important;color:#1a1a1a !important}
+  /* .blog-post-header h1: margin/layout stay !important (structural).
+     font-size/weight/color/line-height: NO !important → Design System can override via :where() + sharedCss */
+  .blog-post-header h1{font-size:2.4rem;font-weight:800;line-height:1.2;margin:0 0 .85rem !important;color:#1a1a1a}
   .blog-post-excerpt{font-size:1.1rem !important;color:#555 !important;line-height:1.6 !important;margin:0 !important;font-weight:400 !important}
   .post-featured-img{width:100% !important;border-radius:14px !important;margin:1.75rem 0 2.25rem !important;max-height:460px !important;object-fit:cover !important;display:block !important}
   .blog-post-content{font-size:1.05rem;line-height:1.8;color:#1a1a1a}
-  .blog-post-content h1{font-size:2rem !important;font-weight:800 !important;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.25 !important}
-  .blog-post-content h2{font-size:1.6rem !important;font-weight:700 !important;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.3 !important}
-  .blog-post-content h3{font-size:1.25rem !important;font-weight:600 !important;margin:2rem 0 .6rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a !important;line-height:1.35 !important}
-  .blog-post-content h4{font-size:1.05rem !important;font-weight:600 !important;margin:1.5rem 0 .5rem !important;color:#1a1a1a !important}
-  /* font-size + line-height on p with !important overrides any inline style="font-size:Xpt"
-     baked in from old editing sessions. Span-level overrides (from the font size picker)
-     still work because they target a child <span>, not the <p> itself. */
-  .blog-post-content p{font-size:1rem !important;line-height:1.7 !important;margin:0 0 1.25rem !important;color:#1a1a1a}
+  /* h1-h4: margin + scroll-margin stay !important (structural/UX).
+     font-size, font-weight, color, line-height: NO !important → Design System wins */
+  .blog-post-content h1{font-size:2rem;font-weight:800;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a;line-height:1.25}
+  .blog-post-content h2{font-size:1.6rem;font-weight:700;margin:2.75rem 0 .85rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a;line-height:1.3}
+  .blog-post-content h3{font-size:1.25rem;font-weight:600;margin:2rem 0 .6rem !important;scroll-margin-top:5.5rem !important;color:#1a1a1a;line-height:1.35}
+  .blog-post-content h4{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem !important;color:#1a1a1a}
+  /* p: margin stays !important (structural). font-size/line-height/color: NO !important.
+     Note: span-level font-size overrides from editor still work (target child <span>). */
+  .blog-post-content p{font-size:1rem;line-height:1.7;margin:0 0 1.25rem !important;color:#1a1a1a}
   .blog-post-content ul,.blog-post-content ol{margin:0 0 1.35rem !important;padding-left:1.5rem !important}
-  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7 !important;font-size:1rem !important;color:#1a1a1a}
+  /* li: margin stays !important. font-size/line-height/color: NO !important → DS wins */
+  .blog-post-content li{margin-bottom:.45rem !important;line-height:1.7;font-size:1rem;color:#1a1a1a}
   /* When browsers apply insertUnorderedList/insertOrderedList on block content
      they often wrap it as <li><p>text</p></li> or <li><h1>text</h1></li>.
      JS unwraps these on creation, but this CSS is a safety net for saved content.

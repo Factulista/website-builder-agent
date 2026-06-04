@@ -3193,8 +3193,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     latestPagesRef.current = updatedPages
     const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
     const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+
+    // Merge Design System CSS into shared_css so blog posts inherit it too.
+    // We strip any previous DS block (between the sentinel comments) and append fresh.
+    const dsCSS = generateDesignSystemCSS(ds)
+    const existingSharedCss = (typeof currentConfig.shared_css === 'string' ? currentConfig.shared_css : '') as string
+    const DS_START = '/* fact-design-system:start */'
+    const DS_END   = '/* fact-design-system:end */'
+    const stripped = existingSharedCss.replace(new RegExp(`${DS_START}[\\s\\S]*?${DS_END}`, 'g'), '').trim()
+    const newSharedCss = dsCSS.trim()
+      ? `${stripped}\n${DS_START}\n${dsCSS}\n${DS_END}`.trim()
+      : stripped
+
     await supabase.from('projects').update({
-      site_config: { ...currentConfig, pages: updatedPages, designSystem: ds },
+      site_config: { ...currentConfig, pages: updatedPages, designSystem: ds, shared_css: newSharedCss },
       updated_at: new Date().toISOString(),
     }).eq('id', id)
     setDesignSaving('saved')

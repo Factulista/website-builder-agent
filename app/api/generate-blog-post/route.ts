@@ -125,6 +125,8 @@ Contesto del sito:
 Scrivi articoli di blog professionali, ottimizzati per Google e per i motori AI (ChatGPT, Perplexity, Google AI Overview).
 Rispondi SEMPRE in ${langLabel}.
 Rispondi SOLO con JSON valido, senza markdown o testo extra.
+
+REGOLA HTML FONDAMENTALE: NON usare mai attributi style="" inline nei tag. Il sito ha un Design System CSS globale che applica automaticamente font, colori e dimensioni ai tag semantici (h1, h2, h3, p, ul, li, ecc.). Usa solo tag semantici puri senza alcun attributo style.
 ${businessCtx}${toneSection}`
 
   const userMessage = `Scrivi un articolo di blog su: "${topic}"
