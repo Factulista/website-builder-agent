@@ -1349,18 +1349,18 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
   // Rationale: Haiku produces functionally correct but visually generic sites.
   // Sonnet has the design reasoning needed to translate "gioielleria italiana" into
   // an actual visual identity (palette, typography, spacing, hero layout).
+  // NOTE: claude-sonnet-4-6 is disabled until org billing is upgraded to a higher tier.
+  // Org limit for sonnet-4-6 is 30k input tokens/min — a single request with 10 pages
+  // of full HTML context exceeds this. Sonnet 4.5 has a separate, higher rate limit.
+  // TODO: re-enable sonnet-4-6 for create_site once tier is upgraded.
   const model = (() => {
-    if (hasImages)       return 'claude-sonnet-4-5-20250929' // vision: Sonnet 4.5 (separate rate pool from 4.6)
-    if (isCreationTask)  return 'claude-sonnet-4-6'          // create_site / add_page: design reasoning
-    return 'claude-haiku-4-5-20251001'                       // edit_page (micro or standard): Haiku, fast
+    if (hasImages)      return 'claude-sonnet-4-5-20250929'  // vision
+    if (isCreationTask) return 'claude-sonnet-4-5-20250929'  // create_site / add_page
+    return 'claude-haiku-4-5-20251001'                       // edit_page: Haiku
   })()
 
-  // Extended Thinking — only on first-site creation (no existing pages).
-  // Gives the model 8k tokens to reason about the design before generating HTML:
-  // business type → visual identity → palette → typography → layout structure.
-  // Requires temperature=1 (Anthropic constraint) and the interleaved-thinking beta.
-  // NOT used on edits or add_page (overkill; slow) — only on the most impactful task.
-  const useExtendedThinking = !hasPages && !isMicroEdit && model === 'claude-sonnet-4-6'
+  // Extended thinking disabled until sonnet-4-6 rate limits are resolved
+  const useExtendedThinking = false
 
   // Adaptive max_tokens — sized to the actual task, not a global ceiling.
   //
