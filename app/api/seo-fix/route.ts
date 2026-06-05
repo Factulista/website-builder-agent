@@ -610,16 +610,20 @@ export async function POST(req: NextRequest) {
       const targetPage = pages.find(p => p.slug === pageSlug)
       if (!targetPage) { emitError(`Pagina "${pageSlug}" non trovata`); return }
 
-      // Build canonical URL
+      // Build canonical URL.
+      // The root-domain project is ALWAYS canonicalised to www.{rootDomain} — even if
+      // its custom_domain field holds the apex (factulista.com). Checking the root
+      // project FIRST (before customDomain) prevents generating apex canonicals that
+      // then redirect → the "canonical points to redirect" SEO error.
       const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
       const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
-      const baseUrl = customDomain
-        ? `https://${customDomain}`
-        : projectSlug
-          ? (rootProject && projectSlug === rootProject
-            ? `https://www.${rootDomain}`
-            : `https://myweb.${rootDomain}/${projectSlug}`)
-          : 'https://example.com'
+      const baseUrl = (rootProject && projectSlug === rootProject)
+        ? `https://www.${rootDomain}`
+        : customDomain
+          ? `https://${customDomain}`
+          : projectSlug
+            ? `https://myweb.${rootDomain}/${projectSlug}`
+            : 'https://example.com'
       const pagePath = pageSlug === 'home' ? '' : `/${pageSlug}`
       const canonicalUrl = `${baseUrl}${pagePath}`
 
