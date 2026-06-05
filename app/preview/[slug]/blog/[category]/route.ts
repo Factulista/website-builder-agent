@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildBlogPostPage, type Post, type InjectPoints } from '../../../../../lib/blog-serve'
-import { buildBlogDsBlock, type DesignSystem } from '../../../../../lib/design-system'
+import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../../../lib/design-system'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -107,35 +107,25 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   // Generate the blog DS block DIRECTLY from designSystem (not by parsing the
   // shared_css cache) so the blog always matches the DS panel — no divergence.
   // Always strip the DS block out of baseCss so it isn't duplicated/conflicting.
-  const DS_START = '/* fact-design-system:start */'
-  const DS_END   = '/* fact-design-system:end */'
-  let baseCss = sharedCss ?? ''
-  if (sharedCss) {
-    const dsStartIdx = sharedCss.indexOf(DS_START)
-    const dsEndIdx   = sharedCss.indexOf(DS_END)
-    if (dsStartIdx !== -1 && dsEndIdx !== -1) {
-      const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
-      baseCss = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
-    }
-  }
+  // Strip ALL DS blocks from baseCss (global) — shared_css may have accumulated
+  // multiple stale blocks; if any leak into deferred CSS they override the
+  // authoritative block by source order. baseCss must contain ZERO DS rules.
+  const baseCss = sharedCss ? stripDesignSystemBlocks(sharedCss) : ''
+  // Authoritative DS block: built directly from the designSystem object.
   const designSystem = config.designSystem as DesignSystem | undefined
   let dsBlock = ''
   if (designSystem) {
-    // Authoritative: build from the structured object
     dsBlock = buildBlogDsBlock(designSystem)
   } else if (sharedCss) {
-    // Legacy fallback: project has no designSystem field yet — extract from shared_css
+    // Legacy fallback: no designSystem field — extract the FIRST block from shared_css
+    const DS_START = '/* fact-design-system:start */'
+    const DS_END   = '/* fact-design-system:end */'
     const dsStartIdx = sharedCss.indexOf(DS_START)
     const dsEndIdx   = sharedCss.indexOf(DS_END)
     if (dsStartIdx !== -1 && dsEndIdx !== -1) {
       const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
-      const rawImports = sharedCss.match(/@import url\(['"][^'"]+['"]\)[^;]*;/gi) ?? []
-      const asyncFontLinks = rawImports.map(i => {
-        const url = i.match(/@import url\(['"]([^'"]+)['"]\)/i)?.[1] ?? ''
-        return url ? `<link rel="stylesheet" href="${url}" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="${url}"></noscript>` : ''
-      }).filter(Boolean).join('\n')
       const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
-      dsBlock = `${asyncFontLinks}\n<style>${scopedOnly}</style>`
+      dsBlock = `<style>${scopedOnly}</style>`
     }
   }
   // Split siteStyle into critical (nav/footer/:root) + deferred (rest)

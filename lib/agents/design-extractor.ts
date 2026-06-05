@@ -251,9 +251,12 @@ export function mergeDesignSystemIntoSharedCss(
   existingSharedCss: string,
   newDsBlock: string
 ): string {
-  // Strip old DS block
-  let stripped = existingSharedCss
-    .replace(new RegExp(`${DS_START}[\\s\\S]*?${DS_END}`, 'g'), '')
+  // Strip ALL old DS blocks with a properly-escaped regex. NOTE: DS_START/DS_END
+  // contain /* */ — regex metacharacters — so they MUST be escaped before use in
+  // new RegExp(), otherwise the strip silently fails and blocks accumulate.
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const stripped = existingSharedCss
+    .replace(new RegExp(`${esc(DS_START)}[\\s\\S]*?${esc(DS_END)}`, 'g'), '')
     .replace(/@import url\('https:\/\/fonts\.googleapis\.com[^']*'\);\n?/g, '')
     .trim()
 

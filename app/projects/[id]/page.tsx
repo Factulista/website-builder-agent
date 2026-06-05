@@ -21,6 +21,7 @@ import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
+import { syncSharedCssWithDesignSystem, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById } from '../../../lib/components/index'
 
@@ -3289,24 +3290,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
     const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
 
-    // Merge Design System CSS into shared_css so blog posts inherit it too.
-    // @import MUST be first in any CSS block — so we put DS block at the TOP of shared_css,
-    // before any other existing rules, to avoid browsers silently ignoring the @import.
-    const { rules: dsRules, fontFamilies } = generateDesignSystemCSS(ds)
+    // Merge Design System CSS into shared_css (single source of truth) so blog posts
+    // inherit it too. Uses the shared lib which strips ALL prior DS blocks with a
+    // properly-escaped regex (the old inline regex left the */ markers unescaped, so
+    // stale blocks accumulated and overrode the new one by source order).
     const existingSharedCss = (typeof currentConfig.shared_css === 'string' ? currentConfig.shared_css : '') as string
-    const DS_START = '/* fact-design-system:start */'
-    const DS_END   = '/* fact-design-system:end */'
-    // Remove ALL DS blocks (global replace) + any old :where() DS rules that leaked in
-    let stripped = existingSharedCss.replace(new RegExp(`${DS_START}[\\s\\S]*?${DS_END}`, 'g'), '').trim()
-    // Also strip any stale @import lines left from previous DS saves
-    stripped = stripped.replace(/@import url\('https:\/\/fonts\.googleapis\.com[^']*'\);\n?/g, '').trim()
-    // Build font @import separately so it's always first
-    const fontImport = fontFamilies.length > 0
-      ? `@import url('https://fonts.googleapis.com/css2?${fontFamilies.map(f => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800`).join('&')}&display=swap');\n`
-      : ''
-    const newSharedCss = dsRules.trim()
-      ? `${fontImport}${DS_START}\n${dsRules}\n${DS_END}\n${stripped}`.trim()
-      : stripped
+    const newSharedCss = syncSharedCssWithDesignSystem(existingSharedCss, ds as unknown as LibDesignSystem)
 
     await supabase.from('projects').update({
       site_config: { ...currentConfig, pages: updatedPages, designSystem: ds, shared_css: newSharedCss },

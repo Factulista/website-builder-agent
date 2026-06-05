@@ -144,3 +144,19 @@ export function syncSharedCssWithDesignSystem(existingSharedCss: string, ds: Des
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+/**
+ * Remove ALL Design System marker blocks from a CSS string (global).
+ * Over time shared_css can accumulate multiple stacked DS blocks (different
+ * historical versions). If only the first is stripped, the stale ones leak
+ * into the rendered CSS and override the authoritative block by source order.
+ * This removes every `DS_START … DS_END` block plus stale Google Font @imports.
+ */
+export function stripDesignSystemBlocks(css: string): string {
+  if (!css) return ''
+  return css
+    .replace(new RegExp(`${escapeRegex(DS_START)}[\\s\\S]*?${escapeRegex(DS_END)}`, 'g'), '')
+    .replace(/@import\s+url\(['"]https:\/\/fonts\.googleapis\.com[^'"]*['"]\)[^;]*;/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
