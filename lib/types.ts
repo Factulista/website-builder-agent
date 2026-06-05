@@ -9,4 +9,6 @@ export type Page = {
   inMenu?: boolean
   /** OG image URL for this page */
   og_image?: string
+  /** Per-page robots directive (Pages panel). Default: index, follow. */
+  robots?: { noindex?: boolean; nofollow?: boolean }
 }

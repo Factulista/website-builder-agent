@@ -10,6 +10,8 @@ type Page = {
   menuLabel?: string
   inMenu?: boolean
   og_image?: string
+  /** Per-page robots directive, controlled from the Pages panel. Default: index, follow. */
+  robots?: { noindex?: boolean; nofollow?: boolean }
 }
 type SiteConfig = {
   html?: string
@@ -141,7 +143,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home'): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }): string {
   const baseTag = `<base href="${base}">`
 
   // Canonical header/footer stylesheet — extracted from the home CSS, injected AFTER
@@ -207,6 +209,21 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     const canonicalTags = `<link rel="canonical" href="${canonicalUrl}">\n<meta property="og:url" content="${canonicalUrl}">`
     if (/<head[^>]*>/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${canonicalTags}`)
+    }
+
+    // ── Robots meta: AUTHORITATIVE from the page setting (Pages panel) ──
+    // Always strip any stale robots meta from the stored HTML, then inject the
+    // directive from the page's setting. Default (index, follow) = no tag.
+    // This makes the per-page toggle the single source of truth and neutralises
+    // any leftover noindex baked into the HTML.
+    result = result.replace(/<meta[^>]+name=["']robots["'][^>]*\/?>\s*/gi, '')
+    if (robots?.noindex || robots?.nofollow) {
+      const idx = robots?.noindex ? 'noindex' : 'index'
+      const flw = robots?.nofollow ? 'nofollow' : 'follow'
+      const robotsTag = `<meta name="robots" content="${idx}, ${flw}">`
+      if (/<head[^>]*>/i.test(result)) {
+        result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${robotsTag}`)
+      }
     }
   }
 
@@ -328,7 +345,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   // noindex is NOT injected (Google must be able to crawl and index the live site).
   const isStaging = !originalHost
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -379,7 +396,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedNav = config.shared_nav_html
   const sharedFooter = config.shared_footer_html
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots), {
     status: 200,
     // No cache on published pages — Publish must be instantly visible
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },

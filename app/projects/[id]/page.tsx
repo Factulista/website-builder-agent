@@ -8338,6 +8338,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               await saveState(messages, synced)
             }
 
+            // Update a per-page robots directive (noindex / nofollow). Applied authoritatively
+            // at serve time — see prepareHtml in lib/preview.ts. Republish to push live.
+            const updatePageRobots = async (slug: string, key: 'noindex' | 'nofollow', value: boolean) => {
+              const next = pages.map(p => p.slug === slug
+                ? { ...p, robots: { ...(p as Page).robots, [key]: value } }
+                : p)
+              setPages(next)
+              await saveState(messages, next)
+            }
+
             const renamePageSlug = async (oldSlug: string, rawValue: string) => {
               // Sanitize: lowercase, spaces→hyphens, strip anything that's not a-z 0-9 - _ /
               const newSlug = rawValue.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, '')
@@ -8578,6 +8588,49 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 ? <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>La pagina home non può essere rinominata</p>
                                 : <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Aggiorna anche tutti i link interni che puntano a questa pagina</p>
                               }
+                            </div>
+
+                            {/* SEO — Indicizzazione (robots) + canonical read-only */}
+                            <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${C.border}`, paddingTop: '12px' }}>
+                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>SEO — Indicizzazione</label>
+                              <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
+                                {(['noindex', 'nofollow'] as const).map(key => {
+                                  const on = !!(page as Page).robots?.[key]
+                                  const label = key === 'noindex' ? 'No Index' : 'No Follow'
+                                  const sub = key === 'noindex' ? 'Escludi da Google' : 'Non seguire i link'
+                                  return (
+                                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <div
+                                        onClick={() => updatePageRobots(page.slug, key, !on)}
+                                        title={`${label}: ${on ? 'attivo' : 'disattivo'}`}
+                                        style={{ position: 'relative', width: '34px', height: '18px', borderRadius: '9px', background: on ? '#ef4444' : C.border, cursor: 'pointer', transition: 'background .15s', flexShrink: 0 }}
+                                      >
+                                        <div style={{ position: 'absolute', top: '2px', left: on ? '18px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: 'left .15s' }} />
+                                      </div>
+                                      <div>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: on ? '#ef4444' : C.text }}>{label}</div>
+                                        <div style={{ fontSize: '0.68rem', color: C.textFaint }}>{sub}</div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+
+                              {/* Canonical — read-only (system-managed) */}
+                              <div style={{ marginTop: '14px' }}>
+                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Canonical</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <input
+                                    readOnly
+                                    value={`${publicBaseUrl || `https://www.${ROOT_DOMAIN}`}/${page.slug === 'home' ? '' : page.slug}`}
+                                    style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'monospace', outline: 'none', background: '#f3f4f6', color: C.textFaint, boxSizing: 'border-box' as const, cursor: 'default' }}
+                                  />
+                                  <span title="Generato automaticamente — non modificabile" style={{ fontSize: '0.9rem' }}>🔒</span>
+                                </div>
+                                <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Generato automaticamente dal dominio pubblicato. Non modificabile.</p>
+                              </div>
+
+                              <p style={{ margin: '10px 0 0', fontSize: '0.68rem', color: C.textFaint }}>⚠️ Le modifiche a No Index / No Follow richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>
                             </div>
 
                             {/* Save button */}
