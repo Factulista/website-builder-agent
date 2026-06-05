@@ -27,6 +27,8 @@ type SiteConfig = {
   messages?: unknown[]
   versions?: unknown[]
   media?: Record<string, unknown>
+  /** User-managed 301 redirects (SEO Optimizer → Strumenti). from = path, to = full URL or path. */
+  redirects?: Array<{ from: string; to: string }>
 } | null
 
 /**
@@ -377,6 +379,19 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   if (error || !data) return errorPage(404, '404', 'Sito non trovato')
 
   const config = data.site_config as SiteConfig
+
+  // ── User-managed 301 redirects (SEO Optimizer → Strumenti) ──
+  // Checked BEFORE the page lookup so old/removed URLs (e.g. /login moved to the
+  // app subdomain) send a clean 301 instead of a 404.
+  if (config?.redirects?.length) {
+    const reqPath = pageSlug === 'home' ? '/' : `/${pageSlug}`
+    const norm = (s: string) => '/' + s.trim().replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+|\/+$/g, '')
+    const hit = config.redirects.find(r => r.from && norm(r.from) === norm(reqPath))
+    if (hit && hit.to) {
+      const target = /^https?:\/\//i.test(hit.to) ? hit.to : `https://${customDomain}${hit.to.startsWith('/') ? '' : '/'}${hit.to}`
+      return new Response(null, { status: 301, headers: { Location: target } })
+    }
+  }
 
   if (!config?.published_pages || config.published_pages.length === 0) {
     return errorPage(200, data.name, 'Il sito non è ancora stato pubblicato.')

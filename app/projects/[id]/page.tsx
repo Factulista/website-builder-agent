@@ -1813,6 +1813,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogSidebarBannerLink, setBlogSidebarBannerLink] = useState('')
   const [blogSidebarBannerOpen, setBlogSidebarBannerOpen] = useState(false)
   const [injectPoints, setInjectPoints] = useState<Record<string, string>>({})
+  // 301 redirects (SEO Optimizer → Strumenti)
+  const [redirects, setRedirects] = useState<Array<{ from: string; to: string }>>([])
+  const [newRedirectFrom, setNewRedirectFrom] = useState('')
+  const [newRedirectTo, setNewRedirectTo] = useState('')
+  const [redirectSaving, setRedirectSaving] = useState(false)
   const [injectPointsOpen, setInjectPointsOpen] = useState(false)
   const [injectPointsSaving, setInjectPointsSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const injectPointsRef = useRef<Record<string, string>>({})
@@ -2760,6 +2765,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       injectPointsRef.current = existingIp
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
+      setRedirects(((config as any)?.redirects ?? []) as Array<{ from: string; to: string }>)
       // Load Brevo integration settings
       const integrations = ((config as any)?.integrations ?? {}) as Record<string, unknown>
       const brevo = (integrations.brevo ?? {}) as Record<string, unknown>
@@ -4542,6 +4548,38 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     finally { setPublishing(false) }
   }
 
+  // Persist the 301 redirects to site_config (applied at serve time — see servePublished).
+  const saveRedirects = async (next: Array<{ from: string; to: string }>) => {
+    setRedirectSaving(true)
+    setRedirects(next)
+    try {
+      const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+      const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+      await supabase.from('projects').update({
+        site_config: { ...currentConfig, redirects: next },
+        updated_at: new Date().toISOString(),
+      }).eq('id', id)
+    } finally {
+      setRedirectSaving(false)
+    }
+  }
+
+  const addRedirect = async () => {
+    const from = newRedirectFrom.trim()
+    const to = newRedirectTo.trim()
+    if (!from || !to) return
+    // Normalise "from" to a leading-slash path
+    const fromPath = '/' + from.replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, '')
+    const next = [...redirects.filter(r => r.from !== fromPath), { from: fromPath, to }]
+    await saveRedirects(next)
+    setNewRedirectFrom('')
+    setNewRedirectTo('')
+  }
+
+  const removeRedirect = async (from: string) => {
+    await saveRedirects(redirects.filter(r => r.from !== from))
+  }
+
   const handleDetectRegistrar = async (domain: string) => {
     const d = domain.trim()
     if (!d || !/\.[a-z]{2,}$/i.test(d)) return
@@ -5909,17 +5947,68 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       )
                     })()}
 
+                    {/* ── Redirect 301 ── */}
+                    <div style={{ marginTop: '28px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, marginBottom: '12px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: C.text }}>Redirect 301</span>
+                        {redirectSaving && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>Salvataggio…</span>}
+                      </div>
+                      <p style={{ margin: '0 0 12px', fontSize: '0.74rem', color: C.textFaint, lineHeight: 1.5 }}>
+                        Reindirizza vecchi URL verso nuove destinazioni (301 permanente). Utile dopo migrazioni o pagine rimosse.
+                        <br />I redirect <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>/login</code> e <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>/registro</code> → app sono già attivi di default.
+                      </p>
+
+                      {/* Existing redirects */}
+                      {redirects.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                          {redirects.map(r => (
+                            <div key={r.from} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: '#f8fafc', border: `1px solid ${C.border}`, borderRadius: 7 }}>
+                              <code style={{ fontSize: '0.76rem', color: C.text, fontFamily: 'monospace' }}>{r.from}</code>
+                              <span style={{ color: C.textFaint, fontSize: '0.8rem' }}>→</span>
+                              <code style={{ fontSize: '0.76rem', color: C.blue, fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.to}</code>
+                              <button onClick={() => removeRedirect(r.from)} title="Rimuovi" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', fontSize: '0.72rem', cursor: 'pointer', color: '#ef4444', flexShrink: 0 }}>✕</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Add form */}
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          value={newRedirectFrom}
+                          onChange={e => setNewRedirectFrom(e.target.value)}
+                          placeholder="/vecchia-pagina"
+                          style={{ flex: '1 1 140px', minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 7, padding: '7px 10px', fontSize: '0.78rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const }}
+                        />
+                        <span style={{ color: C.textFaint, fontSize: '0.85rem' }}>→</span>
+                        <input
+                          value={newRedirectTo}
+                          onChange={e => setNewRedirectTo(e.target.value)}
+                          placeholder="https://… oppure /nuova-pagina"
+                          onKeyDown={e => { if (e.key === 'Enter') void addRedirect() }}
+                          style={{ flex: '2 1 200px', minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 7, padding: '7px 10px', fontSize: '0.78rem', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' as const }}
+                        />
+                        <button
+                          onClick={() => void addRedirect()}
+                          disabled={!newRedirectFrom.trim() || !newRedirectTo.trim()}
+                          style={{ background: C.blue, color: 'white', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: '0.78rem', fontWeight: 600, cursor: (newRedirectFrom.trim() && newRedirectTo.trim()) ? 'pointer' : 'not-allowed', opacity: (newRedirectFrom.trim() && newRedirectTo.trim()) ? 1 : 0.5, fontFamily: 'inherit', flexShrink: 0 }}
+                        >Aggiungi</button>
+                      </div>
+                      <p style={{ margin: '8px 0 0', fontSize: '0.68rem', color: C.textFaint }}>I redirect sono attivi subito sul sito pubblicato — non serve ripubblicare.</p>
+                    </div>
+
                       </div>
                     )}
 
                     {/* ── Tab: sitemap ── */}
                     {seoSubTab === 'sitemap' && (() => {
-                      // Public URL shown to user (for Search Console)
+                      // Public URL shown to user (for Search Console).
+                      // Root project ALWAYS shows www, even if its custom_domain is the apex.
                       const sitemapUrl = (() => {
-                        if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/sitemap.xml`
                         const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
                         const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
                         if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}/sitemap.xml`
+                        if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/sitemap.xml`
                         return `/preview/${projectSlug}/sitemap.xml`
                       })()
                       // Internal API URL for download (same-origin, no CORS issues)
