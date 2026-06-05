@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { InjectPoints } from './blog-serve'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
+import { mergeRootVars } from './design-system'
 
 type Page = {
   slug: string
@@ -74,12 +75,14 @@ function applySharedCss(html: string, sharedCss: string): string {
   const isSelfContained = remainder.length > 300
 
   if (isSelfContained) {
-    // Sync only the :root token block from shared_css into the page.
-    // Nav/footer-specific CSS is injected separately via buildSharedFrameCss (see prepareHtml)
-    // with higher cascade priority so it wins over the page's own generic rules.
+    // MERGE the shared :root tokens into the page's own :root — the page's
+    // variables win (its design stays intact), shared tokens only fill gaps.
+    // Replacing wholesale (the old behaviour) wiped page-specific variables like
+    // --yellow/--black/--radius and broke self-contained legal/landing pages.
     const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
-    if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
-      return html.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
+    const pageRoot = html.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
+    if (sharedRoot && pageRoot) {
+      return html.replace(/:root\s*\{[\s\S]*?\}/i, mergeRootVars(pageRoot, sharedRoot))
     }
     // Page has component CSS but no :root — prepend shared tokens, keep page CSS.
     if (sharedRoot) {

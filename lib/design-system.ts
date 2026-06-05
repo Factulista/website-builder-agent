@@ -146,6 +146,34 @@ function escapeRegex(s: string): string {
 }
 
 /**
+ * Merge two :root blocks. The PAGE's own variables win on collision (keep the
+ * page's design intact); the shared block only fills in variables the page does
+ * NOT define. Returns a single `:root{...}` block.
+ *
+ * CRITICAL: this replaces the old behaviour that REPLACED a self-contained page's
+ * :root wholesale with the shared one — which wiped page-specific variables
+ * (--yellow, --black, --radius, …), breaking the page's design at publish.
+ */
+export function mergeRootVars(pageRootBlock: string, sharedRootBlock: string): string {
+  const parse = (block: string): Record<string, string> => {
+    const inner = block.replace(/:root\s*\{/i, '').replace(/\}\s*$/, '')
+    const vars: Record<string, string> = {}
+    // Split on ; but respect that values may contain () — declarations are simple here
+    for (const decl of inner.split(';')) {
+      const m = decl.match(/^\s*(--[\w-]+)\s*:\s*([\s\S]+?)\s*$/)
+      if (m) vars[m[1]] = m[2].trim()
+    }
+    return vars
+  }
+  const shared = parse(sharedRootBlock)
+  const page = parse(pageRootBlock)
+  // Page wins on collision; shared adds only missing tokens.
+  const merged: Record<string, string> = { ...shared, ...page }
+  const body = Object.entries(merged).map(([k, v]) => `${k}:${v}`).join(';')
+  return `:root{${body}}`
+}
+
+/**
  * Remove ALL Design System marker blocks from a CSS string (global).
  * Over time shared_css can accumulate multiple stacked DS blocks (different
  * historical versions). If only the first is stripped, the stale ones leak

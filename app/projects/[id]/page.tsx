@@ -21,7 +21,7 @@ import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
-import { syncSharedCssWithDesignSystem, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
+import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById } from '../../../lib/components/index'
 
@@ -1456,9 +1456,12 @@ function mergeSharedCssIntoPage(html: string, sharedCss: string): string {
   const isSelfContained = remainder.length > 300
 
   if (isSelfContained) {
+    // Merge shared :root into the page's own :root (page vars win) — mirrors
+    // applySharedCss in lib/preview.ts. Prevents wiping page-specific variables.
     const sharedRoot = sharedCss.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
-    if (sharedRoot && /:root\s*\{[\s\S]*?\}/i.test(html)) {
-      return html.replace(/:root\s*\{[\s\S]*?\}/i, sharedRoot)
+    const pageRoot = html.match(/:root\s*\{[\s\S]*?\}/i)?.[0]
+    if (sharedRoot && pageRoot) {
+      return html.replace(/:root\s*\{[\s\S]*?\}/i, mergeRootVars(pageRoot, sharedRoot))
     }
     if (sharedRoot) {
       const styleTag = `<style>${sharedRoot}</style>`
