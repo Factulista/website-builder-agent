@@ -36,6 +36,17 @@ export function middleware(req: NextRequest) {
   // real public domain instead of myweb.factulista.com — otherwise internal nav links
   // would redirect users from www.factulista.com to myweb.factulista.com on every click.
   if (host === `www.${ROOT_DOMAIN}`) {
+    // Legacy URL redirects: login/registro moved to the app subdomain (Lovable).
+    // 301 so Google updates its index and stops reporting 404s on the old URLs.
+    const legacyAppRedirects: Record<string, string> = {
+      '/login': `https://app.${ROOT_DOMAIN}/login`,
+      '/registro': `https://app.${ROOT_DOMAIN}/registro`,
+    }
+    const legacyTarget = legacyAppRedirects[url.pathname.replace(/\/$/, '')]
+    if (legacyTarget) {
+      return NextResponse.redirect(legacyTarget, 301)
+    }
+
     const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? ''
     if (rootProject) {
       const requestHeaders = new Headers(req.headers)
