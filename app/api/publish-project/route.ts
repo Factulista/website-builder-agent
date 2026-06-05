@@ -24,14 +24,20 @@ export async function POST(req: NextRequest) {
 
     const { data: project } = await supabase
       .from('projects')
-      .select('id, user_id, site_config, custom_domain, custom_domain_status')
+      .select('id, user_id, slug, site_config, custom_domain, custom_domain_status')
       .eq('id', projectId)
       .eq('user_id', user.id)
       .single()
 
     if (!project) return NextResponse.json({ error: 'Progetto non trovato' }, { status: 404 })
 
-    if (!project.custom_domain || project.custom_domain_status !== 'verified') {
+    // The root-domain project (served at www.{ROOT_DOMAIN} via the ROOT_DOMAIN_PROJECT
+    // env, not via a per-project custom_domain) is allowed to publish without a verified
+    // custom domain. Otherwise require a verified custom domain as usual.
+    const isRootDomainProject = !!process.env.ROOT_DOMAIN_PROJECT
+      && project.slug === process.env.ROOT_DOMAIN_PROJECT
+
+    if (!isRootDomainProject && (!project.custom_domain || project.custom_domain_status !== 'verified')) {
       return NextResponse.json({ error: 'Devi configurare e verificare un dominio personalizzato prima di pubblicare' }, { status: 400 })
     }
 
