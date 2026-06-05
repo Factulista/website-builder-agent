@@ -380,6 +380,17 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
 
   const config = data.site_config as SiteConfig
 
+  // ── Legacy .html URLs → clean slug (301) ──
+  // Old URLs like /politica-cookies.html (indexed by Google before the migration to
+  // extensionless slugs) get a permanent redirect to the clean URL, if that page exists.
+  if (pageSlug.endsWith('.html')) {
+    const cleanSlug = pageSlug.slice(0, -5)
+    const exists = config?.published_pages?.some(p => p.slug === cleanSlug)
+    if (exists) {
+      return new Response(null, { status: 301, headers: { Location: `https://${customDomain}/${cleanSlug}` } })
+    }
+  }
+
   // ── User-managed 301 redirects (SEO Optimizer → Strumenti) ──
   // Checked BEFORE the page lookup so old/removed URLs (e.g. /login moved to the
   // app subdomain) send a clean 301 instead of a 404.
