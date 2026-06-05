@@ -147,7 +147,30 @@ ${items}
       : (homePage ? extractFooter(homePage.html) : '')
     const sharedCss = typeof siteConfig.shared_css === 'string' ? siteConfig.shared_css : null
     const fontLinks = (homePage?.html ?? '').match(/<link[^>]*(googleapis\.com|gstatic\.com)[^>]*>/gi)?.join('\n') ?? ''
-    const siteStyle = sharedCss ? `${fontLinks}\n<style>${sharedCss}</style>` : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
+
+    // Extract Design System block from shared_css and pass as dsOverride (injected AFTER
+    // BLOG_POST_CONTENT_CSS so DS typography wins by source order).
+    // Without this, BLOG_POST_CONTENT_CSS hardcoded values override the user's DS settings.
+    const DS_START = '/* fact-design-system:start */'
+    const DS_END   = '/* fact-design-system:end */'
+    let dsOverrideBlock = ''
+    let baseCssForBlog = sharedCss ?? ''
+    if (sharedCss) {
+      const dsStartIdx = sharedCss.indexOf(DS_START)
+      const dsEndIdx   = sharedCss.indexOf(DS_END)
+      if (dsStartIdx !== -1 && dsEndIdx !== -1) {
+        const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
+        baseCssForBlog = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
+        const rawImports = sharedCss.match(/@import url\(['"][^'"]+['"]\)[^;]*;/gi) ?? []
+        const asyncFontLinks = rawImports.map(i => {
+          const url = i.match(/@import url\(['"]([^'"]+)['"]\)/i)?.[1] ?? ''
+          return url ? `<link rel="stylesheet" href="${url}" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="${url}"></noscript>` : ''
+        }).filter(Boolean).join('\n')
+        const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
+        dsOverrideBlock = `${asyncFontLinks}\n<style>${scopedOnly}</style>`
+      }
+    }
+    const siteStyle = baseCssForBlog ? `${fontLinks}\n<style>${baseCssForBlog}</style>` : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
 
     // /blog or /blog/ → listing
     if (pathname === '/blog' || pathname === '/blog/') {
@@ -205,7 +228,7 @@ ${items}
       const sidebarBanner = (siteConfig.blog_sidebar_banner as BlogSidebarBanner | undefined) ?? null
       const faviconUrl = (siteConfig.favicon_url as string | undefined)
       const injectPoints = (siteConfig.inject_points as InjectPoints | undefined)
-      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints)
+      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsOverrideBlock)
       return new Response(html, {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },
