@@ -1,86 +1,128 @@
 // Fonte di verità unica per i workflow e le relazioni tra agenti.
-// Importabile sia lato client (pipeline/page.tsx, agents/page.tsx) sia lato server (cron route).
+// Importabile sia lato client (pipeline/page.tsx, agents/page.tsx) sia lato server.
+//
+// ARCHITETTURA ATTUALE (giugno 2025): Master Agent
+// Non esiste più un pipeline multi-stage. Un singolo HTML Agent (Sonnet 4.6)
+// gestisce creazione e modifica, con agenti background non-bloccanti in parallelo.
 
 export type WorkflowStepDef = {
   agentId: string
-  optional?: boolean      // step condizionale (es. site-analyzer solo se URL)
-  conditional?: boolean   // branch alternativo (es. html-template vs html)
+  optional?: boolean      // step condizionale
+  conditional?: boolean   // branch alternativo
+  background?: boolean    // non-blocking — gira in parallelo senza bloccare la risposta
   note?: string
   parallelWith?: string   // agentId con cui gira in parallelo
-  triggersAgents?: string[] // agenti che questo triggera dopo (es. images → design, html, content, seo)
+  triggersAgents?: string[]
 }
 
 export type WorkflowDef = {
-  id: string              // corrisponde all'AgentType nell'orchestratore
+  id: string
   name: string
-  trigger: string         // keywords che lo attivano
+  trigger: string
   steps: WorkflowStepDef[]
 }
 
 export const WORKFLOWS: WorkflowDef[] = [
   {
-    id: 'pipeline',
+    id: 'create-site',
     name: '1 · Creazione sito',
-    trigger: '«crea», «genera», «nuovo sito» — o nessun sito esistente',
+    trigger: 'Nessuna pagina esistente — «crea», «genera», «nuovo sito»',
     steps: [
-      { agentId: 'clarifier', optional: true, note: 'chiede chiarimenti se richiesta ambigua' },
-      { agentId: 'memory' },
-      { agentId: 'planner' },
-      { agentId: 'site-analyzer', optional: true, note: 'se URL ispirazione + screenshot' },
-      { agentId: 'template-generator', optional: true, note: 'genera nuovo template da DesignBrief' },
-      { agentId: 'content' },
-      { agentId: 'design', parallelWith: 'content' },
-      { agentId: 'html', conditional: true, note: 'senza template' },
-      { agentId: 'html-template', conditional: true, note: 'con template business' },
+      {
+        agentId: 'html',
+        note: 'Sonnet 4.6 + extended thinking (8k) + design principles',
+      },
+      {
+        agentId: 'quality-loop',
+        note: 'server-side: H1, links, Tailwind, forms — retry automatico',
+      },
+      {
+        agentId: 'design-extractor',
+        background: true,
+        note: 'estrae palette + tipografia → popola Design System panel',
+      },
+      {
+        agentId: 'memory',
+        background: true,
+        parallelWith: 'session-memory',
+        note: 'aggiorna business context (business type, lingua, servizi)',
+      },
+      {
+        agentId: 'session-memory',
+        background: true,
+        parallelWith: 'memory',
+        note: 'aggiorna design diary (palette scelta, font, struttura)',
+      },
+      {
+        agentId: 'rules-learner',
+        background: true,
+        note: 'prima run: apprende convenzioni del progetto',
+      },
     ],
   },
   {
     id: 'modify-site',
     name: '2 · Modifica sito',
-    trigger: 'qualsiasi modifica su sito esistente — orchestratore sceglie il branch',
+    trigger: 'Pagine esistenti — qualsiasi richiesta di modifica',
     steps: [
-      { agentId: 'html', conditional: true, note: 'modifica HTML/struttura' },
-      { agentId: 'design-update', conditional: true, note: 'aggiorna design' },
-      { agentId: 'content-update', conditional: true, note: 'aggiorna contenuti' },
-      { agentId: 'seo', conditional: true, note: 'ottimizzazione SEO' },
       {
-        agentId: 'images',
+        agentId: 'html',
         conditional: true,
-        note: 'crea/modifica immagini',
-        triggersAgents: ['design-update', 'html', 'content-update', 'seo'],
+        note: 'Haiku (micro-edit) | Sonnet (edit_page / add_page)',
+      },
+      {
+        agentId: 'quality-loop',
+        optional: true,
+        note: 'solo su edit_page / create_site — skip su micro-edit',
+      },
+      {
+        agentId: 'memory',
+        background: true,
+        parallelWith: 'session-memory',
+        note: 'aggiorna contesto se nuove info nel messaggio',
+      },
+      {
+        agentId: 'session-memory',
+        background: true,
+        parallelWith: 'memory',
+        note: 'aggiorna diary (correzioni ricevute, nuove decisioni)',
+      },
+    ],
+  },
+  {
+    id: 'seo',
+    name: '3 · SEO',
+    trigger: 'Richiesta esplicita: «ottimizza SEO», «migliora meta», «sitemap»',
+    steps: [
+      {
+        agentId: 'seo',
+        note: 'Haiku — meta tags, sitemap, robots.txt, schema.org',
       },
     ],
   },
 ]
 
-// Agenti speciali che non appartengono a un workflow specifico ma sono sempre presenti
-export const ALWAYS_ON_AGENTS = ['orchestrator']
+// Agenti che girano su ogni turno (non in nessun workflow specifico)
+export const ALWAYS_ON_AGENTS: string[] = []
 
-// Restituisce tutti gli agentId che compaiono in almeno un workflow
+// Agenti background — girano in parallelo dopo la risposta principale
+export const BACKGROUND_AGENTS = ['memory', 'session-memory', 'rules-learner', 'design-extractor']
+
 export function getWorkflowAgentIds(): Set<string> {
   const ids = new Set<string>()
   for (const workflow of WORKFLOWS) {
-    for (const step of workflow.steps) {
-      ids.add(step.agentId)
-    }
+    for (const step of workflow.steps) ids.add(step.agentId)
   }
   return ids
 }
 
-// Restituisce i workflow in cui compare un agente
 export function getAgentWorkflows(agentId: string): WorkflowDef[] {
   return WORKFLOWS.filter(w => w.steps.some(s => s.agentId === agentId))
 }
 
-// Restituisce gli agenti orfani (non in nessun workflow e non ALWAYS_ON)
-// agentNames = lista nomi da AGENTS_MANIFEST
 export function getOrphanAgents(agentNames: string[]): string[] {
   const workflowIds = getWorkflowAgentIds()
   return agentNames.filter(
     name => !workflowIds.has(name) && !ALWAYS_ON_AGENTS.includes(name)
   )
 }
-
-// SQL migration (eseguire manualmente su Supabase dashboard o via CLI):
-// ALTER TABLE agent_configs ADD COLUMN orphaned_at TIMESTAMPTZ;
-// ALTER TABLE agent_configs ADD COLUMN workflow_ids TEXT[] DEFAULT '{}';

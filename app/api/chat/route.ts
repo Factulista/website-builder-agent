@@ -515,28 +515,25 @@ export async function POST(req: NextRequest) {
       if (result.tool === 'create_site' && result.input?.pages) {
         const newPages = result.input.pages as Page[]
         const homePage = newPages.find((p: Page) => p.slug === 'home') ?? newPages[0]
-        if (homePage?.html) {
-          // Only auto-extract Design System when the user hasn't set one yet.
-          // If designSystem already exists in siteConfig, the user has customized it manually
-          // and we must NOT overwrite those values (font sizes, colors, weights, etc.).
-          const userHasCustomDS = !!siteConfig.designSystem
+        // Auto-populate the Design System ONLY on the very first site creation, when the
+        // user has not yet set one. If designSystem already exists, it is the authoritative
+        // source — we must NOT touch designSystem OR the DS block in shared_css, otherwise
+        // the panel (reads designSystem) and the blog (reads shared_css) diverge.
+        const userHasCustomDS = !!siteConfig.designSystem
+        if (homePage?.html && !userHasCustomDS) {
           const extracted = extractDesignSystem(homePage.html)
           const dsBlock = buildDesignSystemBlock(extracted)
           const freshSharedCss = sharedCss || ''
           const newSharedCss = mergeDesignSystemIntoSharedCss(freshSharedCss, dsBlock)
           const { cssVars: _vars, googleFonts: _fonts, ...dsToSave } = extracted
-          // Write back to DB in background (non-blocking)
           Promise.resolve(
             supabase.from('projects').select('site_config').eq('id', projectId).single()
           ).then(async ({ data: fresh }) => {
             const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
+            // Re-check inside the async block — another request may have set DS meanwhile
+            if (freshConfig.designSystem) return
             await supabase.from('projects').update({
-              site_config: {
-                ...freshConfig,
-                // Preserve user DS if already set — only auto-populate on first site creation
-                ...(!userHasCustomDS ? { designSystem: dsToSave } : {}),
-                shared_css: newSharedCss,
-              },
+              site_config: { ...freshConfig, designSystem: dsToSave, shared_css: newSharedCss },
             }).eq('id', projectId)
           }).catch(() => null)
         }

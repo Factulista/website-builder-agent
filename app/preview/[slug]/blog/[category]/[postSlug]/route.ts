@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildBlogPostPage, type Post, type InjectPoints } from '../../../../../../lib/blog-serve'
+import { buildBlogDsBlock, type DesignSystem } from '../../../../../../lib/design-system'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic' // never cache — blog content must always be fresh from DB
@@ -74,23 +75,34 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     : (homePage ? extractFooter(homePage.html) : '')
   const sharedCss = typeof config.shared_css === 'string' ? config.shared_css : null
   const fontLinks = (homePage?.html ?? '').match(/<link[^>]*(googleapis\.com|gstatic\.com)[^>]*>/gi)?.join('\n') ?? ''
+  // Design System: site_config.designSystem is the AUTHORITATIVE source.
+  // Generate the DS block directly from it (not by parsing shared_css) so the
+  // blog always matches the panel. Always strip DS block from baseCss.
   const DS_START = '/* fact-design-system:start */'
   const DS_END   = '/* fact-design-system:end */'
   let baseCss = sharedCss ?? ''
-  let dsBlock = ''
   if (sharedCss) {
     const dsStartIdx = sharedCss.indexOf(DS_START)
     const dsEndIdx   = sharedCss.indexOf(DS_END)
     if (dsStartIdx !== -1 && dsEndIdx !== -1) {
       const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
       baseCss = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
-      // Convert @import font URLs to async <link> tags (better FCP)
+    }
+  }
+  const designSystem = config.designSystem as DesignSystem | undefined
+  let dsBlock = ''
+  if (designSystem) {
+    dsBlock = buildBlogDsBlock(designSystem)
+  } else if (sharedCss) {
+    const dsStartIdx = sharedCss.indexOf(DS_START)
+    const dsEndIdx   = sharedCss.indexOf(DS_END)
+    if (dsStartIdx !== -1 && dsEndIdx !== -1) {
+      const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
       const rawImports = sharedCss.match(/@import url\(['"][^'"]+['"]\)[^;]*;/gi) ?? []
       const asyncFontLinks = rawImports.map(i => {
         const url = i.match(/@import url\(['"]([^'"]+)['"]\)/i)?.[1] ?? ''
         return url ? `<link rel="stylesheet" href="${url}" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="${url}"></noscript>` : ''
       }).filter(Boolean).join('\n')
-      // Strip :where() global rules — they bleed into footer/nav.
       const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
       dsBlock = `${asyncFontLinks}\n<style>${scopedOnly}</style>`
     }

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { servePublished } from '../../../lib/preview'
 import { generateSitemap, generateRobots } from '../../../lib/seo-files'
 import { buildBlogPostPage as buildBlogPostPageFromLib, buildBlogListPage as buildBlogListPageFromLib, type Post as LibPost, type BlogSidebarBanner, type InjectPoints, escapeHtml, safeUrl } from '../../../lib/blog-serve'
+import { buildBlogDsBlock, type DesignSystem } from '../../../lib/design-system'
 
 export const runtime = 'nodejs'
 
@@ -148,12 +149,12 @@ ${items}
     const sharedCss = typeof siteConfig.shared_css === 'string' ? siteConfig.shared_css : null
     const fontLinks = (homePage?.html ?? '').match(/<link[^>]*(googleapis\.com|gstatic\.com)[^>]*>/gi)?.join('\n') ?? ''
 
-    // Extract Design System block from shared_css and pass as dsOverride (injected AFTER
-    // BLOG_POST_CONTENT_CSS so DS typography wins by source order).
-    // Without this, BLOG_POST_CONTENT_CSS hardcoded values override the user's DS settings.
+    // Design System: site_config.designSystem is the AUTHORITATIVE source.
+    // Build the DS override block directly from it (not by parsing shared_css)
+    // so the blog typography always matches the DS panel. Injected AFTER
+    // BLOG_POST_CONTENT_CSS so it wins by source order.
     const DS_START = '/* fact-design-system:start */'
     const DS_END   = '/* fact-design-system:end */'
-    let dsOverrideBlock = ''
     let baseCssForBlog = sharedCss ?? ''
     if (sharedCss) {
       const dsStartIdx = sharedCss.indexOf(DS_START)
@@ -161,6 +162,17 @@ ${items}
       if (dsStartIdx !== -1 && dsEndIdx !== -1) {
         const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
         baseCssForBlog = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
+      }
+    }
+    const blogDesignSystem = siteConfig.designSystem as DesignSystem | undefined
+    let dsOverrideBlock = ''
+    if (blogDesignSystem) {
+      dsOverrideBlock = buildBlogDsBlock(blogDesignSystem)
+    } else if (sharedCss) {
+      const dsStartIdx = sharedCss.indexOf(DS_START)
+      const dsEndIdx   = sharedCss.indexOf(DS_END)
+      if (dsStartIdx !== -1 && dsEndIdx !== -1) {
+        const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
         const rawImports = sharedCss.match(/@import url\(['"][^'"]+['"]\)[^;]*;/gi) ?? []
         const asyncFontLinks = rawImports.map(i => {
           const url = i.match(/@import url\(['"]([^'"]+)['"]\)/i)?.[1] ?? ''

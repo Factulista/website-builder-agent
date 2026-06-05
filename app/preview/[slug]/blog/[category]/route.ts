@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildBlogPostPage, type Post, type InjectPoints } from '../../../../../lib/blog-serve'
+import { buildBlogDsBlock, type DesignSystem } from '../../../../../lib/design-system'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -102,32 +103,38 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const sharedCss = typeof config.shared_css === 'string' ? config.shared_css : null
   const fontLinks = (homePage?.html ?? '').match(/<link[^>]*(googleapis\.com|gstatic\.com)[^>]*>/gi)?.join('\n') ?? ''
 
-  // Split shared_css into base styles and DS block.
-  // DS block must come AFTER BLOG_POST_CONTENT_CSS so DS font-size/weight rules
-  // win over blog defaults (source order matters at equal specificity).
+  // ── Design System: site_config.designSystem is the AUTHORITATIVE source ──
+  // Generate the blog DS block DIRECTLY from designSystem (not by parsing the
+  // shared_css cache) so the blog always matches the DS panel — no divergence.
+  // Always strip the DS block out of baseCss so it isn't duplicated/conflicting.
   const DS_START = '/* fact-design-system:start */'
   const DS_END   = '/* fact-design-system:end */'
   let baseCss = sharedCss ?? ''
-  let dsBlock = ''
   if (sharedCss) {
     const dsStartIdx = sharedCss.indexOf(DS_START)
     const dsEndIdx   = sharedCss.indexOf(DS_END)
     if (dsStartIdx !== -1 && dsEndIdx !== -1) {
-      // Extract @import lines (must stay first) + DS block separately
       const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
       baseCss = sharedCss.replace(dsContent, '').replace(/@import[^;]+;/gi, '').trim()
-      // Convert @import font URLs to async <link> tags (better FCP)
+    }
+  }
+  const designSystem = config.designSystem as DesignSystem | undefined
+  let dsBlock = ''
+  if (designSystem) {
+    // Authoritative: build from the structured object
+    dsBlock = buildBlogDsBlock(designSystem)
+  } else if (sharedCss) {
+    // Legacy fallback: project has no designSystem field yet — extract from shared_css
+    const dsStartIdx = sharedCss.indexOf(DS_START)
+    const dsEndIdx   = sharedCss.indexOf(DS_END)
+    if (dsStartIdx !== -1 && dsEndIdx !== -1) {
+      const dsContent = sharedCss.slice(dsStartIdx, dsEndIdx + DS_END.length)
       const rawImports = sharedCss.match(/@import url\(['"][^'"]+['"]\)[^;]*;/gi) ?? []
       const asyncFontLinks = rawImports.map(i => {
         const url = i.match(/@import url\(['"]([^'"]+)['"]\)/i)?.[1] ?? ''
         return url ? `<link rel="stylesheet" href="${url}" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="${url}"></noscript>` : ''
       }).filter(Boolean).join('\n')
-      // Strip :where() global rules — they bleed into footer/nav.
-      // Blog only needs the scoped .blog-post-content X rules.
-      const scopedOnly = dsContent
-        .split('\n')
-        .filter(l => !l.trim().startsWith(':where('))
-        .join('\n')
+      const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
       dsBlock = `${asyncFontLinks}\n<style>${scopedOnly}</style>`
     }
   }
