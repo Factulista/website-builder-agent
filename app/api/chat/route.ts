@@ -516,16 +516,16 @@ export async function POST(req: NextRequest) {
         const newPages = result.input.pages as Page[]
         const homePage = newPages.find((p: Page) => p.slug === 'home') ?? newPages[0]
         if (homePage?.html) {
-          // Extract typography + CSS vars from the generated HTML
+          // Only auto-extract Design System when the user hasn't set one yet.
+          // If designSystem already exists in siteConfig, the user has customized it manually
+          // and we must NOT overwrite those values (font sizes, colors, weights, etc.).
+          const userHasCustomDS = !!siteConfig.designSystem
           const extracted = extractDesignSystem(homePage.html)
-          // Build the fact-design-system CSS block
           const dsBlock = buildDesignSystemBlock(extracted)
-          // Merge into shared_css (non-blocking background write)
           const freshSharedCss = sharedCss || ''
           const newSharedCss = mergeDesignSystemIntoSharedCss(freshSharedCss, dsBlock)
-          // Strip the _learned metadata before saving (not needed in designSystem)
           const { cssVars: _vars, googleFonts: _fonts, ...dsToSave } = extracted
-          // Write back to DB in background (don't block the response)
+          // Write back to DB in background (non-blocking)
           Promise.resolve(
             supabase.from('projects').select('site_config').eq('id', projectId).single()
           ).then(async ({ data: fresh }) => {
@@ -533,11 +533,12 @@ export async function POST(req: NextRequest) {
             await supabase.from('projects').update({
               site_config: {
                 ...freshConfig,
-                designSystem: dsToSave,
+                // Preserve user DS if already set — only auto-populate on first site creation
+                ...(!userHasCustomDS ? { designSystem: dsToSave } : {}),
                 shared_css: newSharedCss,
               },
             }).eq('id', projectId)
-          }).catch(() => null) // non-blocking — UI will still show correct HTML
+          }).catch(() => null)
         }
       }
 
