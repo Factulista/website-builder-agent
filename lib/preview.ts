@@ -141,7 +141,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home'): string {
   const baseTag = `<base href="${base}">`
 
   // Canonical header/footer stylesheet — extracted from the home CSS, injected AFTER
@@ -193,6 +193,20 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     const noindex = '<meta name="robots" content="noindex, follow">'
     if (/<head[^>]*>/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${noindex}`)
+    }
+  } else {
+    // ── Production: set the canonical + og:url AUTHORITATIVELY from the served URL ──
+    // The serving layer knows the real public URL, so it owns the canonical — immune
+    // to stored HTML having apex (no-www), stale, or missing canonical tags. This is
+    // the single source of truth and guarantees every page has the correct www canonical.
+    const canonicalUrl = (!pageSlug || pageSlug === 'home') ? `${siteUrl}/` : `${siteUrl}/${pageSlug}`
+    // Strip any existing canonical / og:url (whatever the stored HTML had)
+    result = result.replace(/<link[^>]+rel=["']canonical["'][^>]*\/?>\s*/gi, '')
+    result = result.replace(/<meta[^>]+property=["']og:url["'][^>]*\/?>\s*/gi, '')
+    // Inject the correct, definitive tags right after <head>
+    const canonicalTags = `<link rel="canonical" href="${canonicalUrl}">\n<meta property="og:url" content="${canonicalUrl}">`
+    if (/<head[^>]*>/i.test(result)) {
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${canonicalTags}`)
     }
   }
 
@@ -314,7 +328,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   // noindex is NOT injected (Google must be able to crawl and index the live site).
   const isStaging = !originalHost
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -365,7 +379,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedNav = config.shared_nav_html
   const sharedFooter = config.shared_footer_html
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug), {
     status: 200,
     // No cache on published pages — Publish must be instantly visible
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
