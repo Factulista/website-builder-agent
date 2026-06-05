@@ -554,7 +554,7 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
           'value="'+(currentHref||'')+'">'+
         '<div id="fact-link-dd" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;'+
           'background:#fff;border:1px solid #e2e8f0;border-radius:8px;'+
-          'box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100001;overflow:hidden;"></div>'+
+          'box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100001;overflow-y:auto;max-height:220px;"></div>'+
       '</div>'+
       '<p id="fact-link-hint" style="margin:6px 0 0;font-size:11px;min-height:16px;color:#6b7280"></p>'+
       '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">'+
@@ -584,8 +584,8 @@ function buildInlineEditScriptTemplate(pagesJson: string) { return `(function(){
           'justify-content:space-between;font-size:13px;'+
           (i<matches.length-1?'border-bottom:1px solid #f1f5f9;':'');
         row.innerHTML=
-          '<span style="font-weight:600;color:#1a1a1a">'+p.name+'</span>'+
-          '<code style="font-size:12px;color:#2563eb;background:#eff6ff;padding:2px 7px;border-radius:5px">'+p.href+'</code>';
+          '<code style="font-size:13px;color:#2563eb;font-family:monospace">'+p.href+'</code>'+
+          '<span style="font-size:11px;color:#9ca3af;margin-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">'+p.name+'</span>';
         row.onmouseenter=function(){row.style.background='#f8fafc';};
         row.onmouseleave=function(){row.style.background='';};
         row.addEventListener('mousedown',function(e){
