@@ -1483,10 +1483,30 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
   // Inspection is only offered when there are pages to inspect (not on first-site
   // creation). On the final allowed step, inspection tools are removed so the model
   // is forced to produce a concrete action.
-  const MAX_INSPECTION_STEPS = 4
+  const MAX_INSPECTION_STEPS = 3
   // Offer inspection only when there are pages to inspect and no images in play
   // (vision tasks analyze an image to generate — re-sending it each loop is wasteful).
   const offerInspection = hasPages && !isDesignFromMockup && !hasImages
+
+  // Prompt caching: the system prompt is identical across all loop steps (and across
+  // back-to-back requests on the same project). Marking it cacheable means inspection
+  // steps 2+ read from cache instead of re-paying the full input-token cost — this is
+  // critical because re-sending the full context each step was blowing past the org's
+  // per-minute input-token rate limit. Split static (guardrails/tools) from dynamic
+  // (pages HTML) so each part caches independently.
+  const dynamicMarkers = ['MEDIA LIBRARY DEL PROGETTO:', 'PAGINE DEL SITO:', 'PAGINE ATTUALI:']
+  const dynIdx = dynamicMarkers.reduce((min, mk) => {
+    const i = system.indexOf(mk); return i > -1 && i < min ? i : min
+  }, system.length)
+  const staticPart = system.slice(0, dynIdx).trim()
+  const dynamicPart = system.slice(dynIdx).trim()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const systemBlocks: any = staticPart.length >= 100
+    ? [
+        { type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } },
+        ...(dynamicPart ? [{ type: 'text', text: dynamicPart, cache_control: { type: 'ephemeral' } }] : []),
+      ]
+    : system
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const loopMessages: any[] = [...apiMessages]
   const totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
@@ -1509,14 +1529,16 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
-        ...(useExtendedThinking ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' } : {}),
+        'anthropic-beta': useExtendedThinking
+          ? 'interleaved-thinking-2025-05-14,prompt-caching-2024-07-31'
+          : 'prompt-caching-2024-07-31',
       },
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
         temperature: useExtendedThinking ? 1 : undefined,
         ...(useExtendedThinking ? { thinking: { type: 'enabled', budget_tokens: 8000 } } : {}),
-        system,
+        system: systemBlocks,
         tools: toolsForStep,
         tool_choice: { type: 'any' },
         messages: loopMessages,
