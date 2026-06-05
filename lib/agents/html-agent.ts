@@ -464,7 +464,80 @@ const HTML_TOOLS = [
       required: ['pageSlugs', 'componentId', 'data', 'placement', 'summary'],
     },
   },
+  // ── Inspection tools (read-only) — used in the agentic loop BEFORE acting ──
+  {
+    name: 'search_html',
+    description: 'ISPEZIONE (non modifica nulla). Cerca testo, classi CSS, attributi o selettori nell\'HTML delle pagine PRIMA di modificare. Usalo quando l\'utente nomina un elemento (bottone, link, sezione) di cui non conosci il testo/classe esatti, o che non vedi nel contesto. Restituisce gli snippet HTML attorno alle corrispondenze, con la pagina in cui si trovano. Dopo aver trovato l\'elemento, chiama edit_page con i valori esatti.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Cosa cercare: parte del testo visibile (es: "PRUEBA GRATIS"), una classe (es: "nav-cta"), un attributo (es: \'href="./precios"\'). Usa termini brevi e specifici.' },
+        pageSlug: { type: 'string', description: 'Opzionale: limita la ricerca a una pagina. Se omesso, cerca in TUTTE le pagine.' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'read_page',
+    description: 'ISPEZIONE (non modifica nulla). Restituisce l\'HTML completo di una pagina specifica. Usalo per ispezionare in dettaglio una pagina diversa da quella attiva (di cui vedi solo lo scheletro) prima di modificarla.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pageSlug: { type: 'string', description: 'Slug della pagina da leggere (es: "precios", "contacto").' },
+      },
+      required: ['pageSlug'],
+    },
+  },
 ]
+
+/**
+ * Execute a read-only inspection tool server-side. Returns a text result that is
+ * fed back to the model as a tool_result, so it can gather context before acting.
+ */
+function executeHtmlInspection(
+  name: string,
+  input: Record<string, unknown>,
+  pages: Page[]
+): string {
+  if (name === 'search_html') {
+    const query = String(input.query ?? '').trim()
+    if (!query) return 'Errore: query vuota.'
+    const pageSlug = input.pageSlug ? String(input.pageSlug) : null
+    const targets = pageSlug ? pages.filter(p => p.slug === pageSlug) : pages
+    if (targets.length === 0) {
+      return `Nessuna pagina con slug "${pageSlug}". Pagine disponibili: ${pages.map(p => p.slug).join(', ')}.`
+    }
+    const q = query.toLowerCase()
+    const matches: string[] = []
+    for (const p of targets) {
+      const lower = p.html.toLowerCase()
+      let idx = lower.indexOf(q)
+      let count = 0
+      while (idx !== -1 && count < 4) {
+        const start = Math.max(0, idx - 140)
+        const end = Math.min(p.html.length, idx + query.length + 140)
+        const snippet = p.html.slice(start, end).replace(/\s+/g, ' ').trim()
+        matches.push(`[pagina: ${p.slug}] …${snippet}…`)
+        idx = lower.indexOf(q, idx + query.length)
+        count++
+      }
+    }
+    if (matches.length === 0) {
+      return `Nessuna corrispondenza per "${query}". Prova un termine più corto, una classe o un attributo. Pagine disponibili: ${pages.map(p => p.slug).join(', ')}.`
+    }
+    return `Trovate ${matches.length} corrispondenze per "${query}" (usa i valori ESATTI qui sotto per il find/replace):\n${matches.join('\n\n')}`
+  }
+  if (name === 'read_page') {
+    const pageSlug = String(input.pageSlug ?? '')
+    const p = pages.find(pg => pg.slug === pageSlug)
+    if (!p) return `Pagina "${pageSlug}" non trovata. Disponibili: ${pages.map(pg => pg.slug).join(', ')}.`
+    const html = p.html.length > 14000 ? p.html.slice(0, 14000) + '\n…[HTML troncato a 14k caratteri]' : p.html
+    return `HTML completo di "${pageSlug}":\n\`\`\`html\n${html}\n\`\`\``
+  }
+  return `Tool di ispezione sconosciuto: ${name}`
+}
+
+const INSPECTION_TOOL_NAMES = new Set(['search_html', 'read_page'])
 
 export async function runHtmlAgentWithPlan(
   userRequest: string,
@@ -975,10 +1048,14 @@ ${styleBlock}
 Aggiungi SOLO l'elemento richiesto. NON toccare mai CSS/stile/colori/font/layout di elementi non coinvolti.
 Usa le classi CSS già esistenti nel sito. L'eccezione: l'utente dice esplicitamente "cambia colore/stile/design".
 
+🔍 ISPEZIONA PRIMA DI AGIRE: hai search_html e read_page (sola lettura, non modificano nulla).
+Se l'utente nomina un elemento (bottone, link, voce di menu) che NON vedi nel contesto o di cui non conosci il testo/classe esatti → chiama PRIMA search_html({query:"..."}) per trovarlo, poi usa i valori ESATTI per edit_page. Non indovinare mai: cerca. Puoi fare più ricerche di fila.
+
 REGOLE:
 - Usa SEMPRE edit_page (non create_site, non add_page).
 - Preferisci "operations" (selector-based) per sezioni intere; usa "edits" (find/replace) per CSS/attributi/testi brevi.
 - Tocca SOLO l'elemento richiesto — non riscrivere HTML non coinvolto.
+- NON restituire mai un edit vuoto: se non trovi l'elemento, ISPEZIONA con search_html invece di arrenderti.
 - summary in ${langName(userLang)}.
 - 🎯 SCOPE DICHIARATO: nel campo "scope" di edit_page, elenca SOLO le sezioni che stai effettivamente modificando.
 - ✅ PREFERISCI typed_edits per: colori (css_var), font-size (css_prop), link href (attr), testi brevi (text) — NON generare HTML per questi casi.`
@@ -1028,13 +1105,19 @@ CONSISTENZA:
 
   const fullPrefix = `Sei un esperto web designer. Crei e modifichi siti web MULTI-PAGINA in HTML puro.
 ${designPrinciplesBlock}
-🔍 REGOLA TESTO ESATTO — PRIMA DI MODIFICARE UN ELEMENTO:
-Se l'utente chiede di modificare un bottone, link o testo specifico (es: "il bottone Activar PRO") e non trovi quel testo ESATTO nell'HTML:
-1. NON generare un edit vuoto (0 operations, 0 edits) — causa confusione all'utente
-2. Cerca varianti simili nell'HTML (maiuscole/minuscole, spazi extra, testo parziale)
-3. Se trovi una variante simile → applicala
-4. Se non trovi nulla di simile → usa typed_edits con "attr" o "text" specificando il selettore CSS invece del testo
-5. Solo come ultima risorsa: usa il campo summary per spiegare che non hai trovato l'elemento e chiedi il testo esatto
+🔍 ISPEZIONA PRIMA DI AGIRE (loop agentico — come un vero sviluppatore):
+Hai due strumenti di SOLA LETTURA che NON modificano nulla: search_html e read_page.
+USALI PRIMA di modificare ogni volta che NON sei sicuro al 100% del testo/classe/attributo esatto:
+1. L'utente nomina un bottone/link/sezione (es: "il bottone PRUEBA GRATIS") che non vedi o di cui non conosci il testo esatto → chiama search_html({query:"PRUEBA GRATIS"}) per trovarlo, poi usa i valori ESATTI restituiti per edit_page.
+2. Devi modificare una pagina diversa da quella attiva (vedi solo lo scheletro) → chiama read_page({pageSlug:"..."}) per vederne l'HTML completo, poi modificala.
+3. Non trovi un elemento → search_html con un termine più corto, una classe, o un attributo (href/class/id) PRIMA di arrenderti.
+Puoi fare più ispezioni di fila. Il sistema ti restituisce i risultati e tu decidi la mossa successiva.
+
+REGOLA TESTO ESATTO — quando finalmente modifichi:
+1. NON generare MAI un edit vuoto (0 operations, 0 edits). Se non hai trovato l'elemento, ISPEZIONA ancora con search_html.
+2. Usa i valori ESATTI trovati con search_html per le stringhe find/replace.
+3. Per attributi/testi brevi preferisci typed_edits (attr/text) con il selettore CSS.
+4. Solo dopo aver davvero ispezionato senza risultato: usa summary per chiedere il testo esatto all'utente.
 
 🚫 REGOLA ANTI-REGRESSIONE — STILE INTOCCABILE SALVO RICHIESTA ESPLICITA:
 
@@ -1390,34 +1473,87 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
     return 12_000                             // edit_page standard
   })()
 
-  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      // Required for extended thinking with tool use
-      ...(useExtendedThinking ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' } : {}),
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      // Extended thinking: temperature must be exactly 1 (Anthropic requirement)
-      temperature: useExtendedThinking ? 1 : undefined,
-      ...(useExtendedThinking ? {
-        thinking: { type: 'enabled', budget_tokens: 8000 },
-      } : {}),
-      system,
-      tools: HTML_TOOLS,
-      tool_choice: { type: 'any' },
-      messages: apiMessages,
-    }),
-  }, 'html')
+  // ── Agentic inspection loop ──────────────────────────────────────────────
+  // Like Claude Code: the model may call read-only inspection tools (search_html,
+  // read_page) to gather context BEFORE committing to an action. Each inspection
+  // runs server-side and its result is fed back, letting the model iterate until
+  // it calls an action tool (edit_page, create_site, …). This is what turns the
+  // agent from a blind one-shot guesser into one that looks before it acts.
+  //
+  // Inspection is only offered when there are pages to inspect (not on first-site
+  // creation). On the final allowed step, inspection tools are removed so the model
+  // is forced to produce a concrete action.
+  const MAX_INSPECTION_STEPS = 4
+  // Offer inspection only when there are pages to inspect and no images in play
+  // (vision tasks analyze an image to generate — re-sending it each loop is wasteful).
+  const offerInspection = hasPages && !isDesignFromMockup && !hasImages
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const loopMessages: any[] = [...apiMessages]
+  const totalUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let data: any = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let toolUse: any = null
+  const inspectionTrail: string[] = []
 
-  if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
-  const data = await res.json()
-  const toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
-  if (!toolUse) throw new Error('No tool use in response')
+  for (let step = 0; step <= MAX_INSPECTION_STEPS; step++) {
+    const isLastStep = step === MAX_INSPECTION_STEPS
+    // Offer inspection tools only while inspecting and not on the forced-action step
+    const toolsForStep = (offerInspection && !isLastStep)
+      ? HTML_TOOLS
+      : HTML_TOOLS.filter(t => !INSPECTION_TOOL_NAMES.has(t.name))
+
+    const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        ...(useExtendedThinking ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        temperature: useExtendedThinking ? 1 : undefined,
+        ...(useExtendedThinking ? { thinking: { type: 'enabled', budget_tokens: 8000 } } : {}),
+        system,
+        tools: toolsForStep,
+        tool_choice: { type: 'any' },
+        messages: loopMessages,
+      }),
+    }, 'html')
+
+    if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
+    data = await res.json()
+
+    // Accumulate usage across all loop steps for accurate billing
+    const u = (data.usage ?? {}) as Record<string, number>
+    totalUsage.input_tokens += u.input_tokens ?? 0
+    totalUsage.output_tokens += u.output_tokens ?? 0
+    totalUsage.cache_read_input_tokens += u.cache_read_input_tokens ?? 0
+    totalUsage.cache_creation_input_tokens += u.cache_creation_input_tokens ?? 0
+
+    toolUse = data.content?.find((b: { type: string }) => b.type === 'tool_use')
+    if (!toolUse) throw new Error('No tool use in response')
+
+    // Action tool → exit the loop and let the downstream logic handle it
+    if (!INSPECTION_TOOL_NAMES.has(toolUse.name)) break
+
+    // Inspection tool → execute server-side, feed the result back, and iterate
+    const inspectionResult = executeHtmlInspection(toolUse.name, toolUse.input as Record<string, unknown>, pages)
+    inspectionTrail.push(`🔍 ${toolUse.name}(${JSON.stringify(toolUse.input).slice(0, 80)})`)
+    loopMessages.push({ role: 'assistant', content: data.content })
+    loopMessages.push({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: inspectionResult }],
+    })
+  }
+
+  // Replace per-call usage with the accumulated total so credits reflect all steps
+  data.usage = totalUsage
+  if (inspectionTrail.length > 0) {
+    console.log(`[agentic-loop] ${inspectionTrail.length} inspection step(s): ${inspectionTrail.join(' → ')}`)
+  }
 
   // Strip blank lines from all HTML outputs before returning
   const inp = toolUse.input as Record<string, unknown>
@@ -1491,8 +1627,9 @@ HTML COMPATTO: nessuna riga vuota nell'HTML.
       : `Problemi trovati:\n${issues.join('\n')}\nCorreggi questi problemi e salva la pagina.`
 
     // Feed validation result back and get the corrected tool call
+    // (loopMessages includes any inspection history from the agentic loop)
     const correctionMessages = [
-      ...apiMessages,
+      ...loopMessages,
       { role: 'assistant' as const, content: data.content },
       {
         role: 'user' as const,

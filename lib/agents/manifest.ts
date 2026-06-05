@@ -57,6 +57,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
     filePath: 'lib/agents/html-agent.ts',
     enabled: true,
     rules: [
+      '🔍 LOOP AGENTICO — prima di modificare può chiamare search_html / read_page (sola lettura) per trovare l\'elemento esatto, fino a 4 ispezioni, poi agisce. Non indovina più alla cieca',
       '🎯 MASSIMA LIBERTÀ CREATIVA — decidi autonomamente se creare da zero, modificare, usare template',
       '📋 Rispetta SEMPRE le PROJECT RULES (apprese dal progetto) — link style, form endpoints, CSS approach',
       '🔄 Quality feedback loop: il sistema auto-corregge problemi critici (H1, links, forms) — max 1 retry',
