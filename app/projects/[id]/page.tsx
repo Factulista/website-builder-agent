@@ -5955,11 +5955,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       </div>
                       <p style={{ margin: '0 0 12px', fontSize: '0.74rem', color: C.textFaint, lineHeight: 1.5 }}>
                         Reindirizza vecchi URL verso nuove destinazioni (301 permanente). Utile dopo migrazioni o pagine rimosse.
-                        <br />I redirect <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>/login</code> e <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>/registro</code> → app sono già attivi di default.
                       </p>
 
-                      {/* Existing redirects */}
-                      {redirects.length > 0 && (
+                      {/* Built-in (automatic) redirects — read-only */}
+                      {(() => {
+                        const builtins = [
+                          { from: '/login', to: `https://app.${ROOT_DOMAIN}/login` },
+                          { from: '/registro', to: `https://app.${ROOT_DOMAIN}/registro` },
+                          { from: '/*.html', to: '/* → slug senza .html' },
+                        ]
+                        return (
+                          <div style={{ marginBottom: '14px' }}>
+                            <div style={{ fontSize: '0.66rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Predefiniti (automatici)</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {builtins.map(r => (
+                                <div key={r.from} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 7 }}>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '1px 6px', borderRadius: 99, flexShrink: 0 }}>AUTO</span>
+                                  <code style={{ fontSize: '0.76rem', color: C.text, fontFamily: 'monospace' }}>{r.from}</code>
+                                  <span style={{ color: C.textFaint, fontSize: '0.8rem' }}>→</span>
+                                  <code style={{ fontSize: '0.76rem', color: '#15803d', fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.to}</code>
+                                  <span title="301 attivo · gestito dal sistema" style={{ fontSize: '0.8rem', flexShrink: 0 }}>🔒</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Custom redirects */}
+                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Personalizzati</div>
+                      {redirects.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
                           {redirects.map(r => (
                             <div key={r.from} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: '#f8fafc', border: `1px solid ${C.border}`, borderRadius: 7 }}>
@@ -5970,6 +5995,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </div>
                           ))}
                         </div>
+                      ) : (
+                        <p style={{ margin: '0 0 12px', fontSize: '0.72rem', color: C.textFaint, fontStyle: 'italic' }}>Nessun redirect personalizzato. Aggiungine uno qui sotto.</p>
                       )}
 
                       {/* Add form */}
