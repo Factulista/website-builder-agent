@@ -2548,9 +2548,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
   const publicBaseUrl = (() => {
     if (!projectSlug) return ''
-    if (customDomainStatus === 'verified' && customDomain) return `https://${customDomain}`
+    // Root project ALWAYS canonicalises to www, even if its custom_domain is the apex.
     const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
     if (rootProject && projectSlug === rootProject) return `https://www.${ROOT_DOMAIN}`
+    if (customDomainStatus === 'verified' && customDomain) return `https://${customDomain}`
     if (typeof window === 'undefined') return ''
     const host = window.location.host
     const isProduction = host === ROOT_DOMAIN || host.endsWith(`.${ROOT_DOMAIN}`)
@@ -8815,21 +8816,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   <p style={{ margin: '3px 0 0', fontSize: '0.68rem', color: C.textFaint }}>Se vuoto usa il titolo della pagina.</p>
                                 </div>
 
-                                {/* og:type + og:url + og:image — read-only / managed */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                  <div>
-                                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, marginBottom: '4px' }}>og:type</label>
-                                    <div style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: C.textFaint, background: '#f3f4f6', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px' }}>website 🔒</div>
-                                  </div>
-                                  <div>
-                                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, marginBottom: '4px' }}>og:image</label>
-                                    <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: (page as Page).og_image ? '#15803d' : '#dc2626', background: '#f3f4f6', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {(page as Page).og_image ? '✓ impostata' : '✗ mancante — usa "OG IMG"'}
+                                {/* Anteprima completa: tutti i tag OG iniettati al serve (read-only) */}
+                                {(() => {
+                                  const ph = page.html ?? ''
+                                  const titleTag = (ph.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
+                                  const desc = (ph.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? '').trim()
+                                  const lang = (ph.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? projectContext?.language ?? 'es').slice(0, 2).toLowerCase()
+                                  const localeMap: Record<string, string> = { es: 'es_ES', it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', pt: 'pt_PT', ca: 'ca_ES' }
+                                  const base = publicBaseUrl || `https://www.${ROOT_DOMAIN}`
+                                  const ogImg = (page as Page).og_image || defaultOgImage
+                                  const rows: Array<{ k: string; v: string; warn?: boolean }> = [
+                                    { k: 'og:title', v: ((page as Page).og_title || titleTag || page.name) },
+                                    { k: 'og:description', v: desc || '(meta description mancante)', warn: !desc },
+                                    { k: 'og:type', v: 'website' },
+                                    { k: 'og:url', v: `${base}/${page.slug === 'home' ? '' : page.slug}` },
+                                    { k: 'og:site_name', v: projectContext?.businessName || projectName || '—' },
+                                    { k: 'og:locale', v: localeMap[lang] ?? 'es_ES' },
+                                    { k: 'og:image', v: ogImg ? ((page as Page).og_image ? ogImg : `${ogImg} (default sito)`) : '✗ mancante', warn: !ogImg },
+                                    { k: 'og:image:alt', v: ogImg ? ((page as Page).og_title || titleTag || page.name) : '—' },
+                                    { k: 'og:image:width', v: ogImg ? '1200' : '—' },
+                                    { k: 'og:image:height', v: ogImg ? '630' : '—' },
+                                  ]
+                                  return (
+                                    <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+                                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '6px 10px', background: '#fafaf9', borderBottom: `1px solid ${C.border}` }}>Tag iniettati al serve (anteprima)</div>
+                                      {rows.map((r, i) => (
+                                        <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px', padding: '5px 10px', borderTop: i > 0 ? `1px solid ${C.bg}` : 'none', alignItems: 'center' }}>
+                                          <code style={{ fontSize: '0.72rem', color: C.textMuted, fontFamily: 'monospace' }}>{r.k}</code>
+                                          <span style={{ fontSize: '0.74rem', color: r.warn ? '#dc2626' : C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.v}</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                  </div>
-                                </div>
+                                  )
+                                })()}
                                 <p style={{ margin: '8px 0 0', fontSize: '0.66rem', color: C.textFaint, lineHeight: 1.6 }}>
-                                  Tag generati automaticamente su ogni pagina: <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:title</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:description</code> (da meta description) <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:type</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:url</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:site_name</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:locale</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:image</code> + <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>alt/width/height</code>. og:image si imposta dalla colonna <strong>OG IMG</strong>.
+                                  Questi tag sono iniettati <strong>al serve sul sito live</strong> (non nell'anteprima editor). og:image si imposta dalla colonna <strong>OG IMG</strong>, con fallback all'immagine di default del sito (tab Strumenti).
                                 </p>
                               </div>
 
