@@ -8760,102 +8760,98 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               }
                             </div>
 
-                            {/* SEO — Indicizzazione (robots) + canonical read-only */}
-                            <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${C.border}`, paddingTop: '12px' }}>
-                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>SEO — Indicizzazione</label>
-                              <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
-                                {(['noindex', 'nofollow'] as const).map(key => {
-                                  const on = !!(page as Page).robots?.[key]
-                                  const label = key === 'noindex' ? 'No Index' : 'No Follow'
-                                  const sub = key === 'noindex' ? 'Escludi da Google' : 'Non seguire i link'
-                                  return (
-                                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <div
-                                        onClick={() => updatePageRobots(page.slug, key, !on)}
-                                        title={`${label}: ${on ? 'attivo' : 'disattivo'}`}
-                                        style={{ position: 'relative', width: '34px', height: '18px', borderRadius: '9px', background: on ? '#ef4444' : C.border, cursor: 'pointer', transition: 'background .15s', flexShrink: 0 }}
-                                      >
-                                        <div style={{ position: 'absolute', top: '2px', left: on ? '18px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: 'left .15s' }} />
-                                      </div>
-                                      <div>
-                                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: on ? '#ef4444' : C.text }}>{label}</div>
-                                        <div style={{ fontSize: '0.68rem', color: C.textFaint }}>{sub}</div>
-                                      </div>
+                            {/* SEO + Open Graph — stile uniforme */}
+                            {(() => {
+                              const secLabel: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }
+                              const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textMuted, marginBottom: '5px' }
+                              const roBox: React.CSSProperties = { fontSize: '0.78rem', fontFamily: 'ui-monospace, monospace', color: C.textMuted, background: '#f6f7f9', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '8px 11px', boxSizing: 'border-box', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                              const inp: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '8px 11px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
+                              const help: React.CSSProperties = { margin: '5px 0 0', fontSize: '0.68rem', color: C.textFaint }
+                              const subSec: React.CSSProperties = { marginTop: '18px' }
+
+                              const ph = page.html ?? ''
+                              const titleTag = (ph.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
+                              const desc = (ph.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? '').trim()
+                              const lang = (ph.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? projectContext?.language ?? 'es').slice(0, 2).toLowerCase()
+                              const localeMap: Record<string, string> = { es: 'es_ES', it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', pt: 'pt_PT', ca: 'ca_ES' }
+                              const base = publicBaseUrl || `https://www.${ROOT_DOMAIN}`
+                              const canonical = `${base}/${page.slug === 'home' ? '' : page.slug}`
+                              const ogImg = (page as Page).og_image || defaultOgImage
+                              const ogTitleResolved = (page as Page).og_title || titleTag || page.name
+                              const ogRows: Array<{ k: string; v: string; warn?: boolean }> = [
+                                { k: 'og:title', v: ogTitleResolved },
+                                { k: 'og:description', v: desc || 'meta description mancante', warn: !desc },
+                                { k: 'og:type', v: 'website' },
+                                { k: 'og:url', v: canonical },
+                                { k: 'og:site_name', v: projectContext?.businessName || projectName || '—' },
+                                { k: 'og:locale', v: localeMap[lang] ?? 'es_ES' },
+                                { k: 'og:image', v: ogImg ? ((page as Page).og_image ? 'pagina' : 'default sito') : 'mancante', warn: !ogImg },
+                                { k: 'og:image:width', v: ogImg ? '1200' : '—' },
+                                { k: 'og:image:height', v: ogImg ? '630' : '—' },
+                              ]
+
+                              return (
+                                <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${C.border}`, paddingTop: '16px' }}>
+                                  {/* Indicizzazione */}
+                                  <label style={secLabel}>Indicizzazione</label>
+                                  <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
+                                    {(['noindex', 'nofollow'] as const).map(key => {
+                                      const on = !!(page as Page).robots?.[key]
+                                      const label = key === 'noindex' ? 'No Index' : 'No Follow'
+                                      const sub = key === 'noindex' ? 'Escludi da Google' : 'Non seguire i link'
+                                      return (
+                                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                                          <div onClick={() => updatePageRobots(page.slug, key, !on)} title={label}
+                                            style={{ position: 'relative', width: '34px', height: '18px', borderRadius: '9px', background: on ? '#ef4444' : C.border, cursor: 'pointer', transition: 'background .15s', flexShrink: 0 }}>
+                                            <div style={{ position: 'absolute', top: '2px', left: on ? '18px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: 'left .15s' }} />
+                                          </div>
+                                          <div>
+                                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: on ? '#ef4444' : C.text }}>{label}</div>
+                                            <div style={{ fontSize: '0.68rem', color: C.textFaint }}>{sub}</div>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+
+                                  {/* Canonical */}
+                                  <div style={subSec}>
+                                    <label style={secLabel}>Canonical</label>
+                                    <div style={{ ...roBox, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{canonical}</span>
+                                      <span title="Generato dal sistema — non modificabile" style={{ fontSize: '0.85rem', flexShrink: 0 }}>🔒</span>
                                     </div>
-                                  )
-                                })}
-                              </div>
+                                    <p style={help}>Generato automaticamente dal dominio pubblicato.</p>
+                                  </div>
 
-                              {/* Canonical — read-only (system-managed) */}
-                              <div style={{ marginTop: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Canonical</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <input
-                                    readOnly
-                                    value={`${publicBaseUrl || `https://www.${ROOT_DOMAIN}`}/${page.slug === 'home' ? '' : page.slug}`}
-                                    style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'monospace', outline: 'none', background: '#f3f4f6', color: C.textFaint, boxSizing: 'border-box' as const, cursor: 'default' }}
-                                  />
-                                  <span title="Generato automaticamente — non modificabile" style={{ fontSize: '0.9rem' }}>🔒</span>
-                                </div>
-                                <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Generato automaticamente dal dominio pubblicato. Non modificabile.</p>
-                              </div>
+                                  {/* Open Graph */}
+                                  <div style={subSec}>
+                                    <label style={secLabel}>Open Graph (anteprima social)</label>
+                                    <div style={{ marginBottom: '12px' }}>
+                                      <label style={fieldLabel}>og:title</label>
+                                      <input defaultValue={(page as Page).og_title ?? ''} placeholder={page.name}
+                                        onBlur={e => { const v = e.target.value.trim(); if (v !== ((page as Page).og_title ?? '')) void updatePageField(page.slug, 'og_title', v) }}
+                                        style={inp} />
+                                      <p style={help}>Se vuoto usa il titolo della pagina.</p>
+                                    </div>
 
-                              {/* ── Open Graph ── */}
-                              <div style={{ marginTop: '16px', borderTop: `1px dashed ${C.border}`, paddingTop: '14px' }}>
-                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Open Graph (anteprima social)</label>
-
-                                {/* og:title — editable */}
-                                <div style={{ marginBottom: '10px' }}>
-                                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, marginBottom: '4px' }}>og:title</label>
-                                  <input
-                                    defaultValue={(page as Page).og_title ?? ''}
-                                    placeholder={page.name}
-                                    onBlur={e => { const v = e.target.value.trim(); if (v !== ((page as Page).og_title ?? '')) void updatePageField(page.slug, 'og_title', v) }}
-                                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
-                                  />
-                                  <p style={{ margin: '3px 0 0', fontSize: '0.68rem', color: C.textFaint }}>Se vuoto usa il titolo della pagina.</p>
-                                </div>
-
-                                {/* Anteprima completa: tutti i tag OG iniettati al serve (read-only) */}
-                                {(() => {
-                                  const ph = page.html ?? ''
-                                  const titleTag = (ph.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
-                                  const desc = (ph.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? '').trim()
-                                  const lang = (ph.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? projectContext?.language ?? 'es').slice(0, 2).toLowerCase()
-                                  const localeMap: Record<string, string> = { es: 'es_ES', it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', pt: 'pt_PT', ca: 'ca_ES' }
-                                  const base = publicBaseUrl || `https://www.${ROOT_DOMAIN}`
-                                  const ogImg = (page as Page).og_image || defaultOgImage
-                                  const rows: Array<{ k: string; v: string; warn?: boolean }> = [
-                                    { k: 'og:title', v: ((page as Page).og_title || titleTag || page.name) },
-                                    { k: 'og:description', v: desc || '(meta description mancante)', warn: !desc },
-                                    { k: 'og:type', v: 'website' },
-                                    { k: 'og:url', v: `${base}/${page.slug === 'home' ? '' : page.slug}` },
-                                    { k: 'og:site_name', v: projectContext?.businessName || projectName || '—' },
-                                    { k: 'og:locale', v: localeMap[lang] ?? 'es_ES' },
-                                    { k: 'og:image', v: ogImg ? ((page as Page).og_image ? ogImg : `${ogImg} (default sito)`) : '✗ mancante', warn: !ogImg },
-                                    { k: 'og:image:alt', v: ogImg ? ((page as Page).og_title || titleTag || page.name) : '—' },
-                                    { k: 'og:image:width', v: ogImg ? '1200' : '—' },
-                                    { k: 'og:image:height', v: ogImg ? '630' : '—' },
-                                  ]
-                                  return (
+                                    {/* Tabella tag iniettati */}
                                     <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-                                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '6px 10px', background: '#fafaf9', borderBottom: `1px solid ${C.border}` }}>Tag iniettati al serve (anteprima)</div>
-                                      {rows.map((r, i) => (
-                                        <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px', padding: '5px 10px', borderTop: i > 0 ? `1px solid ${C.bg}` : 'none', alignItems: 'center' }}>
-                                          <code style={{ fontSize: '0.72rem', color: C.textMuted, fontFamily: 'monospace' }}>{r.k}</code>
-                                          <span style={{ fontSize: '0.74rem', color: r.warn ? '#dc2626' : C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.v}</span>
+                                      <div style={{ ...secLabel, margin: 0, padding: '7px 11px', background: '#fafaf9', borderBottom: `1px solid ${C.border}` }}>Tag iniettati sul sito live</div>
+                                      {ogRows.map((r, i) => (
+                                        <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '10px', padding: '6px 11px', borderTop: i > 0 ? `1px solid #f1f0ee` : 'none', alignItems: 'center' }}>
+                                          <code style={{ fontSize: '0.72rem', color: C.textMuted, fontFamily: 'ui-monospace, monospace' }}>{r.k}</code>
+                                          <span style={{ fontSize: '0.76rem', color: r.warn ? '#dc2626' : C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.v}</span>
                                         </div>
                                       ))}
                                     </div>
-                                  )
-                                })()}
-                                <p style={{ margin: '8px 0 0', fontSize: '0.66rem', color: C.textFaint, lineHeight: 1.6 }}>
-                                  Questi tag sono iniettati <strong>al serve sul sito live</strong> (non nell'anteprima editor). og:image si imposta dalla colonna <strong>OG IMG</strong>, con fallback all'immagine di default del sito (tab Strumenti).
-                                </p>
-                              </div>
+                                    <p style={help}>I tag sono iniettati al serve sul sito live (non in anteprima). og:image dalla colonna OG IMG, con fallback all'immagine di default del sito (tab Strumenti).</p>
+                                  </div>
 
-                              <p style={{ margin: '12px 0 0', fontSize: '0.68rem', color: C.textFaint }}>⚠️ Le modifiche SEO richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>
-                            </div>
+                                  <p style={{ ...help, marginTop: '16px', paddingTop: '12px', borderTop: `1px dashed ${C.border}` }}>⚠️ Le modifiche SEO richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>
+                                </div>
+                              )
+                            })()}
 
                             {/* Save button */}
                             <div style={{ gridColumn: '1 / -1' }}>
