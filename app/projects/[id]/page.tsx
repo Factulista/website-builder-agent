@@ -8775,7 +8775,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     </div>
                                   </div>
                                 </div>
-                                <p style={{ margin: '6px 0 0', fontSize: '0.68rem', color: C.textFaint }}>og:url coincide col Canonical sopra. og:image si imposta dalla colonna <strong>OG IMG</strong> della lista pagine.</p>
+                                <p style={{ margin: '8px 0 0', fontSize: '0.66rem', color: C.textFaint, lineHeight: 1.6 }}>
+                                  Tag generati automaticamente su ogni pagina: <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:title</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:description</code> (da meta description) <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:type</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:url</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:site_name</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:locale</code> <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>og:image</code> + <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>alt/width/height</code>. og:image si imposta dalla colonna <strong>OG IMG</strong>.
+                                </p>
                               </div>
 
                               <p style={{ margin: '12px 0 0', fontSize: '0.68rem', color: C.textFaint }}>⚠️ Le modifiche SEO richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>

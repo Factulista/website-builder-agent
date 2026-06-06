@@ -147,7 +147,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }, ogTitle?: string): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }, ogTitle?: string, siteName?: string): string {
   const baseTag = `<base href="${base}">`
 
   // Canonical header/footer stylesheet — extracted from the home CSS, injected AFTER
@@ -206,25 +206,45 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     // to stored HTML having apex (no-www), stale, or missing canonical tags. This is
     // the single source of truth and guarantees every page has the correct www canonical.
     const canonicalUrl = (!pageSlug || pageSlug === 'home') ? `${siteUrl}/` : `${siteUrl}/${pageSlug}`
-    // Strip any existing canonical / og:url (whatever the stored HTML had)
+    // Strip any existing canonical (whatever the stored HTML had) and inject the definitive one
     result = result.replace(/<link[^>]+rel=["']canonical["'][^>]*\/?>\s*/gi, '')
-    result = result.replace(/<meta[^>]+property=["']og:url["'][^>]*\/?>\s*/gi, '')
-    // Inject the correct, definitive tags right after <head>
-    const canonicalTags = `<link rel="canonical" href="${canonicalUrl}">\n<meta property="og:url" content="${canonicalUrl}">`
     if (/<head[^>]*>/i.test(result)) {
-      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${canonicalTags}`)
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="canonical" href="${canonicalUrl}">`)
     }
 
-    // ── Open Graph: og:title + og:type AUTHORITATIVE (og:url done above, og:image below) ──
-    // og:title = custom override (page.og_title) → else the page <title> → else slug.
-    // og:type  = "website" for site pages. Strip stale tags first so there's exactly one.
+    // ── Open Graph: COMPLETE, AUTHORITATIVE, DEDUPLICATED set on every page ──
+    // Strip ALL existing og:* tags (removes duplicates + stale values), then inject
+    // one clean, full set. Sources: og_title override → <title>; description from the
+    // page <meta description>; locale from <html lang>; image 1200×630 (OG format).
+    const esc = (s: string) => s.replace(/"/g, '&quot;').replace(/\s+/g, ' ').trim()
     const titleFromHtml = (result.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
-    const ogTitleVal = (ogTitle?.trim() || titleFromHtml || pageSlug).replace(/"/g, '&quot;')
-    result = result.replace(/<meta[^>]+property=["']og:title["'][^>]*\/?>\s*/gi, '')
-    result = result.replace(/<meta[^>]+property=["']og:type["'][^>]*\/?>\s*/gi, '')
-    const ogBaseTags = `<meta property="og:title" content="${ogTitleVal}">\n<meta property="og:type" content="website">`
+    const descFromHtml = (
+      result.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ??
+      result.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i)?.[1] ?? ''
+    ).trim()
+    const langFromHtml = (result.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? 'es').slice(0, 2).toLowerCase()
+    const localeMap: Record<string, string> = { es: 'es_ES', it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', pt: 'pt_PT', ca: 'ca_ES' }
+    const ogLocale = localeMap[langFromHtml] ?? 'es_ES'
+    const ogTitleVal = esc(ogTitle?.trim() || titleFromHtml || pageSlug)
+    const ogDescVal = esc(descFromHtml)
+    const ogSiteName = esc(siteName ?? '')
+
+    result = result.replace(/<meta[^>]+property=["']og:[^"']*["'][^>]*\/?>\s*/gi, '')
+
+    const ogTags = [
+      `<meta property="og:title" content="${ogTitleVal}">`,
+      ogDescVal ? `<meta property="og:description" content="${ogDescVal}">` : '',
+      `<meta property="og:type" content="website">`,
+      `<meta property="og:url" content="${canonicalUrl}">`,
+      ogSiteName ? `<meta property="og:site_name" content="${ogSiteName}">` : '',
+      `<meta property="og:locale" content="${ogLocale}">`,
+      ogImageUrl ? `<meta property="og:image" content="${ogImageUrl}">` : '',
+      ogImageUrl ? `<meta property="og:image:alt" content="${ogTitleVal}">` : '',
+      ogImageUrl ? `<meta property="og:image:width" content="1200">` : '',
+      ogImageUrl ? `<meta property="og:image:height" content="630">` : '',
+    ].filter(Boolean).join('\n')
     if (/<head[^>]*>/i.test(result)) {
-      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${ogBaseTags}`)
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${ogTags}`)
     }
 
     // ── Robots meta: AUTHORITATIVE from the page setting (Pages panel) ──
@@ -243,24 +263,14 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     }
   }
 
-  // Inject favicon and OG image if provided
-  if (/<head[^>]*>/i.test(result)) {
-    if (faviconUrl) {
-      // Always use the user's favicon — remove any existing icon links first
-      result = result.replace(/<link[^>]+rel=["'](?:shortcut icon|icon|apple-touch-icon)["'][^>]*\/?>/gi, '')
-      const ext = faviconUrl.split('?')[0].split('.').pop()?.toLowerCase() ?? 'png'
-      const mimeMap: Record<string, string> = { ico: 'image/x-icon', svg: 'image/svg+xml', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg' }
-      const type = mimeMap[ext] ?? 'image/png'
-      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" type="${type}" href="${faviconUrl}">\n<link rel="apple-touch-icon" href="${faviconUrl}">`)
-    }
-    if (ogImageUrl) {
-      // If page.og_image is set, it always wins — replace any existing og:image in HTML
-      if (/<meta[^>]+property=["']og:image["']/i.test(result)) {
-        result = result.replace(/<meta[^>]+property=["']og:image["'][^>]*>/i, `<meta property="og:image" content="${ogImageUrl}">`)
-      } else {
-        result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<meta property="og:image" content="${ogImageUrl}">`)
-      }
-    }
+  // Inject favicon (OG image is handled in the complete OG block above, production only)
+  if (/<head[^>]*>/i.test(result) && faviconUrl) {
+    // Always use the user's favicon — remove any existing icon links first
+    result = result.replace(/<link[^>]+rel=["'](?:shortcut icon|icon|apple-touch-icon)["'][^>]*\/?>/gi, '')
+    const ext = faviconUrl.split('?')[0].split('.').pop()?.toLowerCase() ?? 'png'
+    const mimeMap: Record<string, string> = { ico: 'image/x-icon', svg: 'image/svg+xml', webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg' }
+    const type = mimeMap[ext] ?? 'image/png'
+    result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="icon" type="${type}" href="${faviconUrl}">\n<link rel="apple-touch-icon" href="${faviconUrl}">`)
   }
 
   // Inject canonical header/footer CSS + global layout fix — AFTER the page's own styles
@@ -361,7 +371,8 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   // noindex is NOT injected (Google must be able to crawl and index the live site).
   const isStaging = !originalHost
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title), {
+  const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
+  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -436,7 +447,8 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedNav = config.shared_nav_html
   const sharedFooter = config.shared_footer_html
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title), {
+  const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName), {
     status: 200,
     // No cache on published pages — Publish must be instantly visible
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
