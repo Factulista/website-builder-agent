@@ -9,6 +9,8 @@ export type Page = {
   inMenu?: boolean
   /** OG image URL for this page */
   og_image?: string
+  /** Custom Open Graph title override (defaults to the page <title>) */
+  og_title?: string
   /** Per-page robots directive (Pages panel). Default: index, follow. */
   robots?: { noindex?: boolean; nofollow?: boolean }
 }

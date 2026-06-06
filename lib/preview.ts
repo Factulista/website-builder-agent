@@ -10,6 +10,8 @@ type Page = {
   menuLabel?: string
   inMenu?: boolean
   og_image?: string
+  /** Custom Open Graph title override (defaults to the page <title>). */
+  og_title?: string
   /** Per-page robots directive, controlled from the Pages panel. Default: index, follow. */
   robots?: { noindex?: boolean; nofollow?: boolean }
 }
@@ -145,7 +147,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }, ogTitle?: string): string {
   const baseTag = `<base href="${base}">`
 
   // Canonical header/footer stylesheet — extracted from the home CSS, injected AFTER
@@ -211,6 +213,18 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     const canonicalTags = `<link rel="canonical" href="${canonicalUrl}">\n<meta property="og:url" content="${canonicalUrl}">`
     if (/<head[^>]*>/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${canonicalTags}`)
+    }
+
+    // ── Open Graph: og:title + og:type AUTHORITATIVE (og:url done above, og:image below) ──
+    // og:title = custom override (page.og_title) → else the page <title> → else slug.
+    // og:type  = "website" for site pages. Strip stale tags first so there's exactly one.
+    const titleFromHtml = (result.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
+    const ogTitleVal = (ogTitle?.trim() || titleFromHtml || pageSlug).replace(/"/g, '&quot;')
+    result = result.replace(/<meta[^>]+property=["']og:title["'][^>]*\/?>\s*/gi, '')
+    result = result.replace(/<meta[^>]+property=["']og:type["'][^>]*\/?>\s*/gi, '')
+    const ogBaseTags = `<meta property="og:title" content="${ogTitleVal}">\n<meta property="og:type" content="website">`
+    if (/<head[^>]*>/i.test(result)) {
+      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${ogBaseTags}`)
     }
 
     // ── Robots meta: AUTHORITATIVE from the page setting (Pages panel) ──
@@ -347,7 +361,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   // noindex is NOT injected (Google must be able to crawl and index the live site).
   const isStaging = !originalHost
 
-  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -422,7 +436,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedNav = config.shared_nav_html
   const sharedFooter = config.shared_footer_html
 
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title), {
     status: 200,
     // No cache on published pages — Publish must be instantly visible
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },

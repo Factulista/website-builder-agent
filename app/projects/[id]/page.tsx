@@ -8447,7 +8447,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               setPages(synced)
               await saveState(messages, synced)
             }
-            const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu', value: string | boolean) => {
+            const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu' | 'og_title', value: string | boolean) => {
               const next = pages.map(p => p.slug === slug ? { ...p, [field]: value } : p)
               const synced = (field === 'inMenu' || field === 'menuLabel') ? reorderNavLinks(next) : next
               setPages(synced)
@@ -8746,7 +8746,39 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Generato automaticamente dal dominio pubblicato. Non modificabile.</p>
                               </div>
 
-                              <p style={{ margin: '10px 0 0', fontSize: '0.68rem', color: C.textFaint }}>⚠️ Le modifiche a No Index / No Follow richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>
+                              {/* ── Open Graph ── */}
+                              <div style={{ marginTop: '16px', borderTop: `1px dashed ${C.border}`, paddingTop: '14px' }}>
+                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Open Graph (anteprima social)</label>
+
+                                {/* og:title — editable */}
+                                <div style={{ marginBottom: '10px' }}>
+                                  <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, marginBottom: '4px' }}>og:title</label>
+                                  <input
+                                    defaultValue={(page as Page).og_title ?? ''}
+                                    placeholder={page.name}
+                                    onBlur={e => { const v = e.target.value.trim(); if (v !== ((page as Page).og_title ?? '')) void updatePageField(page.slug, 'og_title', v) }}
+                                    style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
+                                  />
+                                  <p style={{ margin: '3px 0 0', fontSize: '0.68rem', color: C.textFaint }}>Se vuoto usa il titolo della pagina.</p>
+                                </div>
+
+                                {/* og:type + og:url + og:image — read-only / managed */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, marginBottom: '4px' }}>og:type</label>
+                                    <div style={{ fontSize: '0.78rem', fontFamily: 'monospace', color: C.textFaint, background: '#f3f4f6', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px' }}>website 🔒</div>
+                                  </div>
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textFaint, marginBottom: '4px' }}>og:image</label>
+                                    <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: (page as Page).og_image ? '#15803d' : '#dc2626', background: '#f3f4f6', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {(page as Page).og_image ? '✓ impostata' : '✗ mancante — usa "OG IMG"'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <p style={{ margin: '6px 0 0', fontSize: '0.68rem', color: C.textFaint }}>og:url coincide col Canonical sopra. og:image si imposta dalla colonna <strong>OG IMG</strong> della lista pagine.</p>
+                              </div>
+
+                              <p style={{ margin: '12px 0 0', fontSize: '0.68rem', color: C.textFaint }}>⚠️ Le modifiche SEO richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>
                             </div>
 
                             {/* Save button */}
