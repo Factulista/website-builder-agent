@@ -1818,6 +1818,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [newRedirectFrom, setNewRedirectFrom] = useState('')
   const [newRedirectTo, setNewRedirectTo] = useState('')
   const [redirectSaving, setRedirectSaving] = useState(false)
+  // Site-wide default OG image (fallback for pages without their own)
+  const [defaultOgImage, setDefaultOgImage] = useState('')
+  const [defaultOgPickerOpen, setDefaultOgPickerOpen] = useState(false)
   const [injectPointsOpen, setInjectPointsOpen] = useState(false)
   const [injectPointsSaving, setInjectPointsSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const injectPointsRef = useRef<Record<string, string>>({})
@@ -2766,6 +2769,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setBlogSidebarBannerUrl(config?.blog_sidebar_banner?.url ?? '')
       setBlogSidebarBannerLink(config?.blog_sidebar_banner?.link ?? '')
       setRedirects(((config as any)?.redirects ?? []) as Array<{ from: string; to: string }>)
+      setDefaultOgImage(((config as any)?.default_og_image ?? '') as string)
       // Load Brevo integration settings
       const integrations = ((config as any)?.integrations ?? {}) as Record<string, unknown>
       const brevo = (integrations.brevo ?? {}) as Record<string, unknown>
@@ -3367,6 +3371,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const next = pages.map(p => p.slug === slug ? { ...p, og_image: ogUrl } : p)
     setPages(next)
     await saveState(messages, next)
+  }
+
+  // Site-wide default OG image — fallback for pages without their own (servePublished).
+  const saveDefaultOgImage = async (url: string) => {
+    const finalUrl = url ? await resizeToOgFormat(url) : ''
+    setDefaultOgImage(finalUrl)
+    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+    await supabase.from('projects').update({
+      site_config: { ...currentConfig, default_og_image: finalUrl },
+      updated_at: new Date().toISOString(),
+    }).eq('id', id)
   }
 
   const updateMediaMeta = (path: string, field: keyof MediaMeta, value: string) => {
@@ -5946,6 +5962,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         </div>
                       )
                     })()}
+
+                    {/* ── Immagine OG di default ── */}
+                    <div style={{ marginTop: '28px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}`, marginBottom: '12px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: C.text }}>Immagine OG di default</span>
+                      </div>
+                      <p style={{ margin: '0 0 12px', fontSize: '0.74rem', color: C.textFaint, lineHeight: 1.5 }}>
+                        Usata come <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>og:image</code> per le pagine che non ne hanno una propria. Auto-ridimensionata a 1200×630.
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        {defaultOgImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={defaultOgImage} alt="OG default" style={{ width: '120px', height: '63px', objectFit: 'cover', borderRadius: 6, border: `1px solid ${C.border}` }} />
+                        ) : (
+                          <div style={{ width: '120px', height: '63px', borderRadius: 6, border: `1px dashed ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: C.textFaint }}>nessuna</div>
+                        )}
+                        <button onClick={() => setDefaultOgPickerOpen(!defaultOgPickerOpen)} style={{ height: 32, padding: '0 14px', background: C.blue, color: 'white', border: 'none', borderRadius: 7, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {defaultOgImage ? 'Cambia' : 'Scegli immagine'}
+                        </button>
+                        {defaultOgImage && (
+                          <button onClick={() => void saveDefaultOgImage('')} style={{ height: 32, padding: '0 12px', background: 'none', color: '#ef4444', border: '1px solid #fecaca', borderRadius: 7, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>Rimuovi</button>
+                        )}
+                      </div>
+                      {defaultOgPickerOpen && (
+                        <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f8fafc', border: `1px solid ${C.border}`, borderRadius: 8 }}>
+                          <div style={{ fontSize: '0.68rem', color: C.textFaint, marginBottom: '8px' }}>Scegli dalla media library</div>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {mediaItems.slice(0, 16).map(item => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={item.path} src={item.url} alt="" onClick={() => { void saveDefaultOgImage(item.url); setDefaultOgPickerOpen(false) }}
+                                style={{ width: '48px', height: '32px', objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: defaultOgImage === item.url ? '2px solid #2563eb' : `1px solid ${C.border}` }} />
+                            ))}
+                            {mediaItems.length === 0 && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>Nessuna immagine in libreria. Caricane una dal tab Media.</span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
                     {/* ── Redirect 301 ── */}
                     <div style={{ marginTop: '28px' }}>

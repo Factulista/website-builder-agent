@@ -359,7 +359,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const knownSlugs = ['blog', ...(config?.pages ?? []).map(p => p.slug)]
   const faviconUrl = config?.favicon_url
   const page = config?.pages?.find(p => p.slug === pageSlug)
-  const ogImageUrl = page?.og_image
+  const ogImageUrl = page?.og_image || (config as Record<string, unknown>)?.default_og_image as string | undefined
   const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
   const sharedCss = config?.shared_css
   const sharedNav = config?.shared_nav_html
@@ -441,7 +441,8 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const siteUrl = `https://${customDomain}`
   const knownSlugs = ['blog', ...(config.published_pages).map(p => p.slug)]
   const faviconUrl = config.favicon_url
-  const ogImageUrl = page.og_image
+  // OG image: page-specific → else the site-wide default (so no page lacks og:image)
+  const ogImageUrl = page.og_image || (config as Record<string, unknown>)?.default_og_image as string | undefined
   const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
   const sharedCss = config.shared_css
   const sharedNav = config.shared_nav_html
