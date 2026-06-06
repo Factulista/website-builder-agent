@@ -8605,10 +8605,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             ⠿
                           </div>
 
-                          {/* Name */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                          {/* Name — click to open/close the settings panel */}
+                          <div
+                            onClick={() => { setRenamingSlug(isExpanded ? null : page.slug); setRenameValue(page.name); setEditSlugValue(page.slug); setMenuLabelValue(page.menuLabel ?? '') }}
+                            title="Apri impostazioni pagina"
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, cursor: 'pointer' }}
+                          >
+                            <span style={{ fontSize: '0.7rem', color: isExpanded ? C.blue : C.textFaint, transition: 'transform .15s', transform: isExpanded ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
                             <span style={{ fontSize: '0.8rem' }}>📄</span>
-                            <span style={{ fontWeight: 600, fontSize: '0.85rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.name}</span>
+                            <span style={{ fontWeight: 600, fontSize: '0.85rem', color: isExpanded ? C.blue : C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.name}</span>
                             {page.slug === 'home' && <span style={{ fontSize: '0.62rem', background: C.blue, color: 'white', padding: '1px 6px', borderRadius: '10px', fontWeight: 700, flexShrink: 0 }}>HOME</span>}
                           </div>
 
@@ -8657,11 +8662,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                           {/* Actions */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <button
-                              onClick={() => { setRenamingSlug(isExpanded ? null : page.slug); setRenameValue(page.name); setEditSlugValue(page.slug); setMenuLabelValue(page.menuLabel ?? '') }}
-                              title="Impostazioni"
-                              style={{ background: isExpanded ? C.blue : C.bg, border: `1px solid ${isExpanded ? C.blue : C.border}`, borderRadius: '6px', padding: '3px 7px', fontSize: '0.72rem', cursor: 'pointer', color: isExpanded ? 'white' : C.text, fontFamily: 'inherit' }}
-                            >⚙</button>
                             <button
                               onClick={() => handleDuplicatePage(page.slug)}
                               title="Duplica"
