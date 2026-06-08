@@ -44,20 +44,23 @@ export async function fetchWithRetry(
       return res  // non-retryable or exhausted — let caller handle
     }
 
-    // For 429: respect Retry-After header (in seconds)
+    // For 429: cap retry delay to avoid Vercel 300s timeout.
+    // Vercel Pro timeout = 300s. With 3 inspection steps each hitting 429,
+    // 3 × 60s = 180s already, leaving only 120s for actual work.
+    // Cap at 20s max — if Anthropic says "wait 60s", we still cap at 20s.
+    // Better to fail fast than timeout the whole request.
+    const MAX_DELAY_MS = 20_000
     let delayMs: number
     if (isRateLimit) {
       const retryAfter = res.headers.get('retry-after')
       const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : null
-      // Add jitter: ±20% of delay to avoid thundering herd
       const jitter = 1 + (Math.random() * 0.4 - 0.2)
       delayMs = retryAfterMs
-        ? Math.min(retryAfterMs * jitter, 60_000)
-        : BASE_DELAY_MS * Math.pow(2, attempt) * jitter
+        ? Math.min(retryAfterMs * jitter, MAX_DELAY_MS)
+        : Math.min(BASE_DELAY_MS * Math.pow(2, attempt) * jitter, MAX_DELAY_MS)
     } else {
-      // Overload: standard exponential backoff + jitter
       const jitter = 1 + (Math.random() * 0.3 - 0.15)
-      delayMs = BASE_DELAY_MS * Math.pow(2, attempt) * jitter
+      delayMs = Math.min(BASE_DELAY_MS * Math.pow(2, attempt) * jitter, MAX_DELAY_MS)
     }
 
     const reason = isRateLimit ? 'rate limit (429)' : 'server overload (529)'

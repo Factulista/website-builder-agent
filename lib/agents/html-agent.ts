@@ -1679,7 +1679,9 @@ ${visibleBlocks.slice(0, 5).join(', ')}
   // Inspection is only offered when there are pages to inspect (not on first-site
   // creation). On the final allowed step, inspection tools are removed so the model
   // is forced to produce a concrete action.
-  const MAX_INSPECTION_STEPS = 3
+  // Max 1 inspection step for block edits (block is pre-loaded, no need to search).
+  // Max 2 for everything else. Was 3 — caused 3×60s retry delays on 429 → Vercel timeout.
+  const MAX_INSPECTION_STEPS = isBlockEdit ? 1 : 2
   // Offer inspection only when there are pages to inspect and no images in play
   // (vision tasks analyze an image to generate — re-sending it each loop is wasteful).
   const offerInspection = hasPages && !isDesignFromMockup && !hasImages
