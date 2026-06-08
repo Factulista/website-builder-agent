@@ -190,6 +190,20 @@ export async function POST(req: NextRequest) {
     // Apply compaction before passing to agents
     const messages = compactMessages(rawMessages)
 
+    // ── Ensure blocks are always present server-side ──────────────────────────
+    // Blocks may not be persisted yet (client backfills on load but only saves to DB
+    // on next agent action). Split them here so the agent always gets block-mode context
+    // regardless of whether the client has saved them.
+    if (pages) {
+      const { splitHtmlIntoBlocks: splitBlocks } = await import('../../../lib/agents/block-splitter')
+      for (let i = 0; i < pages.length; i++) {
+        if (!pages[i].blocks || pages[i].blocks!.length === 0) {
+          const blocks = splitBlocks(pages[i].html)
+          if (blocks) pages[i] = { ...pages[i], blocks }
+        }
+      }
+    }
+
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
 

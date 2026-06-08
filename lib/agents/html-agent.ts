@@ -1686,12 +1686,11 @@ ${visibleBlocks.slice(0, 5).join(', ')}
   // Inspection is only offered when there are pages to inspect (not on first-site
   // creation). On the final allowed step, inspection tools are removed so the model
   // is forced to produce a concrete action.
-  // Inspection steps budget — each step = 1 extra API call → potential 429 → 20s wait.
-  // Keep this as low as possible. The pre-loaded block eliminates the need to inspect.
-  //   0 = block pre-loaded (agent has exact bytes, go straight to action)
-  //   1 = block mode but no pre-load (one read_block allowed, then forced to act)
-  //   2 = monolith/creation (may need one search + one read)
-  const MAX_INSPECTION_STEPS = activePageBlockPreloaded ? 0 : isBlockEdit ? 1 : 2
+  // Inspection steps = extra Anthropic API calls = extra 429 hits.
+  // On Tier 1 (5 RPM), even 2 calls per message causes rate limits.
+  // Rule: edit tasks → 0 inspection steps (block is pre-loaded server-side, act directly).
+  //       creation tasks → 1 step max (may need to check existing structure).
+  const MAX_INSPECTION_STEPS = isCreationTask ? 1 : 0
   // Offer inspection only when there are pages to inspect and no images in play
   // (vision tasks analyze an image to generate — re-sending it each loop is wasteful).
   const offerInspection = hasPages && !isDesignFromMockup && !hasImages
