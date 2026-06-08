@@ -1776,7 +1776,15 @@ ${visibleBlocks.slice(0, 5).join(', ')}
       }),
     }, 'html')
 
-    if (!res.ok) throw new Error(`Anthropic API error: ${await res.text()}`)
+    if (!res.ok) {
+      // 429: rate limit — throw a specific error so the route can show a friendly message
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('retry-after')
+        const waitSec = retryAfter ? Math.ceil(parseInt(retryAfter, 10)) : 30
+        throw new Error(`RATE_LIMIT:${waitSec}`)
+      }
+      throw new Error(`Anthropic API error: ${await res.text()}`)
+    }
     data = await res.json()
 
     // Accumulate usage across all loop steps for accurate billing

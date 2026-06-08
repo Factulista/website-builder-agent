@@ -4163,6 +4163,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         return
       }
       if (streamError) {
+        // Rate limit: show a clear, actionable message instead of generic error
+        const rateLimitMatch = streamError.match(/RATE_LIMIT:(\d+)/)
+        if (rateLimitMatch) {
+          const waitSec = parseInt(rateLimitMatch[1], 10) || 30
+          setMessages(prev => prev.map(m => m.id === assistantId
+            ? { ...m, content: `⏳ Anthropic è al limite di richieste al minuto. Aspetta **${waitSec} secondi** e riprova — le tue modifiche sono al sicuro.`, failed: true, retryInput: retrySnapshot.input, retryImages: retrySnapshot.images }
+            : m))
+          setLoading(false)
+          return
+        }
         markFailed(streamError)
         return
       }

@@ -10,7 +10,7 @@
  * Calls optional onRetry callback so callers can show progress to the user.
  */
 
-const MAX_RETRIES = 2  // reduced from 4: 2×20s=40s max wait vs previous 4×60s=240s
+const MAX_RETRIES = 2
 const BASE_DELAY_MS = 5000
 
 function sleep(ms: number) {
@@ -40,7 +40,15 @@ export async function fetchWithRetry(
 
     const isRateLimit = res.status === 429
 
-    if ((!isOverloaded && !isRateLimit) || attempt >= MAX_RETRIES) {
+    // 429: DO NOT retry — return immediately so the caller can show a user-friendly message.
+    // Anthropic's rate limit window resets every 60s; retrying here just wastes time and
+    // can chain into other requests hitting the same limit. Let the user retry manually.
+    if (isRateLimit) {
+      console.warn(`[${agentName}] rate limit (429) — not retrying, returning to caller`)
+      return res
+    }
+
+    if (!isOverloaded || attempt >= MAX_RETRIES) {
       return res  // non-retryable or exhausted — let caller handle
     }
 
