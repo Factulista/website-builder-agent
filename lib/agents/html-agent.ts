@@ -1558,52 +1558,63 @@ ${visibleBlocks.slice(0, 5).join(', ')}
 
   const hasImages = apiMessages.some(m => Array.isArray(m.content))
 
-  // Adaptive model selection:
-  //   Haiku  → micro-edits (fast, cheap: delete/CSS var/text with no images)
-  //   Sonnet → everything that requires design judgment:
-  //            create_site, add_page, standard edits, vision tasks
-  // Rationale: Haiku produces functionally correct but visually generic sites.
-  // Sonnet has the design reasoning needed to translate "gioielleria italiana" into
-  // an actual visual identity (palette, typography, spacing, hero layout).
-  // NOTE: claude-sonnet-4-6 is disabled until org billing is upgraded to a higher tier.
-  // Org limit for sonnet-4-6 is 30k input tokens/min — a single request with 10 pages
-  // of full HTML context exceeds this. Sonnet 4.5 has a separate, higher rate limit.
-  // TODO: re-enable sonnet-4-6 for create_site once tier is upgraded.
+  // ── Fase 3a: Block-aware adaptive model routing ──────────────────────────────
+  //
+  // With block-mode context (~6k tokens instead of 73k), many tasks that previously
+  // required Sonnet (to handle large context) can now run on Haiku without quality loss.
+  //
+  // Routing table:
+  //   Haiku  → edit_block (surgical, tiny output, no design judgment needed)
+  //            micro-edit (delete/CSS var/text, already tiny)
+  //   Sonnet → replace_block (creative regeneration of one section)
+  //            create_site / add_page (full design judgment)
+  //            vision tasks (multimodal)
+  //            standard edit_page WITHOUT block mode (still needs full context reasoning)
+  //
+  // Context size is now the key input: if page has blocks, edit tasks get Haiku.
+  // If page is monolithic (no blocks yet), keep Sonnet to handle the large context.
+  const activePageForRouting = pages.find(p => p.slug === activePageSlug) ?? pages[0] ?? null
+  const pageHasBlocks = (activePageForRouting?.blocks?.length ?? 0) >= 3
+  const isBlockEdit = pageHasBlocks && !isCreationTask && !isAddPageRequest && !hasImages
+
   const model = (() => {
-    if (hasImages)      return 'claude-sonnet-4-5-20250929'  // vision
-    if (isCreationTask) return 'claude-sonnet-4-5-20250929'  // create_site / add_page
-    return 'claude-haiku-4-5-20251001'                       // edit_page: Haiku
+    if (hasImages)           return 'claude-sonnet-4-5-20250929'  // vision always needs Sonnet
+    if (isCreationTask)      return 'claude-sonnet-4-5-20250929'  // design judgment required
+    if (isAddPageRequest)    return 'claude-sonnet-4-5-20250929'  // new page = design judgment
+    if (isMicroEdit)         return 'claude-haiku-4-5-20251001'   // fast path
+    if (isBlockEdit)         return 'claude-haiku-4-5-20251001'   // block mode: tiny context+output
+    return 'claude-sonnet-4-5-20250929'                           // edit_page on monolith
   })()
 
-  // Extended thinking disabled until sonnet-4-6 rate limits are resolved
+  // Extended thinking: only on first site creation (zero pages) where design judgment
+  // matters most. Disabled on Tier 1 — re-enable when on Tier 2+.
   const useExtendedThinking = false
 
-  // Adaptive max_tokens — sized to the actual task, not a global ceiling.
+  // ── Fase 3a: Block-aware adaptive max_tokens ──────────────────────────────
   //
-  // Rationale: Sonnet output tokens cost ~5x input. Over-allocating on micro-edits
-  // (which produce 200-800 tokens) wastes nothing in practice, but under-allocating
-  // on create_site (which can easily reach 20k+ tokens for a 4-page site) causes
-  // silent truncation — the model stops mid-HTML without an error.
+  // With block mode, edit output is ~200-500 tokens (find/replace or block HTML).
+  // We no longer need to budget for full-page output on edits.
   //
-  // Tiers:
-  //   4k  — micro-edit: delete element, change CSS var, update text (typed_edits)
-  //   10k — standard edit_page: add/replace a section, CSS change with context
-  //   24k — add_page: full new page with its own <style> + sections
-  //   32k — create_site ≤3 pages OR vision mockup (analyze image + generate block)
-  //   64k — create_site >3 pages, first site (no existing pages), or site + images
+  // Tiers (updated for block mode):
+  //   1k  — edit_block: find/replace output, microscopically small
+  //   4k  — micro-edit: typed_edits, delete, small CSS changes
+  //   6k  — replace_block: one section HTML (avg 2-4k, 6k is safe ceiling)
+  //   12k — standard edit_page on monolith (add/replace a section)
+  //   24k — add_page: full new page
+  //   32k — create_site ≤3 pages or vision mockup
+  //   64k — first site (0 pages) or large create_site
   const pageCount = pages.length
   const maxTokens = (() => {
     if (isMicroEdit)                          return  4_000
-    if (isDesignFromMockup)                   return 32_000  // vision: analyze + generate
-    if (!hasPages)                            return 64_000  // first site, no constraints
-    if (isAddPageRequest)                     return 24_000  // one full page
-    if (hasImages)                            return 32_000  // vision tasks
-    // create_site with existing pages — scale with page count
-    // (agent may regenerate all pages)
+    if (isDesignFromMockup)                   return 32_000
+    if (!hasPages)                            return 64_000
+    if (isAddPageRequest)                     return 24_000
+    if (hasImages)                            return 32_000
+    if (isBlockEdit)                          return  6_000  // block edit: small output
     if (pageCount === 0)                      return 64_000
     if (pageCount <= 3)                       return 32_000
     if (pageCount <= 6)                       return 48_000
-    return 12_000                             // edit_page standard
+    return 12_000
   })()
 
   // ── Agentic inspection loop ──────────────────────────────────────────────
@@ -1623,21 +1634,44 @@ ${visibleBlocks.slice(0, 5).join(', ')}
 
   // Prompt caching: the system prompt is identical across all loop steps (and across
   // back-to-back requests on the same project). Marking it cacheable means inspection
-  // steps 2+ read from cache instead of re-paying the full input-token cost — this is
-  // critical because re-sending the full context each step was blowing past the org's
-  // per-minute input-token rate limit. Split static (guardrails/tools) from dynamic
-  // (pages HTML) so each part caches independently.
-  const dynamicMarkers = ['MEDIA LIBRARY DEL PROGETTO:', 'PAGINE DEL SITO:', 'PAGINE ATTUALI:']
-  const dynIdx = dynamicMarkers.reduce((min, mk) => {
-    const i = system.indexOf(mk); return i > -1 && i < min ? i : min
-  }, system.length)
-  const staticPart = system.slice(0, dynIdx).trim()
-  const dynamicPart = system.slice(dynIdx).trim()
+  // ── Fase 3b: 3-level cache strategy ──────────────────────────────────────────
+  //
+  // Level 1 — STATIC (tools + guardrails + design principles):
+  //   Changes only on code deploy. Largest block (~8-12k tokens). Cache TTL 5 min.
+  //   Re-used across ALL users of the platform on the same org key.
+  //
+  // Level 2 — SEMI-STATIC (design system + project rules + session memory):
+  //   Changes only when user edits Design System or AI learns new rules.
+  //   Stays warm for the entire editing session (5+ min TTL easily met).
+  //
+  // Level 3 — DYNAMIC (block index + preloaded block + media library):
+  //   Changes every request. Small in block mode (~2-6k). Not worth caching
+  //   on single turn, but cached within the agentic loop (inspection steps 2+).
+  //
+  // Split boundaries: markers that reliably separate the levels.
+  const SEMI_STATIC_MARKERS = ['DESIGN SYSTEM', 'REGOLE DI PROGETTO', 'SESSION MEMORY', 'MEMORIA DI SESSIONE']
+  const DYNAMIC_MARKERS = ['MEDIA LIBRARY DEL PROGETTO:', 'PAGINE DEL SITO:', 'PAGINE ATTUALI:', 'BLOCK INDEX', 'BLOCCHI VISIBILI', 'BLOCCO PRE-CARICATO']
+
+  const findFirstIdx = (markers: string[]) =>
+    markers.reduce((min, mk) => { const i = system.indexOf(mk); return i > -1 && i < min ? i : min }, system.length)
+
+  const semiStaticIdx = findFirstIdx(SEMI_STATIC_MARKERS)
+  const dynamicIdx    = findFirstIdx(DYNAMIC_MARKERS)
+
+  // Ensure ordering: static < semi-static < dynamic
+  const s1end = Math.min(semiStaticIdx, dynamicIdx)
+  const s2end = Math.min(dynamicIdx, system.length)
+
+  const staticPart     = system.slice(0, s1end).trim()
+  const semiStaticPart = s1end < s2end ? system.slice(s1end, s2end).trim() : ''
+  const dynamicPart    = system.slice(s2end).trim()
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const systemBlocks: any = staticPart.length >= 100
     ? [
         { type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } },
-        ...(dynamicPart ? [{ type: 'text', text: dynamicPart, cache_control: { type: 'ephemeral' } }] : []),
+        ...(semiStaticPart.length >= 50 ? [{ type: 'text', text: semiStaticPart, cache_control: { type: 'ephemeral' } }] : []),
+        ...(dynamicPart   ? [{ type: 'text', text: dynamicPart }] : []),  // dynamic: no cache (changes every turn)
       ]
     : system
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
