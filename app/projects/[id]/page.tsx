@@ -4223,6 +4223,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return
     }
 
+    // Fase 4: update_design normalised to edit_page with _shared_css
+    const inlineSharedCss = (result.input as Record<string, unknown>)?._shared_css as string | undefined
+    if (inlineSharedCss) {
+      sharedCssRef.current = inlineSharedCss
+      newPages = pages.map(p => ({ ...p, html: mergeSharedCssIntoPage(p.html, inlineSharedCss) }))
+    }
+
     if (result.tool === 'update_shared_css') {
       // Design-update: apply new CSS to in-memory pages (for srcDoc preview) + save shared_css
       const newCss = result.input.shared_css

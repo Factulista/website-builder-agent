@@ -380,7 +380,9 @@ export async function POST(req: NextRequest) {
       console.error('[run-logger] startRun failed:', String(runErr))
     }
 
-    if ((agent as string) === 'seo') {
+    // Fase 4: 'seo' branch is dead — agent === 'html' always.
+    // SEO is now handled via run_seo_audit tool inside runHtmlAgent.
+    if (false && (agent as string) === 'seo') {
       return makeStream(async (emit) => {
         emit('🔍 Ottimizzando SEO e meta tag…')
 
@@ -396,9 +398,11 @@ export async function POST(req: NextRequest) {
         // Run page SEO + blog SEO in parallel
         const baseUrl = customDomain ? `https://${customDomain}` : `https://myweb.factulista.com`
         const [result, blogResult] = await Promise.all([
-          runSeoAgent(messages, pages ?? [], customDomain ?? null, apiKey, context),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          runSeoAgent(messages, pages ?? [], (customDomain ?? null) as any, apiKey as any, context as any),
           blogPosts.length > 0
-            ? runBlogSeoAgent(blogPosts, baseUrl, apiKey, context)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ? runBlogSeoAgent(blogPosts as any, baseUrl as any, apiKey as any, context as any)
             : Promise.resolve(null),
         ])
 
@@ -562,6 +566,37 @@ export async function POST(req: NextRequest) {
             { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined }
           )
           qualityRetried = true
+        }
+      }
+
+      // ── Fase 4: handle run_seo_audit tool ────────────────────────────────────
+      if (result.tool === 'run_seo_audit') {
+        const { compileSeo: cSeo, formatSeoReport: fSeo } = await import('../../../lib/seo-compiler')
+        const seoReport = cSeo(pages ?? [], { customDomain: customDomain ?? undefined })
+        const reportText = fSeo(seoReport)
+        const applyFixes = result.input?.applyFixes as boolean ?? false
+
+        if (applyFixes && seoReport.blockingIssues.length > 0) {
+          // Feed SEO report back as an edit_page correction request
+          const fixPrompt = `SEO AUDIT COMPLETATO. Score: ${seoReport.score}/100.\n\n${reportText}\n\nApplica le correzioni critiche ai tag <head> delle pagine interessate usando edit_page.`
+          result = { ...result, tool: 'edit_page', input: { pageSlug: (pages ?? [])[0]?.slug ?? '', summary: fixPrompt, edits: [], operations: [], _seoReport: seoReport } }
+        } else {
+          // Just return the report as a summary (no HTML change)
+          result = { ...result, tool: 'edit_page', input: { pageSlug: (pages ?? [])[0]?.slug ?? '', summary: `📊 ${reportText}`, edits: [], operations: [] } }
+        }
+      }
+
+      // ── Fase 4: handle update_design tool ────────────────────────────────────
+      if (result.tool === 'update_design') {
+        const newCss = result.input?.css as string | undefined
+        if (newCss) {
+          // Direct CSS provided: save as shared_css immediately
+          result = { ...result, tool: 'edit_page', input: { pageSlug: (pages ?? [])[0]?.slug ?? '', summary: result.input?.summary ?? '🎨 Design aggiornato', edits: [], operations: [], _shared_css: newCss } }
+        } else {
+          // Delegate to design agent (changes description only)
+          const { runDesignAgentUpdate } = await import('../../../lib/agents/design-agent')
+          const designResult = await runDesignAgentUpdate(String(result.input?.changes ?? ''), siteConfig.shared_css as string ?? '', apiKey, context)
+          result = { ...result, tool: 'edit_page', input: { pageSlug: (pages ?? [])[0]?.slug ?? '', summary: `🎨 ${designResult.summary}`, edits: [], operations: [], _shared_css: designResult.css } }
         }
       }
 

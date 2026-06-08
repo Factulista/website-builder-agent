@@ -533,6 +533,42 @@ const HTML_TOOLS = [
       required: ['pageSlug'],
     },
   },
+
+  // ── Fase 4: single-agent tools replacing separate agent calls ──────────────
+  {
+    name: 'run_seo_audit',
+    description: 'Esegue un audit SEO completo su tutte le pagine del sito: title, meta description, H1, heading hierarchy, alt immagini, schema.org, performance. Restituisce score + lista problemi. Usalo quando l\'utente chiede di migliorare il SEO, controllare i meta tag, o ottimizzare per Google.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        applyFixes: {
+          type: 'boolean',
+          description: 'Se true, applica automaticamente le correzioni critiche (title mancante, H1 mancante, meta description). Se false, restituisce solo il report. Default: false.',
+        },
+        summary: { type: 'string' },
+      },
+      required: ['summary'],
+    },
+  },
+  {
+    name: 'update_design',
+    description: 'Aggiorna il CSS globale del sito (design system) — palette colori, font, spacing, variabili :root. Usalo quando l\'utente vuole cambiare colori, tipografia, o lo stile generale senza toccare le singole pagine. NON usare edit_page per cambiar variabili CSS globali — usa questo.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        changes: {
+          type: 'string',
+          description: 'Descrizione testuale dei cambiamenti richiesti (es: "colore primario da #4F46E5 a #DC2626", "font heading: Playfair Display"). L\'agente CSS interpreterà e applicherà.',
+        },
+        css: {
+          type: 'string',
+          description: 'CSS diretto da applicare (optional). Se fornito, sovrascrive il CSS condiviso attuale. Includere il blocco :root { } con le variabili modificate.',
+        },
+        summary: { type: 'string' },
+      },
+      required: ['summary'],
+    },
+  },
 ]
 
 /**
