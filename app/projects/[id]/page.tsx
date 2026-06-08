@@ -8734,9 +8734,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           return (
                             <div style={{ borderTop: `1px solid ${C.border}`, padding: '16px 20px', background: '#fafaf9', display: 'grid', gridTemplateColumns: '130px 1fr', gap: '10px 20px', alignItems: 'center' }}>
 
-                              {/* ── PAGINA ── */}
-                              <div style={SEC_LBL}>Pagina</div>
-                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
 
                               {/* Nome */}
                               <label style={LBL}>Nome pagina</label>
@@ -8796,10 +8793,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 <p style={{ ...HELP, margin: '3px 0 0' }}>{page.slug === 'home' ? 'La home non può essere rinominata' : 'Premi Invio o esci dal campo per aggiornare i link interni'}</p>
                               </div>
 
-                              {/* ── INDICIZZAZIONE ── */}
-                              <div style={{ ...DIVIDER, marginTop: '10px' }} />
-                              <div style={SEC_LBL}>Indicizzazione</div>
-                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
+                              <div style={DIVIDER} />
 
                               {(['noindex', 'nofollow'] as const).map(key => {
                                 const on = !!(page as Page).robots?.[key]
@@ -8819,10 +8813,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 )
                               })}
 
-                              {/* ── SEO / CANONICAL ── */}
-                              <div style={{ ...DIVIDER, marginTop: '10px' }} />
-                              <div style={SEC_LBL}>SEO</div>
-                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
+                              <div style={DIVIDER} />
 
                               <label style={LBL}>Canonical</label>
                               <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -8830,10 +8821,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 {LOCK('Generato automaticamente dal dominio pubblicato — non modificabile')}
                               </div>
 
-                              {/* ── OPEN GRAPH ── */}
-                              <div style={{ ...DIVIDER, marginTop: '10px' }} />
-                              <div style={SEC_LBL}>Open Graph (10 tag)</div>
-                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
+                              <div style={DIVIDER} />
 
                               {/* og:title — unico editabile */}
                               <label style={LBL}>og:title</label>
