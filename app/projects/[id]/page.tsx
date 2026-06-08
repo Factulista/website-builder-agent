@@ -1517,6 +1517,53 @@ function stripEditorArtifacts(html: string): string {
   return serialized
 }
 
+// Preview click-detection script — injected into the PREVIEW iframe (not the editor).
+// On click, resolves the closest block-level ancestor with a stable selector (id/class/tag),
+// extracts a short unique anchor text, and sends it to the parent via postMessage.
+// The parent stores it as previewSelection and passes it to the agent on the next send.
+const PREVIEW_CLICK_SCRIPT = `<script data-fact-preview-click>
+(function(){
+  function getBlockSelector(el){
+    var tags=['section','header','footer','nav','main','article','aside','div'];
+    var cur=el;
+    while(cur&&cur!==document.body){
+      var tag=(cur.tagName||'').toLowerCase();
+      if(tags.includes(tag)){
+        var s=tag;
+        if(cur.id)s+=('#'+cur.id);
+        else if(cur.className&&typeof cur.className==='string'){
+          var cls=cur.className.trim().split(/\s+/)[0];
+          if(cls)s+=('.'+cls);
+        }
+        return s;
+      }
+      cur=cur.parentElement;
+    }
+    return el?((el.tagName||'').toLowerCase()):'';
+  }
+  function shortAnchor(el){
+    // Find short unique text: own text or nearest heading text
+    var t=(el.innerText||el.textContent||'').trim().slice(0,80);
+    if(t.length>4)return t;
+    var h=el.querySelector('h1,h2,h3,h4,h5,h6,p,a,button,span');
+    return h?(h.innerText||h.textContent||'').trim().slice(0,80):'';
+  }
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    if(!el)return;
+    var block=getBlockSelector(el);
+    var anchor=shortAnchor(el.closest('section,header,footer,nav,div,article')||el);
+    var outer=(el.outerHTML||'').slice(0,400);
+    window.parent.postMessage({
+      type:'fact-element-click',
+      blockSelector:block,
+      anchorText:anchor,
+      outerHtml:outer
+    },'*');
+  },false);
+})();
+<\/script>`
+
 const SCROLL_LISTENER = `<script>
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='scroll-to-text')return;
@@ -1583,6 +1630,13 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
       .replace(/<\/head>/i, `${frameTag}\n</head>`)
   }
   return inject + `\n${frameTag}` + clean
+}
+
+/** Like injectBase but for the PREVIEW panel (chat sidebar) — adds click-detection script. */
+function injectBasePreview(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string, faviconUrl?: string): string {
+  const base = injectBase(html, projectSlug, sharedNav, sharedFooter, sharedCss, faviconUrl)
+  if (/<\/body>/i.test(base)) return base.replace(/<\/body>/i, `${PREVIEW_CLICK_SCRIPT}</body>`)
+  return base + PREVIEW_CLICK_SCRIPT
 }
 
 // ── Design System Types ────────────────────────────────────────────────────
@@ -1828,6 +1882,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
   const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
+  // Preview click selection — captures the element the user clicked in the preview iframe.
+  // Passed to the agent as context so it knows exactly where to operate.
+  const [previewSelection, setPreviewSelection] = useState<{
+    blockSelector: string   // e.g. "section#hero", "footer.site-footer"
+    anchorText: string      // short unique text near the element (for find validation)
+    outerHtml: string       // element outerHTML (first 400 chars) for agent reference
+    timestamp: number       // so stale selections (>2 min) are ignored
+  } | null>(null)
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogEditorSiteStyles, setBlogEditorSiteStyles] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
@@ -2145,6 +2207,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setInlineFontName(e.data.fontName ?? '')
         setInlineFontSizePt(e.data.fontSizePt ?? null)
         if (inlineColorInputRef.current && e.data.color) inlineColorInputRef.current.value = e.data.color
+        return
+      }
+      // Preview click → capture element selection for agent context
+      if (e.data?.type === 'fact-element-click') {
+        setPreviewSelection({
+          blockSelector: e.data.blockSelector ?? '',
+          anchorText: e.data.anchorText ?? '',
+          outerHtml: (e.data.outerHtml ?? '').slice(0, 400),
+          timestamp: Date.now(),
+        })
         return
       }
       if (e.data?.type !== 'html-change' || !activePage) return
@@ -3961,6 +4033,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         pages,
         activePageSlug: activeSlug,
         customDomain: customDomainStatus === 'verified' ? customDomain : null,
+        // Pass the preview selection if fresh (<2 min) so the agent knows exactly
+        // which element/block the user is looking at. Cleared after send.
+        previewSelection: previewSelection && (Date.now() - previewSelection.timestamp < 120_000)
+          ? { blockSelector: previewSelection.blockSelector, anchorText: previewSelection.anchorText, outerHtml: previewSelection.outerHtml }
+          : undefined,
       }),
     })
 
@@ -4947,6 +5024,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               pointerEvents: 'none', zIndex: 2,
             }}>
               ↓ Rilascia l&apos;immagine qui
+            </div>
+          )}
+          {/* Preview selection badge — shows when user clicked something in the preview */}
+          {previewSelection && (Date.now() - previewSelection.timestamp < 120_000) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', marginBottom: '6px', fontSize: '0.72rem', color: '#1d4ed8' }}>
+              <span style={{ fontSize: '0.8rem' }}>🎯</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Selezione: <strong>{previewSelection.blockSelector}</strong>
+                {previewSelection.anchorText ? ` — "${previewSelection.anchorText.slice(0, 60)}"` : ''}
+              </span>
+              <button onClick={() => setPreviewSelection(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: '0.9rem', padding: '0 2px', lineHeight: 1 }}>✕</button>
             </div>
           )}
           <form onSubmit={handleSend}>
@@ -9208,7 +9296,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   // For regular pages use srcDoc (inline HTML, no round-trip needed).
                   {...(previewIframePath && previewIframePath !== '/'
                     ? { src: `/preview/${projectSlug}${previewIframePath}`, key: previewIframePath }
-                    : { srcDoc: injectBase(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined) }
+                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined) }
                   )}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"

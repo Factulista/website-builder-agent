@@ -10,7 +10,7 @@ import { findComponentByKeywords } from '../../../lib/components/index'
 import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 import { detectLangFromText } from '../../../lib/agents/detect-lang'
-import { checkHtmlQuality, reconstructEditedHtml, formatReportForAgent } from '../../../lib/agents/html-quality'
+import { checkHtmlQuality, reconstructEditedHtml, formatReportForAgent, applyEditValidated } from '../../../lib/agents/html-quality'
 import { runRulesLearner, quickLearnRules } from '../../../lib/agents/rules-learner'
 import { DEFAULT_FACTULISTA_RULES, formatRulesForAgent, type ProjectRules } from '../../../lib/agents/project-rules'
 import { extractDesignSystem, buildDesignSystemBlock, mergeDesignSystemIntoSharedCss } from '../../../lib/agents/design-extractor'
@@ -176,12 +176,13 @@ export async function POST(req: NextRequest) {
   let runStartTime = Date.now()
 
   try {
-    const { projectId, messages: rawMessages, pages, activePageSlug, customDomain } = await req.json() as {
+    const { projectId, messages: rawMessages, pages, activePageSlug, customDomain, previewSelection } = await req.json() as {
       projectId: string
       messages: { role: string; content: string }[]
       pages: Page[]
       activePageSlug: string | null
       customDomain?: string | null
+      previewSelection?: { blockSelector: string; anchorText: string; outerHtml: string } | null
     }
 
     // Apply compaction before passing to agents
@@ -451,7 +452,8 @@ export async function POST(req: NextRequest) {
       let result = await runHtmlAgent(
         agentMessages, pages ?? [], activePageSlug, apiKey,
         projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
-        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined }
+        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined },
+        previewSelection ?? undefined
       )
 
       // Quality check loop: if critical issues found, retry once with feedback

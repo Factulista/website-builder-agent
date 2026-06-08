@@ -22,28 +22,62 @@ type Edit = { find: string; replace: string }
 
 // ── Server-side HTML apply (simplified version of client applyEdit + applySectionOp) ──
 
-/** Apply a find/replace edit — exact match then whitespace-normalized. */
-export function applyEditSS(html: string, find: string, replace: string): string {
-  if (html.includes(find)) return html.replace(find, replace)
-  // Whitespace-normalized fallback
+/**
+ * Validated find/replace: count matches BEFORE applying.
+ *   0 matches → returns { ok: false, matches: 0 } — agent must retry with exact bytes
+ *   >1 matches → returns { ok: false, matches: N } — agent must use longer anchor
+ *   1 match   → applies and returns { ok: true, html }
+ * Falls back to whitespace-normalised match if exact fails.
+ */
+export function applyEditValidated(
+  html: string,
+  find: string,
+  replace: string
+): { ok: true; html: string } | { ok: false; matches: number; hint?: string } {
   const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+  // ── Exact match ──
+  const exactCount = html.split(find).length - 1
+  if (exactCount === 1) return { ok: true, html: html.replace(find, replace) }
+  if (exactCount > 1)  return { ok: false, matches: exactCount }
+
+  // ── Whitespace-normalised fallback ──
   const nHtml = norm(html), nFind = norm(find)
-  if (nHtml.includes(nFind)) {
-    const idx = nHtml.indexOf(nFind)
-    // Approximate index mapping
-    let oi = 0, ni = 0
-    while (ni < idx && oi < html.length) {
-      if (/\s/.test(html[oi]) && (oi === 0 || /\s/.test(html[oi - 1]))) { oi++; continue }
-      oi++; ni++
-    }
-    let oe = oi, ne = ni
-    while (ne < ni + nFind.length && oe < html.length) {
-      if (/\s/.test(html[oe]) && (oe === 0 || /\s/.test(html[oe - 1]))) { oe++; continue }
-      oe++; ne++
-    }
-    return html.slice(0, oi) + replace + html.slice(oe)
+  let normCount = 0, searchPos = 0
+  while (true) {
+    const i = nHtml.indexOf(nFind, searchPos)
+    if (i === -1) break
+    normCount++
+    searchPos = i + 1
   }
-  return html // unapplied — return unchanged
+  if (normCount > 1) return { ok: false, matches: normCount }
+  if (normCount === 0) {
+    // Build a short hint: closest line containing first word of find
+    const firstWord = find.trim().split(/\s+/)[0].slice(0, 20)
+    const lines = html.split('\n')
+    const hint = lines.find(l => l.includes(firstWord))?.trim().slice(0, 120)
+    return { ok: false, matches: 0, hint }
+  }
+
+  // normCount === 1 — apply
+  const idx = nHtml.indexOf(nFind)
+  let oi = 0, ni = 0
+  while (ni < idx && oi < html.length) {
+    if (/\s/.test(html[oi]) && (oi === 0 || /\s/.test(html[oi - 1]))) { oi++; continue }
+    oi++; ni++
+  }
+  let oe = oi, ne = ni
+  while (ne < ni + nFind.length && oe < html.length) {
+    if (/\s/.test(html[oe]) && (oe === 0 || /\s/.test(html[oe - 1]))) { oe++; continue }
+    oe++; ne++
+  }
+  return { ok: true, html: html.slice(0, oi) + replace + html.slice(oe) }
+}
+
+/** Apply a find/replace edit — exact match then whitespace-normalized. Legacy, use applyEditValidated. */
+export function applyEditSS(html: string, find: string, replace: string): string {
+  const result = applyEditValidated(html, find, replace)
+  return result.ok ? result.html : html
 }
 
 /** Apply a section operation (insert_after/before/replace) by CSS selector. */

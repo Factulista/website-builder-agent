@@ -837,7 +837,8 @@ export async function runHtmlAgent(
   userLang = 'it',
   siteLang = 'it',
   context: ProjectContext = {},
-  richContext?: Omit<RichContext, 'context'>
+  richContext?: Omit<RichContext, 'context'>,
+  previewSelection?: { blockSelector: string; anchorText: string; outerHtml: string } | null
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -1382,7 +1383,20 @@ ${pageContextBlocks}
 HTML COMPATTO: nessuna riga vuota nell'HTML.
 ⚠️ LINGUA DEL SITO: ${langName(siteLang)}. NON tradurre testi HTML esistenti anche se l'utente scrive in ${langName(userLang)}. Nuovi contenuti HTML → in ${langName(siteLang)}. Campo \`summary\` → in ${langName(userLang)}.`
 
-  const system = isMicroEdit ? microSystem : fullPrefix
+  // ── Preview selection signal ─────────────────────────────────────────────────
+  // If the user clicked an element in the preview just before sending, we know
+  // EXACTLY where they want to operate. Inject this as a high-priority hint so
+  // the agent targets the right block without guessing or searching.
+  const selectionHint = previewSelection?.blockSelector
+    ? `\n\n🎯 ELEMENTO SELEZIONATO DALL'UTENTE (ha cliccato sulla preview):
+Blocco: ${previewSelection.blockSelector}
+Testo ancora: "${previewSelection.anchorText.slice(0, 120)}"
+HTML elemento (riferimento): ${previewSelection.outerHtml.slice(0, 300)}
+→ Se il messaggio è deittico ("questo", "qui", "quello lì"), opera SU QUESTO elemento/blocco.
+→ Usa il testo ancora come find — è il testo ESATTO dalla pagina.`
+    : ''
+
+  const system = (isMicroEdit ? microSystem : fullPrefix) + selectionHint
 
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)
