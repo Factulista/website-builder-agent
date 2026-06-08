@@ -1582,7 +1582,35 @@ ${visibleBlocks.slice(0, 5).join(', ')}
     }
   }
 
-  const system = (isMicroEdit ? microSystem : fullPrefix) + previewContextHint
+  // ── Lean edit system prompt (~8k tokens vs fullPrefix ~20k) ─────────────────
+  // Strip component library, design system CSS, blog posts, injection points.
+  // Only what the agent needs to modify a specific block.
+  const editSystem = `Sei un esperto web developer. Modifichi HTML con precisione chirurgica.
+
+STRUMENTI:
+- edit_block(blockSelector, find, replace, summary) — modifica testo/attributo in un blocco. USA SEMPRE QUESTO per prima scelta.
+- replace_block(blockSelector, html, summary) — sostituisce un blocco intero (solo se devi ridisegnarlo).
+- edit_page(pageSlug, edits, operations, typed_edits, summary) — per modifiche multi-blocco o CSS.
+- read_block(blockSelector) — leggi un blocco per ottenere i byte esatti (solo se non pre-caricato).
+
+REGOLE:
+1. BLOCCO PRE-CARICATO presente → usa quei byte ESATTI per il find. Non inventare.
+2. find = stringa presente UNA SOLA VOLTA nel blocco. Mai troncare.
+3. Non toccare nav/footer salvo richiesta esplicita.
+4. HTML compatto: zero righe vuote.
+5. Lingua sito: ${langName(siteLang)}. Summary in: ${langName(userLang)}.
+${logoSection ? '\n' + logoSection : ''}
+PAGINE DEL SITO:
+${pageContextBlocks}
+${previewContextHint}`
+
+  // Route to the right system prompt:
+  // - Creation/mockup: fullPrefix — needs full context (components, design, blog)
+  // - Micro-edit: microSystem — already minimal
+  // - Edit: editSystem — lean, ~8k tokens (allows 6 req/min on Tier 1 50k TPM)
+  const system = isCreationTask || isDesignFromMockup ? fullPrefix + previewContextHint
+    : isMicroEdit ? microSystem + previewContextHint
+    : editSystem  // previewContextHint already embedded in editSystem
 
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)
