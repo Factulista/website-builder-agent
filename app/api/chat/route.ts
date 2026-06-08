@@ -197,14 +197,14 @@ export async function POST(req: NextRequest) {
     // regardless of whether the client has saved them.
     if (pages) {
       try {
-        const { splitHtmlIntoBlocks: splitBlocks } = await import('../../../lib/agents/block-splitter')
+        // Use static import (already imported at top of file) — no dynamic import needed
         for (let i = 0; i < pages.length; i++) {
           const hadBlocks = (pages[i].blocks?.length ?? 0) > 0
           if (!hadBlocks) {
-            const blocks = splitBlocks(pages[i].html)
+            const blocks = splitHtmlIntoBlocks(pages[i].html)
             if (blocks) {
               pages[i] = { ...pages[i], blocks }
-              console.log(`[blocks] split ${pages[i].slug}: ${blocks.length} blocks from ${pages[i].html.length} chars`)
+              console.log(`[blocks] split ${pages[i].slug}: ${blocks.length} blocks`)
             } else {
               console.warn(`[blocks] splitHtmlIntoBlocks returned null for ${pages[i].slug} (html: ${pages[i].html.length} chars)`)
             }
