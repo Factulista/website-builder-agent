@@ -10,7 +10,7 @@
  * Calls optional onRetry callback so callers can show progress to the user.
  */
 
-const MAX_RETRIES = 4
+const MAX_RETRIES = 2  // reduced from 4: 2×20s=40s max wait vs previous 4×60s=240s
 const BASE_DELAY_MS = 5000
 
 function sleep(ms: number) {

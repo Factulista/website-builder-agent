@@ -1061,6 +1061,10 @@ export async function runHtmlAgent(
     : ''
 
   // Build per-page context blocks
+  // Track whether a block was pre-loaded for the active page (set inside pages.map below).
+  // Used to skip inspection steps when the agent already has the exact block bytes.
+  let activePageBlockPreloaded = false
+
   const pageContextBlocks = pages.map(p => {
     const isActive = p.slug === activePage?.slug
     const isMentioned = mentionedPages.some(mp => mp.slug === p.slug)
@@ -1163,6 +1167,9 @@ Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edit
         const preloadedBlock = selectedBlock
           ? `\n${preloadLabel} — usa edit_block o replace_block su questo:\n\`\`\`html\n${selectedBlock.html.slice(0, 8000)}\n\`\`\``
           : ''
+
+        // Signal to outer scope: active page has a block pre-loaded → no inspection needed
+        if (selectedBlock) activePageBlockPreloaded = true
 
         return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
 BLOCK INDEX (usa read_block per leggere un blocco, edit_block/replace_block per modificarlo):
@@ -1679,9 +1686,12 @@ ${visibleBlocks.slice(0, 5).join(', ')}
   // Inspection is only offered when there are pages to inspect (not on first-site
   // creation). On the final allowed step, inspection tools are removed so the model
   // is forced to produce a concrete action.
-  // Max 1 inspection step for block edits (block is pre-loaded, no need to search).
-  // Max 2 for everything else. Was 3 — caused 3×60s retry delays on 429 → Vercel timeout.
-  const MAX_INSPECTION_STEPS = isBlockEdit ? 1 : 2
+  // Inspection steps budget — each step = 1 extra API call → potential 429 → 20s wait.
+  // Keep this as low as possible. The pre-loaded block eliminates the need to inspect.
+  //   0 = block pre-loaded (agent has exact bytes, go straight to action)
+  //   1 = block mode but no pre-load (one read_block allowed, then forced to act)
+  //   2 = monolith/creation (may need one search + one read)
+  const MAX_INSPECTION_STEPS = activePageBlockPreloaded ? 0 : isBlockEdit ? 1 : 2
   // Offer inspection only when there are pages to inspect and no images in play
   // (vision tasks analyze an image to generate — re-sending it each loop is wasteful).
   const offerInspection = hasPages && !isDesignFromMockup && !hasImages
