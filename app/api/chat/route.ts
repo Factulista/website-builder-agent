@@ -177,13 +177,14 @@ export async function POST(req: NextRequest) {
   let runStartTime = Date.now()
 
   try {
-    const { projectId, messages: rawMessages, pages, activePageSlug, customDomain, previewSelection } = await req.json() as {
+    const { projectId, messages: rawMessages, pages, activePageSlug, customDomain, previewSelection, visibleBlocks } = await req.json() as {
       projectId: string
       messages: { role: string; content: string }[]
       pages: Page[]
       activePageSlug: string | null
       customDomain?: string | null
       previewSelection?: { blockSelector: string; anchorText: string; outerHtml: string } | null
+      visibleBlocks?: string[]
     }
 
     // Apply compaction before passing to agents
@@ -454,7 +455,8 @@ export async function POST(req: NextRequest) {
         agentMessages, pages ?? [], activePageSlug, apiKey,
         projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
         { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined },
-        previewSelection ?? undefined
+        previewSelection ?? undefined,
+        visibleBlocks ?? undefined
       )
 
       // ── Fase 1: Handle edit_block / replace_block ────────────────────────────

@@ -914,7 +914,8 @@ export async function runHtmlAgent(
   siteLang = 'it',
   context: ProjectContext = {},
   richContext?: Omit<RichContext, 'context'>,
-  previewSelection?: { blockSelector: string; anchorText: string; outerHtml: string } | null
+  previewSelection?: { blockSelector: string; anchorText: string; outerHtml: string } | null,
+  visibleBlocks?: string[]
 ) {
   const hasPages = pages.length > 0
   const activePage = hasPages ? (pages.find(p => p.slug === activePageSlug) || pages[0]) : null
@@ -1487,20 +1488,34 @@ ${pageContextBlocks}
 HTML COMPATTO: nessuna riga vuota nell'HTML.
 ⚠️ LINGUA DEL SITO: ${langName(siteLang)}. NON tradurre testi HTML esistenti anche se l'utente scrive in ${langName(userLang)}. Nuovi contenuti HTML → in ${langName(siteLang)}. Campo \`summary\` → in ${langName(userLang)}.`
 
-  // ── Preview selection signal ─────────────────────────────────────────────────
-  // If the user clicked an element in the preview just before sending, we know
-  // EXACTLY where they want to operate. Inject this as a high-priority hint so
-  // the agent targets the right block without guessing or searching.
-  const selectionHint = previewSelection?.blockSelector
-    ? `\n\n🎯 ELEMENTO SELEZIONATO DALL'UTENTE (ha cliccato sulla preview):
-Blocco: ${previewSelection.blockSelector}
-Testo ancora: "${previewSelection.anchorText.slice(0, 120)}"
-HTML elemento (riferimento): ${previewSelection.outerHtml.slice(0, 300)}
-→ Se il messaggio è deittico ("questo", "qui", "quello lì"), opera SU QUESTO elemento/blocco.
-→ Usa il testo ancora come find — è il testo ESATTO dalla pagina.`
-    : ''
+  // ── Preview context signal (edit only) ──────────────────────────────────────
+  // Two automatic signals — no user action required:
+  //
+  // Priority 1: explicit click (previewSelection) — user clicked an element.
+  //   Use this block, use the anchor text as exact find bytes.
+  //
+  // Priority 2: visible blocks (visibleBlocks) — IntersectionObserver tracks
+  //   which structural blocks are in viewport when the user starts typing.
+  //   No click needed. Agent knows "user was looking at section#pricing".
+  //
+  // Only injected for edit tasks (hasPages=true). Creation tasks don't need it.
+  let previewContextHint = ''
+  if (hasPages) {
+    if (previewSelection?.blockSelector) {
+      previewContextHint = `\n\n🎯 BLOCCO CLICCATO (priorità massima — l'utente ha cliccato qui):
+Selettore: ${previewSelection.blockSelector}
+Testo ancora (bytes ESATTI): "${previewSelection.anchorText.slice(0, 120)}"
+→ Se il messaggio è deittico ("questo", "qui", "quello lì"), opera SU QUESTO blocco.
+→ Usa read_block("${previewSelection.blockSelector}") per ottenere i byte completi.`
+    } else if (visibleBlocks && visibleBlocks.length > 0) {
+      previewContextHint = `\n\n👁 BLOCCHI VISIBILI A SCHERMO (viewport dell'utente al momento dell'invio):
+${visibleBlocks.slice(0, 5).join(', ')}
+→ Se il messaggio si riferisce a qualcosa di visibile ("quello in cima", "la sezione sotto"), probabilmente è uno di questi.
+→ Non è un click esplicito — usa il messaggio per capire quale blocco target.`
+    }
+  }
 
-  const system = (isMicroEdit ? microSystem : fullPrefix) + selectionHint
+  const system = (isMicroEdit ? microSystem : fullPrefix) + previewContextHint
 
   // Send only the last 6 messages (3 exchanges) to avoid ballooning history tokens
   const recentMessages = messages.slice(-6)

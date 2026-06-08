@@ -1518,49 +1518,74 @@ function stripEditorArtifacts(html: string): string {
   return serialized
 }
 
-// Preview click-detection script — injected into the PREVIEW iframe (not the editor).
-// On click, resolves the closest block-level ancestor with a stable selector (id/class/tag),
-// extracts a short unique anchor text, and sends it to the parent via postMessage.
-// The parent stores it as previewSelection and passes it to the agent on the next send.
-const PREVIEW_CLICK_SCRIPT = `<script data-fact-preview-click>
+// Preview agent-context script — injected into the PREVIEW iframe.
+// Two signals sent to parent, both zero-cost and automatic:
+//
+// 1. fact-visible-blocks (automatic, no user action)
+//    IntersectionObserver tracks which structural blocks are in viewport.
+//    Sent whenever the visible set changes OR on-demand when parent asks.
+//    Agent context: "user was looking at [section#pricing, footer]".
+//
+// 2. fact-element-click (on explicit click)
+//    User clicked an element — captures exact block + anchor text.
+//    Takes priority over visible-blocks in agent routing.
+const PREVIEW_CLICK_SCRIPT = `<script data-fact-preview-agent>
 (function(){
-  function getBlockSelector(el){
-    var tags=['section','header','footer','nav','main','article','aside','div'];
+  var STRUCT=['section','header','footer','nav','main','article','aside'];
+  var visibleBlocks=[];
+
+  function blockSelector(el){
     var cur=el;
     while(cur&&cur!==document.body){
       var tag=(cur.tagName||'').toLowerCase();
-      if(tags.includes(tag)){
+      if(STRUCT.includes(tag)||tag==='div'){
         var s=tag;
-        if(cur.id)s+=('#'+cur.id);
-        else if(cur.className&&typeof cur.className==='string'){
-          var cls=cur.className.trim().split(/\s+/)[0];
-          if(cls)s+=('.'+cls);
-        }
+        if(cur.id)s+='#'+cur.id;
+        else if(cur.className&&typeof cur.className==='string'){var c=cur.className.trim().split(/\\s+/)[0];if(c)s+='.'+c;}
         return s;
       }
       cur=cur.parentElement;
     }
-    return el?((el.tagName||'').toLowerCase()):'';
+    return (el.tagName||'').toLowerCase();
   }
-  function shortAnchor(el){
-    // Find short unique text: own text or nearest heading text
-    var t=(el.innerText||el.textContent||'').trim().slice(0,80);
-    if(t.length>4)return t;
-    var h=el.querySelector('h1,h2,h3,h4,h5,h6,p,a,button,span');
-    return h?(h.innerText||h.textContent||'').trim().slice(0,80):'';
+
+  function anchorText(el){
+    var h=el.querySelector('h1,h2,h3,h4,h5,h6');
+    if(h)return(h.innerText||'').trim().slice(0,80);
+    return(el.innerText||'').trim().slice(0,80);
   }
+
+  // ── 1. IntersectionObserver — track visible blocks automatically ──
+  function observeBlocks(){
+    var targets=document.querySelectorAll(STRUCT.join(','));
+    if(!targets.length)return;
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        var sel=blockSelector(e.target);
+        if(e.isIntersecting){if(!visibleBlocks.includes(sel))visibleBlocks.push(sel);}
+        else{visibleBlocks=visibleBlocks.filter(function(s){return s!==sel;});}
+      });
+      window.parent.postMessage({type:'fact-visible-blocks',blocks:visibleBlocks.slice()},'*');
+    },{threshold:0.2});
+    targets.forEach(function(t){io.observe(t);});
+  }
+
+  // Run after DOM is ready
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',observeBlocks);}
+  else{observeBlocks();}
+
+  // Listen for on-demand request from parent (sent when user focuses chat input)
+  window.addEventListener('message',function(e){
+    if(e.data&&e.data.type==='fact-get-visible')
+      window.parent.postMessage({type:'fact-visible-blocks',blocks:visibleBlocks.slice()},'*');
+  });
+
+  // ── 2. Click detection — user explicitly clicked something ──
   document.addEventListener('click',function(e){
-    var el=e.target;
-    if(!el)return;
-    var block=getBlockSelector(el);
-    var anchor=shortAnchor(el.closest('section,header,footer,nav,div,article')||el);
-    var outer=(el.outerHTML||'').slice(0,400);
-    window.parent.postMessage({
-      type:'fact-element-click',
-      blockSelector:block,
-      anchorText:anchor,
-      outerHtml:outer
-    },'*');
+    var el=e.target;if(!el)return;
+    var block=blockSelector(el);
+    var anchor=anchorText(el.closest('section,header,footer,nav,div,article')||el);
+    window.parent.postMessage({type:'fact-element-click',blockSelector:block,anchorText:anchor,outerHtml:(el.outerHTML||'').slice(0,400)},'*');
   },false);
 })();
 <\/script>`
@@ -1883,14 +1908,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
   const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
-  // Preview click selection — captures the element the user clicked in the preview iframe.
-  // Passed to the agent as context so it knows exactly where to operate.
+  // Preview click selection — user explicitly clicked an element.
   const [previewSelection, setPreviewSelection] = useState<{
-    blockSelector: string   // e.g. "section#hero", "footer.site-footer"
-    anchorText: string      // short unique text near the element (for find validation)
-    outerHtml: string       // element outerHTML (first 400 chars) for agent reference
-    timestamp: number       // so stale selections (>2 min) are ignored
+    blockSelector: string
+    anchorText: string
+    outerHtml: string
+    timestamp: number
   } | null>(null)
+  // Visible blocks — automatically tracked by IntersectionObserver in the preview iframe.
+  // Updated whenever the viewport changes; no user action required.
+  const [visibleBlocks, setVisibleBlocks] = useState<string[]>([])
   const [blogEditorSrcDoc, setBlogEditorSrcDoc] = useState('')
   const [blogEditorSiteStyles, setBlogEditorSiteStyles] = useState('')
   const [blogSaving, setBlogSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
@@ -2210,7 +2237,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (inlineColorInputRef.current && e.data.color) inlineColorInputRef.current.value = e.data.color
         return
       }
-      // Preview click → capture element selection for agent context
+      // Preview: visible blocks (automatic, IntersectionObserver)
+      if (e.data?.type === 'fact-visible-blocks') {
+        setVisibleBlocks((e.data.blocks ?? []) as string[])
+        return
+      }
+      // Preview: explicit click → higher-priority selection
       if (e.data?.type === 'fact-element-click') {
         setPreviewSelection({
           blockSelector: e.data.blockSelector ?? '',
@@ -4041,11 +4073,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         pages,
         activePageSlug: activeSlug,
         customDomain: customDomainStatus === 'verified' ? customDomain : null,
-        // Pass the preview selection if fresh (<2 min) so the agent knows exactly
-        // which element/block the user is looking at. Cleared after send.
+        // Preview context for the agent (edit-only — no point for create_site):
+        // - previewSelection: user explicitly clicked an element (strongest signal)
+        // - visibleBlocks: blocks currently in viewport (automatic, no user action)
+        // Agent uses these to target the right block without guessing.
         previewSelection: previewSelection && (Date.now() - previewSelection.timestamp < 120_000)
           ? { blockSelector: previewSelection.blockSelector, anchorText: previewSelection.anchorText, outerHtml: previewSelection.outerHtml }
           : undefined,
+        visibleBlocks: visibleBlocks.length > 0 ? visibleBlocks : undefined,
       }),
     })
 
@@ -5095,6 +5130,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 ref={textareaRef}
                 placeholder="Descrivi il tuo sito o chiedi modifiche..."
                 value={input}
+                onFocus={() => {
+                  // Ask the preview iframe which blocks are currently in viewport.
+                  // Response arrives as fact-visible-blocks and updates visibleBlocks state.
+                  previewIframeRef.current?.contentWindow?.postMessage({ type: 'fact-get-visible' }, '*')
+                }}
                 onChange={(e) => {
                   setInput(e.target.value)
                   e.target.style.height = 'auto'
