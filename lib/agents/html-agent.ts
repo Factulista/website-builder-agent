@@ -1160,6 +1160,15 @@ Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edit
           selectedBlock = findBlockBySelector(pageBlocks, visibleBlocks[0]) ?? null
         }
 
+        // Default: always pre-load the first content block (not style/script/nav).
+        // Without this, edit tasks get only the block index and the agent guesses wrong.
+        // Cost: ~2-5k tokens but eliminates blind edits entirely.
+        if (!selectedBlock) {
+          selectedBlock = pageBlocks
+            .filter(b => b.type !== 'style' && b.type !== 'script' && b.type !== 'nav')
+            .sort((a, b) => a.order - b.order)[0] ?? null
+        }
+
         const preloadLabel = previewSelection?.blockSelector ? 'BLOCCO CLICCATO' :
           hasImageUrlInText ? 'BLOCCO TARGET (rilevato automaticamente per inserimento immagine)' :
           'BLOCCO VISIBILE'
