@@ -8824,28 +8824,57 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     <p style={help}>Generato automaticamente dal dominio pubblicato.</p>
                                   </div>
 
-                                  {/* Open Graph */}
+                                  {/* Open Graph — griglia ordinata (1 editabile, 9 🔒 system-managed) */}
                                   <div style={subSec}>
-                                    <label style={secLabel}>Open Graph (anteprima social)</label>
-                                    <div style={{ marginBottom: '12px' }}>
-                                      <label style={fieldLabel}>og:title</label>
-                                      <input defaultValue={(page as Page).og_title ?? ''} placeholder={page.name}
-                                        onBlur={e => { const v = e.target.value.trim(); if (v !== ((page as Page).og_title ?? '')) void updatePageField(page.slug, 'og_title', v) }}
-                                        style={inp} />
-                                      <p style={help}>Se vuoto usa il titolo della pagina.</p>
-                                    </div>
+                                    <label style={secLabel}>Open Graph (10 tag)</label>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                                      {/* EDITABILE: og:title */}
+                                      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', alignItems: 'flex-start' }}>
+                                        <label style={{ ...fieldLabel, marginBottom: 0, paddingTop: '8px' }}>og:title</label>
+                                        <div>
+                                          <input
+                                            key={`og_title_${page.slug}`}
+                                            defaultValue={(page as Page).og_title ?? ''}
+                                            placeholder={page.name}
+                                            onBlur={e => { const v = e.target.value.trim(); if (v !== ((page as Page).og_title ?? '')) void updatePageField(page.slug, 'og_title', v) }}
+                                            style={inp}
+                                          />
+                                          <p style={help}>Editabile. Se vuoto usa il titolo della pagina.</p>
+                                        </div>
+                                      </div>
 
-                                    {/* Tabella tag iniettati */}
-                                    <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
-                                      <div style={{ ...secLabel, margin: 0, padding: '7px 11px', background: '#fafaf9', borderBottom: `1px solid ${C.border}` }}>Tag iniettati sul sito live</div>
-                                      {ogRows.map((r, i) => (
-                                        <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '10px', padding: '6px 11px', borderTop: i > 0 ? `1px solid #f1f0ee` : 'none', alignItems: 'center' }}>
-                                          <code style={{ fontSize: '0.72rem', color: C.textMuted, fontFamily: 'ui-monospace, monospace' }}>{r.k}</code>
-                                          <span style={{ fontSize: '0.76rem', color: r.warn ? '#dc2626' : C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.v}</span>
+                                      {/* SYSTEM-MANAGED: og:description, og:type, og:url, og:site_name, og:locale, og:image (* 4) */}
+                                      {ogRows.filter(r => r.k !== 'og:title').map(r => (
+                                        <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', alignItems: 'center', paddingBottom: '2px' }}>
+                                          <code style={{ fontSize: '0.72rem', color: C.textMuted, fontFamily: 'ui-monospace, monospace', paddingTop: '2px' }}>{r.k}</code>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minHeight: '32px' }}>
+                                            <span style={{
+                                              flex: 1,
+                                              fontSize: '0.76rem',
+                                              color: r.warn ? '#dc2626' : C.text,
+                                              background: '#f6f7f9',
+                                              border: `1px solid ${C.border}`,
+                                              borderRadius: '8px',
+                                              padding: '8px 11px',
+                                              fontFamily: 'ui-monospace, monospace',
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap'
+                                            }}>
+                                              {r.v}
+                                            </span>
+                                            <span
+                                              title="Parametri impostati automaticamente dal sistema"
+                                              style={{ fontSize: '0.9rem', flexShrink: 0, cursor: 'help', userSelect: 'none' }}
+                                            >
+                                              🔒
+                                            </span>
+                                          </div>
                                         </div>
                                       ))}
                                     </div>
-                                    <p style={help}>I tag sono iniettati al serve sul sito live (non in anteprima). og:image dalla colonna OG IMG, con fallback all'immagine di default del sito (tab Strumenti).</p>
+
+                                    <p style={{ ...help, marginTop: '12px' }}>I tag sono iniettati al serve sul sito live (non in anteprima). og:image si imposta dalla colonna OG IMG con fallback al default del sito (tab Strumenti).</p>
                                   </div>
 
                                   <p style={{ ...help, marginTop: '16px', paddingTop: '12px', borderTop: `1px dashed ${C.border}` }}>⚠️ Le modifiche SEO richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>
