@@ -8711,11 +8711,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         {isExpanded && (() => {
                           // Stili condivisi per l'intero pannello
                           const ROW: React.CSSProperties = { display: 'grid', gridTemplateColumns: '140px 1fr', gap: '10px 16px', alignItems: 'center', padding: '6px 0' }
-                          const LBL: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', lineHeight: '1.4' }
+                          const LBL: React.CSSProperties = { fontSize: '0.68rem', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', lineHeight: '1.4', alignSelf: 'center' as const }
                           const INP: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 11px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: 'white' }
                           const RO: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 11px', fontSize: '0.78rem', fontFamily: 'ui-monospace, monospace', color: C.textMuted, background: '#f6f7f9', boxSizing: 'border-box' as const, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-                          const DIVIDER: React.CSSProperties = { gridColumn: '1 / -1', margin: '6px 0', borderTop: `1px solid ${C.border}` }
-                          const SEC_LBL: React.CSSProperties = { gridColumn: '1 / -1', fontSize: '0.66rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.07em', paddingTop: '4px' }
+                          const DIVIDER: React.CSSProperties = { gridColumn: '1 / -1', margin: '8px 0 2px', borderTop: `1px solid ${C.border}` }
+                          const SEC_LBL: React.CSSProperties = { gridColumn: '1 / -1', fontSize: '0.62rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.08em', paddingBottom: '2px' }
                           const HELP: React.CSSProperties = { margin: '2px 0 0', fontSize: '0.66rem', color: C.textFaint, gridColumn: '2 / 3' }
                           const LOCK = (tip = 'Parametro impostato automaticamente dal sistema') => (
                             <span title={tip} style={{ fontSize: '0.85rem', marginLeft: '6px', cursor: 'help', flexShrink: 0 }}>🔒</span>
@@ -8732,7 +8732,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           const ogTitleResolved = (page as Page).og_title || titleTag || page.name
 
                           return (
-                            <div style={{ borderTop: `1px solid ${C.border}`, padding: '14px 18px', background: '#fafaf9', display: 'grid', gridTemplateColumns: '140px 1fr', gap: '0 16px', alignItems: 'start' }}>
+                            <div style={{ borderTop: `1px solid ${C.border}`, padding: '16px 20px', background: '#fafaf9', display: 'grid', gridTemplateColumns: '130px 1fr', gap: '10px 20px', alignItems: 'center' }}>
 
                               {/* ── PAGINA ── */}
                               <div style={SEC_LBL}>Pagina</div>
