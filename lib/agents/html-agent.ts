@@ -1131,13 +1131,37 @@ Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edit
       if (useBlockMode && !isNavOrFooterEdit) {
         const blockIdx = buildBlockIndex(pageBlocks)
 
-        // If there's a previewSelection, pre-load that block to save one round-trip
-        const selectedBlock = previewSelection?.blockSelector
+        // Pre-load the most relevant block:
+        // Priority 1: explicit click in preview
+        // Priority 2: visible block matching message intent
+        // Priority 3: if message contains image URL → pre-load hero/header block (most common target)
+        let selectedBlock = previewSelection?.blockSelector
           ? findBlockBySelector(pageBlocks, previewSelection.blockSelector)
           : null
 
+        // Auto-detect image insertion: pre-load the first content block (hero/header/section)
+        // so the agent has exact bytes without needing read_block first
+        if (!selectedBlock && hasImageUrlInText) {
+          const heroBlock = pageBlocks.find(b =>
+            b.type === 'header' ||
+            b.selector.includes('hero') ||
+            b.selector.includes('banner') ||
+            (b.type === 'section' && b.order === (pageBlocks.filter(x => x.type !== 'style' && x.type !== 'script').sort((a,b) => a.order - b.order)[0]?.order))
+          ) ?? pageBlocks.filter(b => b.type !== 'style' && b.type !== 'script').sort((a,b) => a.order - b.order)[0] ?? null
+          if (heroBlock) selectedBlock = heroBlock
+        }
+
+        // Visible blocks fallback
+        if (!selectedBlock && visibleBlocks?.length) {
+          selectedBlock = findBlockBySelector(pageBlocks, visibleBlocks[0]) ?? null
+        }
+
+        const preloadLabel = previewSelection?.blockSelector ? 'BLOCCO CLICCATO' :
+          hasImageUrlInText ? 'BLOCCO TARGET (rilevato automaticamente per inserimento immagine)' :
+          'BLOCCO VISIBILE'
+
         const preloadedBlock = selectedBlock
-          ? `\nBLOCCO PRE-CARICATO (quello su cui ha cliccato l'utente):\n\`\`\`html\n${selectedBlock.html.slice(0, 8000)}\n\`\`\``
+          ? `\n${preloadLabel} — usa edit_block o replace_block su questo:\n\`\`\`html\n${selectedBlock.html.slice(0, 8000)}\n\`\`\``
           : ''
 
         return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
@@ -1594,32 +1618,31 @@ ${visibleBlocks.slice(0, 5).join(', ')}
 
   const hasImages = apiMessages.some(m => Array.isArray(m.content))
 
+  // Detect image URL in message text (e.g. Supabase storage URL pasted by user).
+  // These require HTML structure reasoning — Haiku often fails to insert them correctly.
+  const hasImageUrlInText = /https?:\/\/[^\s"']+\.(?:png|jpg|jpeg|webp|gif|svg|avif)/i.test(userMsg)
+
   // ── Fase 3a: Block-aware adaptive model routing ──────────────────────────────
   //
-  // With block-mode context (~6k tokens instead of 73k), many tasks that previously
-  // required Sonnet (to handle large context) can now run on Haiku without quality loss.
-  //
   // Routing table:
-  //   Haiku  → edit_block (surgical, tiny output, no design judgment needed)
-  //            micro-edit (delete/CSS var/text, already tiny)
-  //   Sonnet → replace_block (creative regeneration of one section)
-  //            create_site / add_page (full design judgment)
-  //            vision tasks (multimodal)
-  //            standard edit_page WITHOUT block mode (still needs full context reasoning)
-  //
-  // Context size is now the key input: if page has blocks, edit tasks get Haiku.
-  // If page is monolithic (no blocks yet), keep Sonnet to handle the large context.
+  //   Haiku  → edit_block on text/style/CSS changes (surgical, no HTML structure judgment)
+  //   Sonnet → everything that requires HTML structure reasoning:
+  //            - image URL in message (inserting image into section = layout judgment)
+  //            - create_site / add_page / replace_block
+  //            - vision tasks
+  //            - monolith edits (full page context)
   const activePageForRouting = pages.find(p => p.slug === activePageSlug) ?? pages[0] ?? null
   const pageHasBlocks = (activePageForRouting?.blocks?.length ?? 0) >= 3
-  const isBlockEdit = pageHasBlocks && !isCreationTask && !isAddPageRequest && !hasImages
+  const isBlockEdit = pageHasBlocks && !isCreationTask && !isAddPageRequest && !hasImages && !hasImageUrlInText
 
   const model = (() => {
-    if (hasImages)           return 'claude-sonnet-4-5-20250929'  // vision always needs Sonnet
-    if (isCreationTask)      return 'claude-sonnet-4-5-20250929'  // design judgment required
-    if (isAddPageRequest)    return 'claude-sonnet-4-5-20250929'  // new page = design judgment
-    if (isMicroEdit)         return 'claude-haiku-4-5-20251001'   // fast path
-    if (isBlockEdit)         return 'claude-haiku-4-5-20251001'   // block mode: tiny context+output
-    return 'claude-sonnet-4-5-20250929'                           // edit_page on monolith
+    if (hasImages)           return 'claude-sonnet-4-5-20250929'  // vision
+    if (hasImageUrlInText)   return 'claude-sonnet-4-5-20250929'  // inserting image URL needs HTML reasoning
+    if (isCreationTask)      return 'claude-sonnet-4-5-20250929'  // design judgment
+    if (isAddPageRequest)    return 'claude-sonnet-4-5-20250929'  // new page
+    if (isMicroEdit)         return 'claude-haiku-4-5-20251001'   // fast path (text/CSS only)
+    if (isBlockEdit)         return 'claude-haiku-4-5-20251001'   // block mode: surgical text edit
+    return 'claude-sonnet-4-5-20250929'                           // monolith edit
   })()
 
   // Extended thinking: only on first site creation (zero pages) where design judgment
