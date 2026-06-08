@@ -8808,16 +8808,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           const ogTitleResolved = (page as Page).og_title || titleTag || page.name
 
                           // Shared styles
-                          const panelBox: React.CSSProperties = { borderTop: `1px solid ${C.border}`, padding: '14px 16px', background: '#fafaf9', display: 'flex', flexDirection: 'column', gap: '0' }
-                          const fieldRow: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '7px 0' }
-                          const fieldLbl: React.CSSProperties = { width: '120px', flexShrink: 0, fontSize: '0.68rem', fontWeight: 700, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '9px', lineHeight: 1.3 }
+                          const panelBox: React.CSSProperties = { borderTop: `1px solid ${C.border}`, padding: '16px 18px', background: '#f9f9f8', display: 'flex', flexDirection: 'column', gap: '0' }
+                          const fieldRow: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: '16px', padding: '8px 0' }
+                          const fieldLbl: React.CSSProperties = { width: '130px', flexShrink: 0, fontSize: '0.7rem', fontWeight: 700, color: '#44403c', textTransform: 'uppercase', letterSpacing: '0.06em', paddingTop: '8px', lineHeight: 1.3 }
                           const fieldVal: React.CSSProperties = { flex: 1, minWidth: 0 }
-                          const inp: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: 'white' }
-                          const ro: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '4px', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 10px', fontSize: '0.78rem', fontFamily: 'ui-monospace, monospace', color: '#78716c', background: '#f4f4f5', boxSizing: 'border-box' as const }
-                          const help: React.CSSProperties = { margin: '3px 0 0', fontSize: '0.67rem', color: C.textFaint }
-                          const divider: React.CSSProperties = { height: '1px', background: C.border, margin: '4px 0' }
+                          const inp: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 11px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: 'white' }
+                          const ro: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '6px', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 11px', fontSize: '0.78rem', fontFamily: 'ui-monospace, monospace', color: '#57534e', background: '#f4f4f5', boxSizing: 'border-box' as const }
+                          const help: React.CSSProperties = { margin: '4px 0 0', fontSize: '0.67rem', color: C.textFaint }
+                          const divider: React.CSSProperties = { height: '1px', background: C.border, margin: '6px 0' }
                           const LOCK = (tip = 'Parametro impostato automaticamente dal sistema') => (
-                            <span title={tip} style={{ fontSize: '0.8rem', cursor: 'help', flexShrink: 0, opacity: 0.5 }}>🔒</span>
+                            <span title={tip} style={{ fontSize: '0.8rem', cursor: 'help', flexShrink: 0, color: '#a8a29e' }}>🔒</span>
                           )
 
                           return (
@@ -8827,7 +8827,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               <div style={fieldRow}>
                                 <span style={fieldLbl}>Nome pagina</span>
                                 <div style={fieldVal}>
-                                  <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                                  <input value={renameValue} onChange={e => setRenameValue(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
                                     onBlur={async e => { const v = e.target.value.trim(); if (v && v !== page.name) { const next = pages.map(p => p.slug === page.slug ? { ...p, name: v } : p); setPages(next); await saveState(messages, next) } }}
                                     style={inp} />
@@ -8854,7 +8854,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     <input value={editSlugValue} disabled={page.slug === 'home'} placeholder={page.slug}
                                       onChange={e => setEditSlugValue(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, ''))}
                                       onKeyDown={e => { if (e.key === 'Enter') void renamePageSlug(page.slug, editSlugValue); if (e.key === 'Escape') setRenamingSlug(null) }}
-                                      onBlur={() => { if (editSlugValue && editSlugValue !== page.slug && page.slug !== 'home') void renamePageSlug(page.slug, editSlugValue) }}
                                       style={{ ...inp, fontFamily: 'ui-monospace, monospace', background: page.slug === 'home' ? '#f4f4f5' : 'white', flex: 1 }} />
                                     {page.slug !== 'home' && editSlugValue !== page.slug && <span style={{ fontSize: '0.68rem', color: C.blue }}>✎</span>}
                                   </div>
