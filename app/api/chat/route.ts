@@ -490,15 +490,14 @@ export async function POST(req: NextRequest) {
               // Apply: update blocks array + reassemble HTML
               const updatedBlocks = blocks.map(b => b.id === block.id ? editResult.block : b)
               const newHtml = assembleBlocksToHtml(updatedBlocks, targetPage.html)
-              // Normalise to edit_page with the assembled diff
-              result = { ...result, tool: 'edit_page', input: { pageSlug, summary: result.input?.summary, edits: [{ find: targetPage.html, replace: newHtml }], operations: [], _blocks: updatedBlocks } }
+              result = { ...result, tool: 'edit_page', input: { pageSlug, summary: result.input?.summary, edits: [{ find: targetPage.html, replace: newHtml }], operations: [], _blocks: updatedBlocks, _blockSelector: block.selector, _blockHtml: editResult.block.html } }
             }
           } else {
             // replace_block: full block replacement
             const newBlockHtml = String(result.input?.html ?? '')
             const updatedBlocks = blocks.map(b => b.id === block.id ? { ...b, html: newBlockHtml } : b)
             const newHtml = assembleBlocksToHtml(updatedBlocks, targetPage.html)
-            result = { ...result, tool: 'edit_page', input: { pageSlug, summary: result.input?.summary, edits: [{ find: targetPage.html, replace: newHtml }], operations: [], _blocks: updatedBlocks } }
+            result = { ...result, tool: 'edit_page', input: { pageSlug, summary: result.input?.summary, edits: [{ find: targetPage.html, replace: newHtml }], operations: [], _blocks: updatedBlocks, _blockSelector: block.selector, _blockHtml: newBlockHtml } }
           }
         }
       }

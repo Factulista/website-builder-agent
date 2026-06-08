@@ -23,6 +23,7 @@ import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
 import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
+import { compileSeo, formatSeoReport } from '../../../lib/seo-compiler'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById } from '../../../lib/components/index'
 
@@ -1592,15 +1593,39 @@ const PREVIEW_CLICK_SCRIPT = `<script data-fact-preview-agent>
 
 const SCROLL_LISTENER = `<script>
 window.addEventListener('message',function(e){
-  if(!e.data||e.data.type!=='scroll-to-text')return;
-  var text=e.data.text;if(!text)return;
-  var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
-  var node;
-  while((node=walker.nextNode())){
-    if(node.textContent&&node.textContent.trim().includes(text.trim())){
-      var el=node.parentElement;
-      if(el){el.scrollIntoView({behavior:'smooth',block:'center'});break;}
+  if(!e.data)return;
+  // scroll-to-text
+  if(e.data.type==='scroll-to-text'){
+    var text=e.data.text;if(!text)return;
+    var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
+    var node;
+    while((node=walker.nextNode())){
+      if(node.textContent&&node.textContent.trim().includes(text.trim())){
+        var el=node.parentElement;
+        if(el){el.scrollIntoView({behavior:'smooth',block:'center'});break;}
+      }
     }
+  }
+  // fact-block-update — replace a single block in DOM without full reload (Fase 2a)
+  if(e.data.type==='fact-block-update'){
+    var sel=e.data.selector;var html=e.data.html;
+    if(!sel||!html)return;
+    try{
+      var target=document.querySelector(sel);
+      if(target){
+        var tmp=document.createElement('div');
+        tmp.innerHTML=html;
+        var newEl=tmp.firstElementChild;
+        if(newEl){
+          target.replaceWith(newEl);
+          newEl.scrollIntoView({behavior:'smooth',block:'nearest'});
+          // Flash highlight
+          newEl.style.outline='2px solid #2563eb';
+          newEl.style.outlineOffset='2px';
+          setTimeout(function(){newEl.style.outline='';newEl.style.outlineOffset='';},1200);
+        }
+      }
+    }catch(err){}
   }
 });
 </script>`
@@ -4562,6 +4587,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (result.tool === 'edit_page') {
       const firstEdit = (result.input.edits as { find: string; replace: string }[] | undefined)?.[0]
       if (firstEdit?.replace) setScrollTarget(firstEdit.replace.replace(/<[^>]+>/g, '').slice(0, 40).trim())
+      // Fase 2a: block re-render — if this was an edit_block/replace_block normalised to edit_page,
+      // push only the changed block to the preview DOM instead of full reload.
+      const blockSelector = (result.input as Record<string, unknown>)?._blockSelector as string | undefined
+      const blockHtml = (result.input as Record<string, unknown>)?._blockHtml as string | undefined
+      if (blockSelector && blockHtml) {
+        previewIframeRef.current?.contentWindow?.postMessage(
+          { type: 'fact-block-update', selector: blockSelector, html: blockHtml }, '*'
+        )
+      }
     }
     setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
     const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
@@ -4673,6 +4707,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const handlePublish = async () => {
+    // ── SEO compiler gate — runs before publish, blocks on critical issues ──
+    const seoReport = compileSeo(pages, { customDomain: customDomain ?? undefined, context: projectContext ?? undefined })
+    if (seoReport.blockingIssues.length > 0) {
+      const issueList = seoReport.blockingIssues
+        .map(i => `• [${i.page}] ${i.message}`)
+        .join('\n')
+      await alertDialog({
+        title: '❌ SEO — Problemi critici da risolvere',
+        message: `Risolvi questi problemi prima di pubblicare:\n\n${issueList}\n\nSuggerimento: chiedi all'AI di correggerli o sistemali manualmente.`,
+        variant: 'danger',
+      })
+      return
+    }
+    // Show warnings (non-blocking) if any
+    if (seoReport.warnings.length > 0 && seoReport.score < 70) {
+      const warnList = seoReport.warnings.slice(0, 5).map(w => `• [${w.page}] ${w.message}`).join('\n')
+      const proceed = await confirmDialog({
+        title: `⚠️ SEO score: ${seoReport.score}/100`,
+        message: `Ci sono alcune ottimizzazioni SEO consigliate:\n\n${warnList}\n\nVuoi pubblicare comunque?`,
+        confirmLabel: 'Pubblica comunque',
+      })
+      if (!proceed) return
+    }
     const ok = await confirmDialog({
       title: t('project.publishSiteTitle' as const, language as any),
       message: t('project.publishSiteMessage' as const, language as any).replace('{domain}', customDomain),
@@ -5079,15 +5136,33 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               ↓ Rilascia l&apos;immagine qui
             </div>
           )}
-          {/* Preview selection badge — shows when user clicked something in the preview */}
-          {previewSelection && (Date.now() - previewSelection.timestamp < 120_000) && (
+          {/* Context badge: shows selected block or visible blocks */}
+          {(previewSelection && Date.now() - previewSelection.timestamp < 120_000) ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', marginBottom: '6px', fontSize: '0.72rem', color: '#1d4ed8' }}>
-              <span style={{ fontSize: '0.8rem' }}>🎯</span>
+              <span>🎯</span>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                Selezione: <strong>{previewSelection.blockSelector}</strong>
-                {previewSelection.anchorText ? ` — "${previewSelection.anchorText.slice(0, 60)}"` : ''}
+                <strong>{previewSelection.blockSelector}</strong>
+                {previewSelection.anchorText ? ` — "${previewSelection.anchorText.slice(0, 50)}"` : ''}
               </span>
-              <button onClick={() => setPreviewSelection(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: '0.9rem', padding: '0 2px', lineHeight: 1 }}>✕</button>
+              {/* Fase 2b: rigenera sezione con un click */}
+              <button
+                onClick={() => {
+                  const msg = `Rigenera completamente la sezione ${previewSelection.blockSelector} — ridisegnala in modo creativo mantenendo lo stesso contenuto e stile del sito`
+                  const fakeEvent = { preventDefault: () => {} } as React.FormEvent
+                  handleSendRef.current?.(fakeEvent, { input: msg, images: [] })
+                  setPreviewSelection(null)
+                }}
+                title="Rigenera questa sezione con l'AI"
+                style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', padding: '2px 8px', fontSize: '0.68rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}
+              >🔄 Rigenera</button>
+              <button onClick={() => setPreviewSelection(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: '0.9rem', padding: '0 2px' }}>✕</button>
+            </div>
+          ) : visibleBlocks.length > 0 && pages.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '6px', fontSize: '0.68rem', color: '#64748b' }}>
+              <span>👁</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Visibili: {visibleBlocks.slice(0, 3).join(', ')}
+              </span>
             </div>
           )}
           <form onSubmit={handleSend}>
@@ -5468,23 +5543,36 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             >
               ⚙ {t('project.settings' as const, language as any)}
             </button>
-            {customDomainStatus === 'verified' && (
-              <button
-                onClick={handlePublish}
-                disabled={publishing || pages.length === 0}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '5px',
-                  padding: '5px 14px', borderRadius: '7px',
-                  background: publishing ? '#93c5fd' : C.blue,
-                  color: 'white', border: 'none',
-                  fontSize: '0.78rem', fontWeight: 600,
-                  cursor: publishing ? 'not-allowed' : 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {publishing ? '⏳' : '🚀'} {t('project.publishButton' as const, language as any)}
-              </button>
-            )}
+            {customDomainStatus === 'verified' && pages.length > 0 && (() => {
+              const seo = compileSeo(pages, { customDomain: customDomain ?? undefined, context: projectContext ?? undefined })
+              const scoreColor = seo.score >= 80 ? '#16a34a' : seo.score >= 60 ? '#d97706' : '#dc2626'
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span
+                    title={formatSeoReport(seo)}
+                    style={{ fontSize: '0.72rem', fontWeight: 700, color: scoreColor, cursor: 'help', padding: '3px 7px', background: `${scoreColor}15`, borderRadius: '5px', border: `1px solid ${scoreColor}40` }}
+                  >
+                    SEO {seo.score}
+                    {seo.blockingIssues.length > 0 ? ` ❌${seo.blockingIssues.length}` : seo.warnings.length > 0 ? ` ⚠️` : ' ✓'}
+                  </span>
+                  <button
+                    onClick={handlePublish}
+                    disabled={publishing}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '5px',
+                      padding: '5px 14px', borderRadius: '7px',
+                      background: publishing ? '#93c5fd' : seo.blockingIssues.length > 0 ? '#dc2626' : C.blue,
+                      color: 'white', border: 'none',
+                      fontSize: '0.78rem', fontWeight: 600,
+                      cursor: publishing ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {publishing ? '⏳' : seo.blockingIssues.length > 0 ? '❌' : '🚀'} {t('project.publishButton' as const, language as any)}
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         </div>
 
@@ -8984,6 +9072,65 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   </div>
                                 </div>
                               ))}
+
+                              <div style={{ ...divider, marginTop: '8px' }} />
+
+                              {/* Fase 2c — Block reorder UI */}
+                              {(page as Page).blocks && (page as Page).blocks!.length > 0 && (() => {
+                                const blocks = [...(page as Page).blocks!].sort((a, b) => a.order - b.order)
+                                const blockDragRef = { current: null as number | null }
+                                return (
+                                  <div style={{ paddingTop: '8px' }}>
+                                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#44403c', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                                      Sezioni ({blocks.length})
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                      {blocks.filter(b => b.type !== 'style' && b.type !== 'script').map((block, bi) => (
+                                        <div
+                                          key={block.id}
+                                          draggable
+                                          onDragStart={() => { blockDragRef.current = bi }}
+                                          onDragOver={e => e.preventDefault()}
+                                          onDrop={async () => {
+                                            const from = blockDragRef.current
+                                            if (from === null || from === bi) return
+                                            blockDragRef.current = null
+                                            // Reorder blocks
+                                            const reordered = [...blocks.filter(b => b.type !== 'style' && b.type !== 'script')]
+                                            const [moved] = reordered.splice(from, 1)
+                                            reordered.splice(bi, 0, moved)
+                                            // Reassign order
+                                            const styleBlocks = blocks.filter(b => b.type === 'style' || b.type === 'script')
+                                            const allBlocks = [...styleBlocks, ...reordered.map((b, i) => ({ ...b, order: styleBlocks.length + i }))]
+                                            const { assembleBlocksToHtml: asm } = await import('../../../lib/agents/block-splitter')
+                                            const newHtml = asm(allBlocks, page.html)
+                                            const next = pages.map(p => p.slug === page.slug ? { ...p, html: newHtml, blocks: allBlocks } : p)
+                                            setPages(next)
+                                            await saveState(messages, next)
+                                          }}
+                                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px', background: 'white', border: `1px solid ${C.border}`, borderRadius: '6px', cursor: 'grab', fontSize: '0.72rem', color: '#57534e' }}
+                                        >
+                                          <span style={{ color: C.textFaint, fontSize: '0.8rem' }}>⠿</span>
+                                          <span style={{ fontFamily: 'ui-monospace, monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{block.selector}</span>
+                                          <span style={{ fontSize: '0.65rem', color: C.textFaint, flexShrink: 0 }}>{block.type}</span>
+                                          {/* Rigenera blocco */}
+                                          <button
+                                            onClick={e => {
+                                              e.stopPropagation()
+                                              const msg = `Rigenera completamente la sezione ${block.selector} della pagina ${page.name} — ridisegnala creativamente mantenendo contenuto e stile`
+                                              const fakeEvent = { preventDefault: () => {} } as React.FormEvent
+                                              setActiveSlug(page.slug)
+                                              handleSendRef.current?.(fakeEvent, { input: msg, images: [] })
+                                            }}
+                                            title="Rigenera questa sezione"
+                                            style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', cursor: 'pointer', color: C.blue, flexShrink: 0 }}
+                                          >🔄</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              })()}
 
                               <div style={{ ...divider, marginTop: '8px' }} />
 
