@@ -128,6 +128,7 @@ function makeStream(
       controller?.close()
     })
     .catch((err) => {
+      console.error('[makeStream] CRASH:', String(err), err instanceof Error ? err.stack?.slice(0, 500) : '')
       onError?.(err)
       const error = { type: 'error', error: String(err) }
       controller?.enqueue(encoder.encode(JSON.stringify(error) + '\n'))
