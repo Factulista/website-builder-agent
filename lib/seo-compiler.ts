@@ -44,6 +44,15 @@ function attr(tag: string, name: string): string {
   return m?.[1]?.trim() ?? ''
 }
 
+// ── Legal page detection ──────────────────────────────────────────────────────
+// Legal/policy pages don't need meta descriptions for SEO — they're low-traffic
+// service pages. Missing meta description is a WARNING here, not a blocker.
+const LEGAL_SLUG_PATTERNS = [
+  /legal/i, /privac/i, /cookie/i, /aviso/i, /condicion/i, /termino/i,
+  /policy/i, /terms/i, /imprint/i, /disclaimer/i, /rgpd/i, /gdpr/i, /dpa/i,
+]
+const isLegalPage = (slug: string) => LEGAL_SLUG_PATTERNS.some(p => p.test(slug))
+
 // ── Per-page checks ───────────────────────────────────────────────────────────
 
 function checkPage(page: Page): SeoIssue[] {
@@ -51,18 +60,25 @@ function checkPage(page: Page): SeoIssue[] {
   const h = page.html
   const slug = page.slug
   const noindex = page.robots?.noindex
+  const legal = isLegalPage(slug)
 
   // Skip SEO checks on noindex pages (they're intentionally hidden from Google)
   if (noindex) return []
 
+  // Legal pages: only check critical issues that truly matter (title, H1)
+  // Meta description missing is only a warning — legal pages rarely rank on Google
   const add = (severity: SeoIssue['severity'], code: string, message: string, fix?: string) =>
     issues.push({ page: slug, code, message, severity, fix })
+
+  // Downgrade severity for legal pages
+  const sev = (critical: SeoIssue['severity'], fallback: SeoIssue['severity'] = 'warning'): SeoIssue['severity'] =>
+    legal ? fallback : critical
 
   // ── Title ──────────────────────────────────────────────────────────
   const titleMatch = h.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   const title = titleMatch?.[1]?.trim() ?? ''
   if (!title)
-    add('critical', 'MISSING_TITLE', 'Tag <title> mancante', 'Aggiungi <title>Nome sito | Pagina</title> nel <head>')
+    add(sev('critical'), 'MISSING_TITLE', 'Tag <title> mancante', 'Aggiungi <title>Nome sito | Pagina</title> nel <head>')
   else if (title.length > 60)
     add('warning', 'TITLE_TOO_LONG', `<title> di ${title.length} caratteri (max 60): "${title.slice(0, 50)}…"`, 'Accorcia il titolo')
   else if (title.length < 10)
@@ -73,7 +89,8 @@ function checkPage(page: Page): SeoIssue[] {
     ?? h.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i)
   const desc = descMatch?.[1]?.trim() ?? ''
   if (!desc)
-    add('critical', 'MISSING_DESCRIPTION', 'Meta description mancante', 'Aggiungi <meta name="description" content="…"> (120–160 caratteri)')
+    // Legal pages: warning only — they rarely rank and don't need meta descriptions
+    add(sev('critical', 'warning'), 'MISSING_DESCRIPTION', 'Meta description mancante', 'Aggiungi <meta name="description" content="…"> (120–160 caratteri)')
   else if (desc.length > 160)
     add('warning', 'DESC_TOO_LONG', `Meta description di ${desc.length} caratteri (max 160)`, 'Accorcia la description')
   else if (desc.length < 50)
@@ -82,7 +99,7 @@ function checkPage(page: Page): SeoIssue[] {
   // ── H1 ─────────────────────────────────────────────────────────────
   const h1s = h.match(/<h1[\s>]/gi) ?? []
   if (h1s.length === 0)
-    add('critical', 'MISSING_H1', 'Nessun tag <h1> — obbligatorio per SEO', 'Aggiungi un <h1> con la keyword principale')
+    add(sev('critical'), 'MISSING_H1', 'Nessun tag <h1> — obbligatorio per SEO', 'Aggiungi un <h1> con la keyword principale')
   else if (h1s.length > 1)
     add('critical', 'MULTIPLE_H1', `${h1s.length} tag <h1> trovati — deve essercene esattamente 1`, 'Mantieni solo 1 <h1>, usa <h2> per gli altri')
 
@@ -113,7 +130,8 @@ function checkPage(page: Page): SeoIssue[] {
     add('warning', 'LOW_CONTENT', `Pagina con pochi contenuti (${wordCount} parole) — rischio thin content`, 'Aggiungi almeno 200–300 parole di contenuto utile')
 
   // ── Performance signals ────────────────────────────────────────────
-  if (/fonts\.googleapis\.com[^"']*["'](?!.*display=swap)/i.test(h))
+  // Only flag font swap on main content pages (not legal pages)
+  if (!legal && /fonts\.googleapis\.com[^"']*["'](?!.*display=swap)/i.test(h))
     add('warning', 'FONT_NO_SWAP', 'Google Fonts senza display=swap — rischio testo invisibile (FOIT)', 'Aggiungi &display=swap all\'URL del font')
 
   if (/<script\b(?![^>]*\bdefer\b)(?![^>]*\basync\b)[^>]+src=/i.test(h))
