@@ -1538,31 +1538,20 @@ ${isDesignFromMockup ? `⚠️ MOCKUP ALLEGATO: l'immagine mostra un design da r
 ⚠️ LINGUA DEL SITO: il sito è in **${langName(siteLang)}**. TUTTI i testi HTML (nav, sezioni, pulsanti, etichette, titoli) devono SEMPRE restare in ${langName(siteLang)}. NON tradurre mai testi esistenti anche se l'utente scrive in un'altra lingua. Se aggiungi nuovi contenuti HTML, scrivili in ${langName(siteLang)}.
 LINGUA RISPOSTA CHAT: l'utente sta scrivendo in **${langName(userLang)}**. Il campo \`summary\` DEVE essere in ${langName(userLang)} — ma l'HTML del sito rimane sempre in ${langName(siteLang)}.`
 
-  // Fix 6: micro-edit system prompt — much shorter, omits component library & verbose rules.
-  // Used when isMicroEdit===true (delete / simple style tweak without images).
+  // microSystem: same lean structure as editSystem — no richContext, no designSystem, no blog posts.
+  // Those add 20-50k chars and are irrelevant for delete/CSS/text micro-edits.
   const microSystem = `${microEditPrefix}
 
-COME MODIFICARE — scegli il modo giusto:
-
-▸ SEZIONE INTERA (elimina elemento, sostituisci blocco) → usa "operations" in edit_page:
-  target: selettore CSS dal SECTION INDEX (es: "nav", "section#pricing", "footer.site-footer")
-  op: "replace" per sostituire, "insert_after"/"insert_before" per aggiungere.
-  Usa op="replace" con html="" per ELIMINARE una sezione.
-  ⚠️ Per eliminare un singolo link/item DENTRO una sezione (es: voce di menu), usa "edits" find/replace su quell'elemento specifico — non replace dell'intera sezione.
-
-▸ ELEMENTO SINGOLO (voce menu, link, attributo, CSS) → usa "edits" (find/replace):
-  find: usa ancore strutturali (href, class, id, src) — mai testo lungo che potrebbe essere troncato.
-  Esempio elimina link menu: find '<a href="./pagina">Testo</a>' replace ''
-
-${buildRichContextPrompt({ context, ...richContext })}
-
-${designSystemBlock}
-
+▸ ELEMENTO SINGOLO → usa edit_block(blockSelector, find, replace, summary).
+  find = stringa ESATTA dal BLOCCO PRE-CARICATO. Mai inventare bytes.
+▸ SEZIONE INTERA → usa replace_block(blockSelector, html, summary).
+▸ CSS globale → usa edit_page con typed_edits.
+${logoSection ? '\n' + logoSection : ''}
 PAGINE DEL SITO:
 ${pageContextBlocks}
 
-HTML COMPATTO: nessuna riga vuota nell'HTML.
-⚠️ LINGUA DEL SITO: ${langName(siteLang)}. NON tradurre testi HTML esistenti anche se l'utente scrive in ${langName(userLang)}. Nuovi contenuti HTML → in ${langName(siteLang)}. Campo \`summary\` → in ${langName(userLang)}.`
+HTML COMPATTO: nessuna riga vuota.
+⚠️ LINGUA SITO: ${langName(siteLang)}. Summary in: ${langName(userLang)}.`
 
   // ── Preview context signal (edit only) ──────────────────────────────────────
   // Two automatic signals — no user action required:
