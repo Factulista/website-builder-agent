@@ -22,6 +22,7 @@ import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
+import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById } from '../../../lib/components/index'
 
@@ -2802,6 +2803,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         const lang = (config?.context as { language?: string } | undefined)?.language ?? 'it'
         loadedPages = addBlogLinkToNav(loadedPages, lang === 'es' ? 'Blog' : 'Blog')
       }
+      // Fase 1: backfill blocks for pages that don't have them yet (migration).
+      // Run in background after load — non-blocking, saves on next agent action.
+      loadedPages = loadedPages.map(p => {
+        if (p.blocks) return p  // already split
+        const blocks = splitHtmlIntoBlocks(p.html)
+        return blocks ? { ...p, blocks } : p
+      })
       setPages(loadedPages)
       if (loadedPages.length > 0) setActiveSlug(loadedPages[0].slug)
       if (config?.messages) {
@@ -4523,6 +4531,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
     const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: summary }]
     void createVersion(summary.slice(0, 60).replace(/^[✨✏️➕🗑🔍🗺️🎨✍️]\s*/, ''), newPages)
+    // Fase 1: persist blocks alongside html so the next request uses block-mode context.
+    // Only split pages that changed (create_site = all; edit_page = just the target).
+    // Run async and non-blocking — blocks are an optimisation, not critical path.
+    const changedSlug = result.tool === 'edit_page' ? String(result.input?.pageSlug ?? '') : null
+    newPages = newPages.map(p => {
+      if (changedSlug && p.slug !== changedSlug) return p  // only split changed page on edit
+      if (p.blocks && !changedSlug) return p                // keep existing blocks on untouched pages
+      const blocks = splitHtmlIntoBlocks(p.html)
+      return blocks ? { ...p, blocks } : p
+    })
     await saveState(finalMessages, newPages)
     // Confirm html_changed: true for edit_page runs where changes were actually applied.
     // (Server set it based on ops/edits count; client is the authoritative source.)
