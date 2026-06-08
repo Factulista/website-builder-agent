@@ -1635,15 +1635,8 @@ ${visibleBlocks.slice(0, 5).join(', ')}
   const pageHasBlocks = (activePageForRouting?.blocks?.length ?? 0) >= 3
   const isBlockEdit = pageHasBlocks && !isCreationTask && !isAddPageRequest && !hasImages && !hasImageUrlInText
 
-  const model = (() => {
-    if (hasImages)           return 'claude-sonnet-4-5-20250929'  // vision
-    if (hasImageUrlInText)   return 'claude-sonnet-4-5-20250929'  // inserting image URL needs HTML reasoning
-    if (isCreationTask)      return 'claude-sonnet-4-5-20250929'  // design judgment
-    if (isAddPageRequest)    return 'claude-sonnet-4-5-20250929'  // new page
-    if (isMicroEdit)         return 'claude-haiku-4-5-20251001'   // fast path (text/CSS only)
-    if (isBlockEdit)         return 'claude-haiku-4-5-20251001'   // block mode: surgical text edit
-    return 'claude-sonnet-4-5-20250929'                           // monolith edit
-  })()
+  // Temporarily use Sonnet for everything — Haiku routing disabled until reliability confirmed
+  const model = 'claude-sonnet-4-5-20250929'
 
   // Extended thinking: only on first site creation (zero pages) where design judgment
   // matters most. Disabled on Tier 1 — re-enable when on Tier 2+.
