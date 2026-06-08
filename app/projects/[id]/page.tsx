@@ -8668,7 +8668,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         style={{
                           background: C.white,
                           border: `1px solid ${isDragOver ? C.blue : C.border}`,
-                          borderRadius: '10px', overflow: 'hidden',
+                          borderRadius: '10px',
                           boxShadow: isDragOver ? `0 0 0 2px ${C.blue}22` : 'none',
                           transition: 'border-color 0.15s, box-shadow 0.15s',
                           opacity: dragIndexRef.current === idx ? 0.5 : 1,
