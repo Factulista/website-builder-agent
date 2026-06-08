@@ -20,7 +20,12 @@
  */
 
 import { Block } from '../types'
-import { randomUUID } from 'crypto'
+
+// Works in both Node.js (server) and browser (client component)
+const uuid = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 
@@ -56,7 +61,7 @@ function extractHeadBlocks(html: string, startOrder: number): { blocks: Block[];
   let m: RegExpExecArray | null
   let i = 0
   while ((m = styleRe.exec(html)) !== null) {
-    blocks.push({ id: randomUUID(), type: 'style', selector: `style:nth(${i})`, html: m[0], order: order++ })
+    blocks.push({ id: uuid(), type: 'style', selector: `style:nth(${i})`, html: m[0], order: order++ })
     i++
   }
   return { blocks, order }
@@ -89,7 +94,7 @@ function splitBodyIntoBlocks(bodyContent: string, startOrder: number): Block[] {
       const nextTag = bodyContent.indexOf('<', pos + 1)
       const chunk = bodyContent.slice(pos, nextTag === -1 ? bodyContent.length : nextTag)
       if (chunk.trim()) {
-        blocks.push({ id: randomUUID(), type: 'other', selector: `text:${order}`, html: chunk, order: order++ })
+        blocks.push({ id: uuid(), type: 'other', selector: `text:${order}`, html: chunk, order: order++ })
       }
       pos = nextTag === -1 ? bodyContent.length : nextTag
       continue
@@ -101,7 +106,7 @@ function splitBodyIntoBlocks(bodyContent: string, startOrder: number): Block[] {
     const isVoid = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(tag)
 
     if (isVoid) {
-      blocks.push({ id: randomUUID(), type: 'other', selector: `${tag}:${order}`, html: openTag, order: order++ })
+      blocks.push({ id: uuid(), type: 'other', selector: `${tag}:${order}`, html: openTag, order: order++ })
       pos += openTag.length
       continue
     }
@@ -116,20 +121,20 @@ function splitBodyIntoBlocks(bodyContent: string, startOrder: number): Block[] {
       if (blockHtml === null) {
         // Malformed — take rest of body as one block
         const rest = bodyContent.slice(pos)
-        blocks.push({ id: randomUUID(), type: 'other', selector: `${tag}:${order}`, html: rest, order: order++ })
+        blocks.push({ id: uuid(), type: 'other', selector: `${tag}:${order}`, html: rest, order: order++ })
         break
       }
       const sel = elementSelector(tag, attrs)
       // Make selector unique if already used
       const existing = blocks.filter(b => b.selector === sel).length
       const finalSel = existing > 0 ? `${sel}:nth(${existing})` : sel
-      blocks.push({ id: randomUUID(), type: blockType(tag), selector: finalSel, html: blockHtml, order: order++ })
+      blocks.push({ id: uuid(), type: blockType(tag), selector: finalSel, html: blockHtml, order: order++ })
       pos += blockHtml.length
     } else {
       // Non-structural top-level element — wrap as 'other'
       const blockHtml = extractElement(bodyContent, pos, tag)
       if (blockHtml === null) { pos += openTag.length; continue }
-      blocks.push({ id: randomUUID(), type: 'other', selector: `${tag}:${order}`, html: blockHtml, order: order++ })
+      blocks.push({ id: uuid(), type: 'other', selector: `${tag}:${order}`, html: blockHtml, order: order++ })
       pos += blockHtml.length
     }
   }
@@ -189,7 +194,7 @@ export function splitHtmlIntoBlocks(html: string): Block[] | null {
     blocks.push(...bodyBlocks)
   } else {
     // No <body> tag — treat whole thing as one block (fallback)
-    blocks.push({ id: randomUUID(), type: 'other', selector: 'root', html, order: 0 })
+    blocks.push({ id: uuid(), type: 'other', selector: 'root', html, order: 0 })
   }
 
   return blocks.length > 0 ? blocks : null
