@@ -195,12 +195,24 @@ export async function POST(req: NextRequest) {
     // on next agent action). Split them here so the agent always gets block-mode context
     // regardless of whether the client has saved them.
     if (pages) {
-      const { splitHtmlIntoBlocks: splitBlocks } = await import('../../../lib/agents/block-splitter')
-      for (let i = 0; i < pages.length; i++) {
-        if (!pages[i].blocks || pages[i].blocks!.length === 0) {
-          const blocks = splitBlocks(pages[i].html)
-          if (blocks) pages[i] = { ...pages[i], blocks }
+      try {
+        const { splitHtmlIntoBlocks: splitBlocks } = await import('../../../lib/agents/block-splitter')
+        for (let i = 0; i < pages.length; i++) {
+          const hadBlocks = (pages[i].blocks?.length ?? 0) > 0
+          if (!hadBlocks) {
+            const blocks = splitBlocks(pages[i].html)
+            if (blocks) {
+              pages[i] = { ...pages[i], blocks }
+              console.log(`[blocks] split ${pages[i].slug}: ${blocks.length} blocks from ${pages[i].html.length} chars`)
+            } else {
+              console.warn(`[blocks] splitHtmlIntoBlocks returned null for ${pages[i].slug} (html: ${pages[i].html.length} chars)`)
+            }
+          }
         }
+        const withBlocks = pages.filter(p => (p.blocks?.length ?? 0) > 0).length
+        console.log(`[blocks] ${withBlocks}/${pages.length} pages have blocks`)
+      } catch (e) {
+        console.error('[blocks] server-side split failed:', e)
       }
     }
 
