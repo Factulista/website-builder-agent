@@ -1704,6 +1704,12 @@ ${previewContextHint}`
     return 12_000
   })()
 
+  // ── Token budget diagnostic ───────────────────────────────────────────────
+  const systemChars = system.length
+  const messagesChars = apiMessages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : 0), 0)
+  const estimatedTokens = Math.round((systemChars + messagesChars) / 4)
+  console.log(`[html-agent] prompt=${systemChars}chars msgs=${messagesChars}chars est_tokens=${estimatedTokens} model=${model} maxTok=${maxTokens} blockPreloaded=${activePageBlockPreloaded} isCreation=${isCreationTask} isMicro=${isMicroEdit}`)
+
   // ── Agentic inspection loop ──────────────────────────────────────────────
   // Like Claude Code: the model may call read-only inspection tools (search_html,
   // read_page) to gather context BEFORE committing to an action. Each inspection
