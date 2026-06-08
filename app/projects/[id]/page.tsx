@@ -8740,14 +8740,40 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                               {/* Nome */}
                               <label style={LBL}>Nome pagina</label>
-                              <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                              <input
+                                autoFocus
+                                value={renameValue}
+                                onChange={e => setRenameValue(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
-                                style={INP} />
+                                onBlur={async e => {
+                                  const v = e.target.value.trim()
+                                  if (v && v !== page.name) {
+                                    const next = pages.map(p => p.slug === page.slug ? { ...p, name: v } : p)
+                                    setPages(next)
+                                    await saveState(messages, next)
+                                  }
+                                }}
+                                style={INP}
+                              />
 
                               {/* Etichetta menu */}
                               <label style={LBL}>Etichetta menu</label>
                               <div>
-                                <input placeholder={page.name} value={menuLabelValue} onChange={e => setMenuLabelValue(e.target.value)} style={INP} />
+                                <input
+                                  placeholder={page.name}
+                                  value={menuLabelValue}
+                                  onChange={e => setMenuLabelValue(e.target.value)}
+                                  onBlur={async e => {
+                                    const v = e.target.value.trim()
+                                    if (v !== (page.menuLabel ?? '')) {
+                                      const next = pages.map(p => p.slug === page.slug ? { ...p, menuLabel: v || page.name } : p)
+                                      const synced = reorderNavLinks(next)
+                                      setPages(synced)
+                                      await saveState(messages, synced)
+                                    }
+                                  }}
+                                  style={INP}
+                                />
                                 <p style={{ ...HELP, margin: '3px 0 0' }}>Testo nella navigazione del sito</p>
                               </div>
 
@@ -8760,13 +8786,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     value={editSlugValue}
                                     onChange={e => setEditSlugValue(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, ''))}
                                     onKeyDown={e => { if (e.key === 'Enter') void renamePageSlug(page.slug, editSlugValue); if (e.key === 'Escape') setRenamingSlug(null) }}
+                                    onBlur={() => { if (editSlugValue && editSlugValue !== page.slug && page.slug !== 'home') void renamePageSlug(page.slug, editSlugValue) }}
                                     disabled={page.slug === 'home'}
                                     placeholder={page.slug}
                                     style={{ ...INP, fontFamily: 'ui-monospace, monospace', background: page.slug === 'home' ? '#f3f4f6' : 'white', color: page.slug === 'home' ? C.textFaint : C.text }}
                                   />
                                   {page.slug !== 'home' && editSlugValue !== page.slug && <span style={{ fontSize: '0.68rem', color: C.blue, whiteSpace: 'nowrap' }}>✎</span>}
                                 </div>
-                                <p style={{ ...HELP, margin: '3px 0 0' }}>{page.slug === 'home' ? 'La home non può essere rinominata' : 'Aggiorna anche i link interni che puntano a questa pagina'}</p>
+                                <p style={{ ...HELP, margin: '3px 0 0' }}>{page.slug === 'home' ? 'La home non può essere rinominata' : 'Premi Invio o esci dal campo per aggiornare i link interni'}</p>
                               </div>
 
                               {/* ── INDICIZZAZIONE ── */}
