@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
-type AgentType = 'html' | 'seo'
+type AgentType = 'html'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
-import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
+import { runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, runSessionMemoryAgent, compactSessionMemory, shouldCompactMemory, type ProjectContext } from '../../../lib/agents/memory-agent'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
@@ -378,72 +378,6 @@ export async function POST(req: NextRequest) {
       })
     } catch (runErr) {
       console.error('[run-logger] startRun failed:', String(runErr))
-    }
-
-    // Fase 4: 'seo' branch is dead — agent === 'html' always.
-    // SEO is now handled via run_seo_audit tool inside runHtmlAgent.
-    if (false && (agent as string) === 'seo') {
-      return makeStream(async (emit) => {
-        emit('🔍 Ottimizzando SEO e meta tag…')
-
-        // Fetch blog posts for this project (if any)
-        const { data: rawBlogPosts } = await supabase
-          .from('blog_posts')
-          .select('id, title, slug, excerpt, seo_title, seo_description, tags')
-          .eq('project_id', projectId)
-          .eq('status', 'published')
-          .limit(20)
-        const blogPosts = (rawBlogPosts ?? []) as BlogPostSeoInput[]
-
-        // Run page SEO + blog SEO in parallel
-        const baseUrl = customDomain ? `https://${customDomain}` : `https://myweb.factulista.com`
-        const [result, blogResult] = await Promise.all([
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          runSeoAgent(messages, pages ?? [], (customDomain ?? null) as any, apiKey as any, context as any),
-          blogPosts.length > 0
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ? runBlogSeoAgent(blogPosts as any, baseUrl as any, apiKey as any, context as any)
-            : Promise.resolve(null),
-        ])
-
-        // Apply blog SEO updates
-        // Note: serial (not parallel) to reduce race-condition risk if user
-        // triggers SEO twice in rapid succession on the same project.
-        if (blogResult?.input?.posts?.length) {
-          for (const p of blogResult.input.posts) {
-            const { error } = await supabase.from('blog_posts').update({
-              seo_title: p.seo_title,
-              seo_description: p.seo_description,
-              tags: p.tags,
-            }).eq('id', p.id)
-            if (error) console.error('[blog-seo-update] error for post', p.id, error.message)
-          }
-        }
-
-        const seoUsage = result.usage as Usage
-        const blogSeoUsage = blogResult?.usage as Usage
-        consumeUsage(seoUsage)
-        if (blogSeoUsage) consumeUsage(blogSeoUsage)
-        if (runId) {
-          completeRun(runId, {
-            output_summary: `seo: ${pages?.length ?? 0} pagine, ${blogPosts.length} post blog`,
-            input_tokens: (seoUsage?.input_tokens ?? 0) + (blogSeoUsage?.input_tokens ?? 0),
-            output_tokens: (seoUsage?.output_tokens ?? 0) + (blogSeoUsage?.output_tokens ?? 0),
-            cache_read_tokens: (seoUsage?.cache_read_input_tokens ?? 0) + (blogSeoUsage?.cache_read_input_tokens ?? 0),
-            duration_ms: Date.now() - runStartTime,
-            output_data: {
-              tool: result.tool ?? 'seo',
-              pages_affected: pages?.map(p => p.slug) ?? [],
-              summary: result.input?.summary as string ?? undefined,
-            },
-          }).catch(() => null)
-        }
-
-        const summary = blogResult?.input?.summary
-          ? `${result.input?.summary ?? ''} · Blog: ${blogResult.input.summary}`
-          : result.input?.summary
-        return { ...result, input: { ...result.input, summary }, agent: 'seo' }
-      }, (err) => runId && failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null))
     }
 
     // HTML agent — also update context from conversation
