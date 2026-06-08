@@ -5550,36 +5550,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             >
               ⚙ {t('project.settings' as const, language as any)}
             </button>
-            {customDomainStatus === 'verified' && pages.length > 0 && (() => {
-              const seo = compileSeo(pages, { customDomain: customDomain ?? undefined, context: projectContext ?? undefined })
-              const scoreColor = seo.score >= 80 ? '#16a34a' : seo.score >= 60 ? '#d97706' : '#dc2626'
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span
-                    title={formatSeoReport(seo)}
-                    style={{ fontSize: '0.72rem', fontWeight: 700, color: scoreColor, cursor: 'help', padding: '3px 7px', background: `${scoreColor}15`, borderRadius: '5px', border: `1px solid ${scoreColor}40` }}
-                  >
-                    SEO {seo.score}
-                    {seo.blockingIssues.length > 0 ? ` ❌${seo.blockingIssues.length}` : seo.warnings.length > 0 ? ` ⚠️` : ' ✓'}
-                  </span>
-                  <button
-                    onClick={handlePublish}
-                    disabled={publishing}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '5px',
-                      padding: '5px 14px', borderRadius: '7px',
-                      background: publishing ? '#93c5fd' : seo.blockingIssues.length > 0 ? '#dc2626' : C.blue,
-                      color: 'white', border: 'none',
-                      fontSize: '0.78rem', fontWeight: 600,
-                      cursor: publishing ? 'not-allowed' : 'pointer',
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    {publishing ? '⏳' : seo.blockingIssues.length > 0 ? '❌' : '🚀'} {t('project.publishButton' as const, language as any)}
-                  </button>
-                </div>
-              )
-            })()}
+            {customDomainStatus === 'verified' && (
+              <button
+                onClick={handlePublish}
+                disabled={publishing}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '5px 14px', borderRadius: '7px',
+                  background: publishing ? '#93c5fd' : C.blue,
+                  color: 'white', border: 'none',
+                  fontSize: '0.78rem', fontWeight: 600,
+                  cursor: publishing ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {publishing ? '⏳' : '🚀'} {t('project.publishButton' as const, language as any)}
+              </button>
+            )}
           </div>
         </div>
 
