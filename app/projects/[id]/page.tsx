@@ -8707,183 +8707,192 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </div>
                         )}
 
-                        {/* Expanded settings panel */}
-                        {isExpanded && (
-                          <div style={{ borderTop: `1px solid ${C.border}`, padding: '12px 16px', background: '#fafaf9', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                            {/* Rename */}
-                            <div>
-                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Nome pagina</label>
-                              <input
-                                autoFocus
-                                value={renameValue}
-                                onChange={e => setRenameValue(e.target.value)}
+                        {/* Expanded settings panel — griglia unica 140px | 1fr per TUTTI i campi */}
+                        {isExpanded && (() => {
+                          // Stili condivisi per l'intero pannello
+                          const ROW: React.CSSProperties = { display: 'grid', gridTemplateColumns: '140px 1fr', gap: '10px 16px', alignItems: 'center', padding: '6px 0' }
+                          const LBL: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', lineHeight: '1.4' }
+                          const INP: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 11px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, background: 'white' }
+                          const RO: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '7px 11px', fontSize: '0.78rem', fontFamily: 'ui-monospace, monospace', color: C.textMuted, background: '#f6f7f9', boxSizing: 'border-box' as const, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                          const DIVIDER: React.CSSProperties = { gridColumn: '1 / -1', margin: '6px 0', borderTop: `1px solid ${C.border}` }
+                          const SEC_LBL: React.CSSProperties = { gridColumn: '1 / -1', fontSize: '0.66rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.07em', paddingTop: '4px' }
+                          const HELP: React.CSSProperties = { margin: '2px 0 0', fontSize: '0.66rem', color: C.textFaint, gridColumn: '2 / 3' }
+                          const LOCK = (tip = 'Parametro impostato automaticamente dal sistema') => (
+                            <span title={tip} style={{ fontSize: '0.85rem', marginLeft: '6px', cursor: 'help', flexShrink: 0 }}>🔒</span>
+                          )
+
+                          const ph = page.html ?? ''
+                          const titleTag = (ph.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
+                          const desc = (ph.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? '').trim()
+                          const lang = (ph.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? projectContext?.language ?? 'es').slice(0, 2).toLowerCase()
+                          const localeMap: Record<string, string> = { es: 'es_ES', it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', pt: 'pt_PT', ca: 'ca_ES' }
+                          const base = publicBaseUrl || `https://www.${ROOT_DOMAIN}`
+                          const canonical = `${base}/${page.slug === 'home' ? '' : page.slug}`
+                          const ogImg = (page as Page).og_image || defaultOgImage
+                          const ogTitleResolved = (page as Page).og_title || titleTag || page.name
+
+                          return (
+                            <div style={{ borderTop: `1px solid ${C.border}`, padding: '14px 18px', background: '#fafaf9', display: 'grid', gridTemplateColumns: '140px 1fr', gap: '0 16px', alignItems: 'start' }}>
+
+                              {/* ── PAGINA ── */}
+                              <div style={SEC_LBL}>Pagina</div>
+                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
+
+                              {/* Nome */}
+                              <label style={LBL}>Nome pagina</label>
+                              <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Escape') setRenamingSlug(null) }}
-                                style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
-                              />
-                            </div>
+                                style={INP} />
 
-                            {/* Menu label */}
-                            <div>
-                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>Etichetta nel menu</label>
-                              <input
-                                placeholder={page.name}
-                                value={menuLabelValue}
-                                onChange={e => setMenuLabelValue(e.target.value)}
-                                style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
-                              />
-                              <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Testo mostrato nella navigazione del sito</p>
-                            </div>
-
-                            {/* URL / Slug */}
-                            <div style={{ gridColumn: '1 / -1' }}>
-                              <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>URL della pagina</label>
-                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.8rem', color: C.textFaint, whiteSpace: 'nowrap' }}>./</span>
-                                <input
-                                  value={editSlugValue}
-                                  onChange={e => setEditSlugValue(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, ''))}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') void renamePageSlug(page.slug, editSlugValue)
-                                    if (e.key === 'Escape') setRenamingSlug(null)
-                                  }}
-                                  disabled={page.slug === 'home'}
-                                  placeholder={page.slug}
-                                  style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none', background: page.slug === 'home' ? '#f3f4f6' : 'white', color: page.slug === 'home' ? C.textFaint : C.text }}
-                                />
-                                {page.slug !== 'home' && editSlugValue !== page.slug && (
-                                  <span style={{ fontSize: '0.72rem', color: C.blue, whiteSpace: 'nowrap', padding: '0 4px' }}>✎ modificato</span>
-                                )}
+                              {/* Etichetta menu */}
+                              <label style={LBL}>Etichetta menu</label>
+                              <div>
+                                <input placeholder={page.name} value={menuLabelValue} onChange={e => setMenuLabelValue(e.target.value)} style={INP} />
+                                <p style={{ ...HELP, margin: '3px 0 0' }}>Testo nella navigazione del sito</p>
                               </div>
-                              {page.slug === 'home'
-                                ? <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>La pagina home non può essere rinominata</p>
-                                : <p style={{ margin: '4px 0 0', fontSize: '0.7rem', color: C.textFaint }}>Aggiorna anche tutti i link interni che puntano a questa pagina</p>
-                              }
-                            </div>
 
-                            {/* SEO + Open Graph — stile uniforme */}
-                            {(() => {
-                              const secLabel: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px' }
-                              const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 600, color: C.textMuted, marginBottom: '5px' }
-                              const roBox: React.CSSProperties = { fontSize: '0.78rem', fontFamily: 'ui-monospace, monospace', color: C.textMuted, background: '#f6f7f9', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '8px 11px', boxSizing: 'border-box', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-                              const inp: React.CSSProperties = { width: '100%', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '8px 11px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
-                              const help: React.CSSProperties = { margin: '5px 0 0', fontSize: '0.68rem', color: C.textFaint }
-                              const subSec: React.CSSProperties = { marginTop: '18px' }
-
-                              const ph = page.html ?? ''
-                              const titleTag = (ph.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
-                              const desc = (ph.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? '').trim()
-                              const lang = (ph.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? projectContext?.language ?? 'es').slice(0, 2).toLowerCase()
-                              const localeMap: Record<string, string> = { es: 'es_ES', it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', pt: 'pt_PT', ca: 'ca_ES' }
-                              const base = publicBaseUrl || `https://www.${ROOT_DOMAIN}`
-                              const canonical = `${base}/${page.slug === 'home' ? '' : page.slug}`
-                              const ogImg = (page as Page).og_image || defaultOgImage
-                              const ogTitleResolved = (page as Page).og_title || titleTag || page.name
-                              const ogRows: Array<{ k: string; v: string; warn?: boolean }> = [
-                                { k: 'og:title', v: ogTitleResolved },
-                                { k: 'og:description', v: desc || 'meta description mancante', warn: !desc },
-                                { k: 'og:type', v: 'website' },
-                                { k: 'og:url', v: canonical },
-                                { k: 'og:site_name', v: projectContext?.businessName || projectName || '—' },
-                                { k: 'og:locale', v: localeMap[lang] ?? 'es_ES' },
-                                { k: 'og:image', v: ogImg ? ((page as Page).og_image ? 'pagina' : 'default sito') : 'mancante', warn: !ogImg },
-                                { k: 'og:image:width', v: ogImg ? '1200' : '—' },
-                                { k: 'og:image:height', v: ogImg ? '630' : '—' },
-                              ]
-
-                              return (
-                                <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${C.border}`, paddingTop: '16px' }}>
-                                  {/* Indicizzazione */}
-                                  <label style={secLabel}>Indicizzazione</label>
-                                  <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
-                                    {(['noindex', 'nofollow'] as const).map(key => {
-                                      const on = !!(page as Page).robots?.[key]
-                                      const label = key === 'noindex' ? 'No Index' : 'No Follow'
-                                      const sub = key === 'noindex' ? 'Escludi da Google' : 'Non seguire i link'
-                                      return (
-                                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-                                          <div onClick={() => updatePageRobots(page.slug, key, !on)} title={label}
-                                            style={{ position: 'relative', width: '34px', height: '18px', borderRadius: '9px', background: on ? '#ef4444' : C.border, cursor: 'pointer', transition: 'background .15s', flexShrink: 0 }}>
-                                            <div style={{ position: 'absolute', top: '2px', left: on ? '18px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: 'left .15s' }} />
-                                          </div>
-                                          <div>
-                                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: on ? '#ef4444' : C.text }}>{label}</div>
-                                            <div style={{ fontSize: '0.68rem', color: C.textFaint }}>{sub}</div>
-                                          </div>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-
-                                  {/* Canonical */}
-                                  <div style={subSec}>
-                                    <label style={secLabel}>Canonical</label>
-                                    <div style={{ ...roBox, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{canonical}</span>
-                                      <span title="Generato dal sistema — non modificabile" style={{ fontSize: '0.85rem', flexShrink: 0 }}>🔒</span>
-                                    </div>
-                                    <p style={help}>Generato automaticamente dal dominio pubblicato.</p>
-                                  </div>
-
-                                  {/* Open Graph — griglia ordinata (1 editabile, 9 🔒 system-managed) */}
-                                  <div style={subSec}>
-                                    <label style={secLabel}>Open Graph (10 tag)</label>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                                      {/* EDITABILE: og:title */}
-                                      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', alignItems: 'flex-start' }}>
-                                        <label style={{ ...fieldLabel, marginBottom: 0, paddingTop: '8px' }}>og:title</label>
-                                        <div>
-                                          <input
-                                            key={`og_title_${page.slug}`}
-                                            defaultValue={(page as Page).og_title ?? ''}
-                                            placeholder={page.name}
-                                            onBlur={e => { const v = e.target.value.trim(); if (v !== ((page as Page).og_title ?? '')) void updatePageField(page.slug, 'og_title', v) }}
-                                            style={inp}
-                                          />
-                                          <p style={help}>Editabile. Se vuoto usa il titolo della pagina.</p>
-                                        </div>
-                                      </div>
-
-                                      {/* SYSTEM-MANAGED: og:description, og:type, og:url, og:site_name, og:locale, og:image (* 4) */}
-                                      {ogRows.filter(r => r.k !== 'og:title').map(r => (
-                                        <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', alignItems: 'center', paddingBottom: '2px' }}>
-                                          <code style={{ fontSize: '0.72rem', color: C.textMuted, fontFamily: 'ui-monospace, monospace', paddingTop: '2px' }}>{r.k}</code>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minHeight: '32px' }}>
-                                            <span style={{
-                                              flex: 1,
-                                              fontSize: '0.76rem',
-                                              color: r.warn ? '#dc2626' : C.text,
-                                              background: '#f6f7f9',
-                                              border: `1px solid ${C.border}`,
-                                              borderRadius: '8px',
-                                              padding: '8px 11px',
-                                              fontFamily: 'ui-monospace, monospace',
-                                              overflow: 'hidden',
-                                              textOverflow: 'ellipsis',
-                                              whiteSpace: 'nowrap'
-                                            }}>
-                                              {r.v}
-                                            </span>
-                                            <span
-                                              title="Parametri impostati automaticamente dal sistema"
-                                              style={{ fontSize: '0.9rem', flexShrink: 0, cursor: 'help', userSelect: 'none' }}
-                                            >
-                                              🔒
-                                            </span>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-
-                                    <p style={{ ...help, marginTop: '12px' }}>I tag sono iniettati al serve sul sito live (non in anteprima). og:image si imposta dalla colonna OG IMG con fallback al default del sito (tab Strumenti).</p>
-                                  </div>
-
-                                  <p style={{ ...help, marginTop: '16px', paddingTop: '12px', borderTop: `1px dashed ${C.border}` }}>⚠️ Le modifiche SEO richiedono <strong>Pubblica</strong> per essere applicate al sito live.</p>
+                              {/* URL */}
+                              <label style={LBL}>URL</label>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontSize: '0.78rem', color: C.textFaint, fontFamily: 'monospace', flexShrink: 0 }}>/</span>
+                                  <input
+                                    value={editSlugValue}
+                                    onChange={e => setEditSlugValue(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, ''))}
+                                    onKeyDown={e => { if (e.key === 'Enter') void renamePageSlug(page.slug, editSlugValue); if (e.key === 'Escape') setRenamingSlug(null) }}
+                                    disabled={page.slug === 'home'}
+                                    placeholder={page.slug}
+                                    style={{ ...INP, fontFamily: 'ui-monospace, monospace', background: page.slug === 'home' ? '#f3f4f6' : 'white', color: page.slug === 'home' ? C.textFaint : C.text }}
+                                  />
+                                  {page.slug !== 'home' && editSlugValue !== page.slug && <span style={{ fontSize: '0.68rem', color: C.blue, whiteSpace: 'nowrap' }}>✎</span>}
                                 </div>
-                              )
-                            })()}
+                                <p style={{ ...HELP, margin: '3px 0 0' }}>{page.slug === 'home' ? 'La home non può essere rinominata' : 'Aggiorna anche i link interni che puntano a questa pagina'}</p>
+                              </div>
 
-                            {/* Save button */}
-                            <div style={{ gridColumn: '1 / -1' }}>
+                              {/* ── INDICIZZAZIONE ── */}
+                              <div style={{ ...DIVIDER, marginTop: '10px' }} />
+                              <div style={SEC_LBL}>Indicizzazione</div>
+                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
+
+                              {(['noindex', 'nofollow'] as const).map(key => {
+                                const on = !!(page as Page).robots?.[key]
+                                const label = key === 'noindex' ? 'No Index' : 'No Follow'
+                                const sub = key === 'noindex' ? 'Escludi da Google' : 'Non seguire i link'
+                                return (
+                                  <React.Fragment key={key}>
+                                    <label style={LBL}>{label}</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '3px 0' }}>
+                                      <div onClick={() => updatePageRobots(page.slug, key, !on)}
+                                        style={{ position: 'relative', width: '34px', height: '18px', borderRadius: '9px', background: on ? '#ef4444' : C.border, cursor: 'pointer', transition: 'background .15s', flexShrink: 0 }}>
+                                        <div style={{ position: 'absolute', top: '2px', left: on ? '18px' : '2px', width: '14px', height: '14px', borderRadius: '50%', background: 'white', transition: 'left .15s' }} />
+                                      </div>
+                                      <span style={{ fontSize: '0.76rem', color: on ? '#ef4444' : C.textFaint }}>{sub}</span>
+                                    </div>
+                                  </React.Fragment>
+                                )
+                              })}
+
+                              {/* ── SEO / CANONICAL ── */}
+                              <div style={{ ...DIVIDER, marginTop: '10px' }} />
+                              <div style={SEC_LBL}>SEO</div>
+                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
+
+                              <label style={LBL}>Canonical</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>{canonical}</span>
+                                {LOCK('Generato automaticamente dal dominio pubblicato — non modificabile')}
+                              </div>
+
+                              {/* ── OPEN GRAPH ── */}
+                              <div style={{ ...DIVIDER, marginTop: '10px' }} />
+                              <div style={SEC_LBL}>Open Graph (10 tag)</div>
+                              <div style={{ ...DIVIDER, margin: '4px 0 6px' }} />
+
+                              {/* og:title — unico editabile */}
+                              <label style={LBL}>og:title</label>
+                              <div>
+                                <input
+                                  key={`og_title_${page.slug}`}
+                                  defaultValue={(page as Page).og_title ?? ''}
+                                  placeholder={ogTitleResolved}
+                                  onBlur={e => { const v = e.target.value.trim(); if (v !== ((page as Page).og_title ?? '')) void updatePageField(page.slug, 'og_title', v) }}
+                                  style={INP}
+                                />
+                                <p style={{ ...HELP, margin: '3px 0 0' }}>Se vuoto usa il titolo della pagina</p>
+                              </div>
+
+                              {/* og:description */}
+                              <label style={{ ...LBL, color: !desc ? '#dc2626' : C.textMuted }}>og:description</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1, color: !desc ? '#dc2626' : C.textMuted }}>{desc || 'meta description mancante'}</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:type */}
+                              <label style={LBL}>og:type</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>website</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:url */}
+                              <label style={LBL}>og:url</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>{canonical}</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:site_name */}
+                              <label style={LBL}>og:site_name</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>{projectContext?.businessName || projectName || '—'}</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:locale */}
+                              <label style={LBL}>og:locale</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>{localeMap[lang] ?? 'es_ES'}</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:image */}
+                              <label style={{ ...LBL, color: !ogImg ? '#dc2626' : C.textMuted }}>og:image</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1, color: !ogImg ? '#dc2626' : C.textMuted }}>
+                                  {ogImg ? ((page as Page).og_image ? 'pagina' : 'default sito') : 'mancante — usa colonna OG IMG'}
+                                </span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:image:width */}
+                              <label style={LBL}>og:image:width</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>{ogImg ? '1200' : '—'}</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:image:height */}
+                              <label style={LBL}>og:image:height</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>{ogImg ? '630' : '—'}</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* og:image:alt */}
+                              <label style={LBL}>og:image:alt</label>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span style={{ ...RO, flex: 1 }}>{ogImg ? ogTitleResolved : '—'}</span>
+                                {LOCK()}
+                              </div>
+
+                              {/* Nota */}
+                              <div style={{ gridColumn: '1 / -1', marginTop: '8px', paddingTop: '10px', borderTop: `1px dashed ${C.border}`, fontSize: '0.66rem', color: C.textFaint }}>
+                                ⚠️ Le modifiche richiedono <strong>Pubblica</strong> per essere applicate al sito live. I tag OG (🔒) sono iniettati dal server.
+                              </div>
+
+                              {/* Save button */}
+                              <div style={{ gridColumn: '1 / -1', marginTop: '12px' }}>
                               <button
                                 onClick={async () => {
                                   const trimmedName = renameValue.trim()
@@ -8920,21 +8929,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 disabled={!renameValue.trim()}
                                 style={{ width: '100%', background: C.blue, color: 'white', border: 'none', borderRadius: '7px', padding: '7px 14px', fontSize: '0.82rem', cursor: renameValue.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', fontWeight: 600, opacity: renameValue.trim() ? 1 : 0.5 }}
                               >Salva configurazione</button>
-                            </div>
+                              </div>
 
-                            {/* Open in editor */}
-                            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '8px' }}>
-                              <button
-                                onClick={() => { setActiveSlug(page.slug); setViewMode('edit') }}
-                                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 14px', fontSize: '0.8rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
-                              >✎ Apri nell&apos;editor inline</button>
-                              <button
-                                onClick={() => { setActiveSlug(page.slug); setViewMode('preview') }}
-                                style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 14px', fontSize: '0.8rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
-                              >🌐 Anteprima</button>
+                              {/* Open in editor */}
+                              <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                <button
+                                  onClick={() => { setActiveSlug(page.slug); setViewMode('edit') }}
+                                  style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 14px', fontSize: '0.8rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
+                                >✎ Apri nell&apos;editor inline</button>
+                                <button
+                                  onClick={() => { setActiveSlug(page.slug); setViewMode('preview') }}
+                                  style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 14px', fontSize: '0.8rem', cursor: 'pointer', color: C.text, fontFamily: 'inherit', fontWeight: 500 }}
+                                >🌐 Anteprima</button>
+                              </div>
+
                             </div>
-                          </div>
-                        )}
+                          )
+                        })()}
                       </div>
                     )
                   })}
