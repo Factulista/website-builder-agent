@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 type AgentType = 'html' | 'seo'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
 import { runSeoAgent, runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
-import { runMemoryAgent, runSessionMemoryAgent, type ProjectContext } from '../../../lib/agents/memory-agent'
+import { runMemoryAgent, runSessionMemoryAgent, compactSessionMemory, shouldCompactMemory, type ProjectContext } from '../../../lib/agents/memory-agent'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun, noActionRun } from '../../../lib/agents/run-logger'
@@ -223,7 +223,26 @@ export async function POST(req: NextRequest) {
     const mediaMeta = (siteConfig.media ?? {}) as Record<string, { alt?: string; title?: string }>
     const designSystem = (siteConfig.designSystem ?? null) as Record<string, { fontSize?: string; fontWeight?: string; color?: string; lineHeight?: string; fontFamily?: string }> | null
     const sharedCss = (siteConfig.shared_css ?? '') as string
-    const sessionMemory = (siteConfig.sessionMemory as string | undefined) ?? ''
+    let sessionMemory = (siteConfig.sessionMemory as string | undefined) ?? ''
+
+    // Fase 3d: compact session memory on long sessions (>40 msgs, memory >2k chars)
+    // Run synchronously before the agent so it gets the compacted version immediately.
+    if (shouldCompactMemory(messages, sessionMemory)) {
+      const compacted = await compactSessionMemory(sessionMemory, apiKey).catch(() => null)
+      if (compacted) {
+        sessionMemory = compacted
+        // Persist compacted memory in background (non-blocking)
+        void (async () => {
+          try {
+            const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+            const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? {}
+            await supabase.from('projects').update({
+              site_config: { ...freshConfig, sessionMemory: compacted },
+            }).eq('id', projectId)
+          } catch { /* non-critical */ }
+        })()
+      }
+    }
 
     // Load or learn project-specific rules
     let projectRules: ProjectRules = (siteConfig.projectRules as ProjectRules) ?? { ...DEFAULT_FACTULISTA_RULES }

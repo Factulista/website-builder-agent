@@ -1,4 +1,5 @@
 import { callClaude } from './config'
+import { fetchWithRetry } from './fetch-retry'
 import type { DesignOutput } from './design-agent'
 import type { ProjectRules } from './project-rules'
 import { formatRulesForAgent } from './project-rules'
@@ -235,6 +236,58 @@ REGOLE:
 - Aggiorna/sovrascrivi le informazioni obsolete — non duplicarle.
 - Se non ci sono nuove informazioni rilevanti, rispondi con la stringa esatta: NO_CHANGE
 - Rispondi SOLO con il documento markdown aggiornato oppure NO_CHANGE. Zero testo extra.`
+
+// ── Fase 3d: Memory consolidation ────────────────────────────────────────────
+
+const COMPACTION_SYSTEM = `Sei un agente di compattamento memoria per un progetto web.
+Ricevi un diario di progetto LUNGO e lo devi ridurre a una versione ESSENZIALE.
+
+OBIETTIVO: distillare tutto ciò che è ancora rilevante in max 500 token.
+- Tieni: decisioni di design attive, vincoli negativi, struttura pagine, correzioni chiave
+- Elimina: dettagli tecnici obsoleti, iterazioni superate, discussioni risolte
+- Formato: stesso markdown strutturato del documento originale
+- Rispondi SOLO con il documento compattato, zero testo extra.`
+
+/**
+ * Fase 3d: Compact session memory when it grows too large.
+ * Runs on Haiku (fast, cheap) — session memory rarely needs Sonnet quality.
+ * Triggered automatically when messages.length > COMPACTION_THRESHOLD.
+ */
+export async function compactSessionMemory(
+  current: string,
+  apiKey: string
+): Promise<string | null> {
+  const COMPACTION_THRESHOLD_CHARS = 2_000  // ~500 tokens
+  if (!current || current.length < COMPACTION_THRESHOLD_CHARS) return null  // already compact
+
+  const res = await fetchWithRetry('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',  // Haiku: fast + cheap for compaction
+      max_tokens: 1_000,
+      system: COMPACTION_SYSTEM,
+      messages: [{ role: 'user', content: `DIARIO DA COMPATTARE:\n${current}\n\nCompatta mantenendo solo le informazioni ANCORA RILEVANTI.` }],
+    }),
+  }, 'session-memory-compact')
+  if (!res.ok) return null
+  const data = await res.json()
+  const text = data.content?.[0]?.text?.trim() ?? ''
+  return text.length > 50 ? text : null
+}
+
+/** Returns true if session memory should be compacted before this turn. */
+export function shouldCompactMemory(
+  messages: { role: string }[],
+  sessionMemory: string
+): boolean {
+  // Only compact on longer sessions (>40 messages) when memory is large
+  return messages.length > 40 && (sessionMemory?.length ?? 0) > 2_000
+}
 
 /**
  * Aggiorna la session memory con le informazioni rilevanti dall'ultimo exchange.
