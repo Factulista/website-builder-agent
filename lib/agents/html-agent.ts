@@ -4,6 +4,8 @@ import { extractImageUrls } from './site-analyzer'
 import type { LogoDefinition } from './design-agent'
 import { langName } from './detect-lang'
 import { buildRichContextPrompt, type ProjectContext, type RichContext } from './memory-agent'
+import { splitHtmlIntoBlocks, buildBlockIndex, findBlockBySelector, editBlock as editBlockFn } from './block-splitter'
+import type { Block } from '../types'
 
 /** Fetches an image URL and returns it as base64 for multimodal API calls. */
 async function fetchImageAsBase64(url: string): Promise<{ data: string; media_type: string } | null> {
@@ -21,7 +23,7 @@ async function fetchImageAsBase64(url: string): Promise<{ data: string; media_ty
   } catch { return null }
 }
 
-type Page = { slug: string; name: string; html: string }
+type Page = { slug: string; name: string; html: string; blocks?: Block[] }
 
 /**
  * Extracts the logo HTML element from the navbar of an existing page.
@@ -464,6 +466,49 @@ const HTML_TOOLS = [
       required: ['pageSlugs', 'componentId', 'data', 'placement', 'summary'],
     },
   },
+  // ── Block tools (Fase 1) — read/edit individual blocks, not full page ──
+  {
+    name: 'read_block',
+    description: 'Legge l\'HTML di UN SINGOLO blocco della pagina attiva (nav, section#hero, footer, ecc.). Usa SEMPRE questo invece di leggere tutta la pagina — contesto minimo, massima precisione. Restituisce i byte esatti del blocco con numeri di riga.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        blockSelector: { type: 'string', description: 'Il selettore del blocco dall\'indice (es: "section#hero", "footer.site-footer", "nav"). Usa esattamente come appare nell\'indice.' },
+        pageSlug: { type: 'string', description: 'Slug della pagina. Se omesso usa la pagina attiva.' },
+      },
+      required: ['blockSelector'],
+    },
+  },
+  {
+    name: 'edit_block',
+    description: 'Modifica UN blocco con find/replace validato. Il server conta le occorrenze PRIMA di applicare: 0=non trovato (riceve hint), >1=ambiguo (allarga l\'ancora), 1=applica. Usa SEMPRE questo per modifiche chirurgiche — mai l\'intera pagina.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        blockSelector: { type: 'string', description: 'Selettore del blocco target dall\'indice.' },
+        pageSlug: { type: 'string', description: 'Slug della pagina. Se omesso usa la pagina attiva.' },
+        find: { type: 'string', description: 'Stringa ESATTA da trovare (copia dai byte di read_block, non ricostruire a memoria).' },
+        replace: { type: 'string', description: 'Stringa con cui sostituire.' },
+        summary: { type: 'string' },
+      },
+      required: ['blockSelector', 'find', 'replace', 'summary'],
+    },
+  },
+  {
+    name: 'replace_block',
+    description: 'Sostituisce l\'intero HTML di UN blocco (rigenerazione creativa). Usa quando devi ridisegnare una sezione intera (es: "ridisegna l\'hero"). Tocca solo quel blocco — il resto della pagina è immune.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        blockSelector: { type: 'string', description: 'Selettore del blocco da sostituire.' },
+        pageSlug: { type: 'string', description: 'Slug della pagina. Se omesso usa la pagina attiva.' },
+        html: { type: 'string', description: 'Nuovo HTML completo del blocco.' },
+        summary: { type: 'string' },
+      },
+      required: ['blockSelector', 'html', 'summary'],
+    },
+  },
+
   // ── Inspection tools (read-only) — used in the agentic loop BEFORE acting ──
   {
     name: 'search_html',
@@ -499,6 +544,35 @@ function executeHtmlInspection(
   input: Record<string, unknown>,
   pages: Page[]
 ): string {
+  // ── Block tools ──────────────────────────────────────────────────────────────
+  if (name === 'read_block') {
+    const { splitHtmlIntoBlocks, findBlockBySelector } = require('../agents/block-splitter') as typeof import('./block-splitter')
+    const pageSlug = input.pageSlug ? String(input.pageSlug) : null
+    const selector = String(input.blockSelector ?? '')
+    const p = pageSlug ? pages.find(pg => pg.slug === pageSlug) : pages[0]
+    if (!p) return `Pagina non trovata.`
+    const blocks = p.blocks ?? splitHtmlIntoBlocks(p.html) ?? []
+    const block = findBlockBySelector(blocks, selector)
+    if (!block) {
+      const idx = blocks.map(b => `  [${b.order}] ${b.selector} (${b.type})`).join('\n')
+      return `Blocco "${selector}" non trovato. Blocchi disponibili:\n${idx}`
+    }
+    // Return with line numbers for precise find anchoring
+    const lines = block.html.split('\n').map((l, i) => `${String(i + 1).padStart(3)}: ${l}`).join('\n')
+    return `Blocco "${block.selector}" (id:${block.id}, ~${Math.round(block.html.length/4)} token):\n\`\`\`html\n${lines}\n\`\`\``
+  }
+
+  if (name === 'edit_block') {
+    // edit_block is an ACTION tool — handled in the route, not here.
+    // If it ends up here something is wrong.
+    return 'edit_block è un tool di azione — non un tool di ispezione.'
+  }
+
+  if (name === 'replace_block') {
+    return 'replace_block è un tool di azione — non un tool di ispezione.'
+  }
+
+  // ── Inspection tools ─────────────────────────────────────────────────────────
   if (name === 'search_html') {
     const query = String(input.query ?? '').trim()
     if (!query) return 'Errore: query vuota.'
@@ -537,7 +611,9 @@ function executeHtmlInspection(
   return `Tool di ispezione sconosciuto: ${name}`
 }
 
-const INSPECTION_TOOL_NAMES = new Set(['search_html', 'read_page'])
+// read_block is both inspection (gets data) and transition to action (edit_block/replace_block).
+// Treat it as inspection so the loop continues after the agent reads a block.
+const INSPECTION_TOOL_NAMES = new Set(['search_html', 'read_page', 'read_block'])
 
 export async function runHtmlAgentWithPlan(
   userRequest: string,
@@ -1007,9 +1083,37 @@ Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edit
         }
       }
 
-      // Pass FULL HTML for active page — 200k context window makes this possible.
-      // Full HTML = precise find/replace, correct class names, real text.
-      // Skeleton was causing ~20% edit failures due to truncated class names and text.
+      // ── Fase 1: Block-aware context ──────────────────────────────────────────
+      // If the page has blocks (or we can split it), send ONLY the block index
+      // (~50 tokens) + the selected/relevant block (~5k tokens) instead of the
+      // full HTML (73k tokens). The agent uses read_block/edit_block/replace_block.
+      // Falls back to full HTML if blocks aren't available or the page is small.
+      const pageBlocks: Block[] = p.blocks ?? splitHtmlIntoBlocks(p.html) ?? []
+      const useBlockMode = pageBlocks.length >= 3  // only worth it for multi-block pages
+
+      if (useBlockMode && !isNavOrFooterEdit) {
+        const blockIdx = buildBlockIndex(pageBlocks)
+
+        // If there's a previewSelection, pre-load that block to save one round-trip
+        const selectedBlock = previewSelection?.blockSelector
+          ? findBlockBySelector(pageBlocks, previewSelection.blockSelector)
+          : null
+
+        const preloadedBlock = selectedBlock
+          ? `\nBLOCCO PRE-CARICATO (quello su cui ha cliccato l'utente):\n\`\`\`html\n${selectedBlock.html.slice(0, 8000)}\n\`\`\``
+          : ''
+
+        return `\n=== PAGINA ATTIVA: "${p.name}" (slug: "${p.slug}") ===
+BLOCK INDEX (usa read_block per leggere un blocco, edit_block/replace_block per modificarlo):
+${blockIdx}
+${preloadedBlock}
+ISTRUZIONI:
+- USA read_block → edit_block/replace_block per ogni modifica (NON edit_page sull'HTML completo)
+- Ogni edit_block valida il match prima di applicare — usa byte esatti da read_block
+- Per modifiche globali (CSS var, font) usa edit_page con typed_edits`
+      }
+
+      // Fallback: pass FULL HTML (small pages, nav/footer edits, or no blocks)
       const fullHtml = isNavOrFooterEdit ? p.html : stripSharedFrame(p.html)
       const frameNote = isNavOrFooterEdit
         ? ''

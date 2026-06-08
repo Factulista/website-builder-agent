@@ -11,6 +11,7 @@ import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-aut
 import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 import { detectLangFromText } from '../../../lib/agents/detect-lang'
 import { checkHtmlQuality, reconstructEditedHtml, formatReportForAgent, applyEditValidated } from '../../../lib/agents/html-quality'
+import { splitHtmlIntoBlocks, assembleBlocksToHtml, findBlockBySelector, editBlock as editBlockFn } from '../../../lib/agents/block-splitter'
 import { runRulesLearner, quickLearnRules } from '../../../lib/agents/rules-learner'
 import { DEFAULT_FACTULISTA_RULES, formatRulesForAgent, type ProjectRules } from '../../../lib/agents/project-rules'
 import { extractDesignSystem, buildDesignSystemBlock, mergeDesignSystemIntoSharedCss } from '../../../lib/agents/design-extractor'
@@ -23,7 +24,7 @@ function totalTokens(u: Usage): number {
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-type Page = { slug: string; name: string; html: string }
+type Page = { slug: string; name: string; html: string; blocks?: import('../../../lib/types').Block[] }
 
 /**
  * normalizeInternalLinks — post-processing step that runs after every agent operation.
@@ -455,6 +456,50 @@ export async function POST(req: NextRequest) {
         { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined },
         previewSelection ?? undefined
       )
+
+      // ── Fase 1: Handle edit_block / replace_block ────────────────────────────
+      // These tools operate on a single block. We:
+      //  1. Apply the change to the block
+      //  2. Reassemble full page HTML from blocks
+      //  3. Normalise result to an edit_page result so the rest of the pipeline
+      //     (quality check, save, memory) works without modification.
+      if (result.tool === 'edit_block' || result.tool === 'replace_block') {
+        const pageSlug = String(result.input?.pageSlug ?? activePageSlug ?? '')
+        const targetPage = (pages ?? []).find(p => p.slug === pageSlug)
+        const selector = String(result.input?.blockSelector ?? '')
+
+        if (targetPage && selector) {
+          // Ensure blocks exist for this page
+          const blocks = targetPage.blocks ?? splitHtmlIntoBlocks(targetPage.html) ?? []
+          const block = findBlockBySelector(blocks, selector)
+
+          if (!block) {
+            result = { ...result, tool: 'edit_page', input: { ...(result.input ?? {}), pageSlug, summary: `⚠️ Blocco "${selector}" non trovato. Prova con read_block per vedere i blocchi disponibili.`, edits: [], operations: [] } }
+          } else if (result.tool === 'edit_block') {
+            const find = String(result.input?.find ?? '')
+            const replace = String(result.input?.replace ?? '')
+            const editResult = editBlockFn(block, find, replace)
+            if (!editResult.ok) {
+              const hint = editResult.matches === 0
+                ? `non trovato${editResult.hint ? ` — riga simile: "${editResult.hint}"` : ''}`
+                : `${editResult.matches} occorrenze — allunga l'ancora`
+              result = { ...result, tool: 'edit_page', input: { ...(result.input ?? {}), pageSlug, summary: `⚠️ edit_block fallito su "${selector}": ${hint}. Usa read_block per ottenere i byte esatti.`, edits: [], operations: [] } }
+            } else {
+              // Apply: update blocks array + reassemble HTML
+              const updatedBlocks = blocks.map(b => b.id === block.id ? editResult.block : b)
+              const newHtml = assembleBlocksToHtml(updatedBlocks, targetPage.html)
+              // Normalise to edit_page with the assembled diff
+              result = { ...result, tool: 'edit_page', input: { pageSlug, summary: result.input?.summary, edits: [{ find: targetPage.html, replace: newHtml }], operations: [], _blocks: updatedBlocks } }
+            }
+          } else {
+            // replace_block: full block replacement
+            const newBlockHtml = String(result.input?.html ?? '')
+            const updatedBlocks = blocks.map(b => b.id === block.id ? { ...b, html: newBlockHtml } : b)
+            const newHtml = assembleBlocksToHtml(updatedBlocks, targetPage.html)
+            result = { ...result, tool: 'edit_page', input: { pageSlug, summary: result.input?.summary, edits: [{ find: targetPage.html, replace: newHtml }], operations: [], _blocks: updatedBlocks } }
+          }
+        }
+      }
 
       // Quality check loop: if critical issues found, retry once with feedback
       let qualityRetried = false
