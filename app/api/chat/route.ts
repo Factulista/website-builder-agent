@@ -192,29 +192,10 @@ export async function POST(req: NextRequest) {
     const messages = compactMessages(rawMessages)
 
     // ── Ensure blocks are always present server-side ──────────────────────────
-    // Blocks may not be persisted yet (client backfills on load but only saves to DB
-    // on next agent action). Split them here so the agent always gets block-mode context
-    // regardless of whether the client has saved them.
+    // TEMPORARILY DISABLED — block-splitter causing TDZ crash
+    // Fallback: use pages.html as-is (no block splitting)
     if (pages) {
-      try {
-        // Use static import (already imported at top of file) — no dynamic import needed
-        for (let i = 0; i < pages.length; i++) {
-          const hadBlocks = (pages[i].blocks?.length ?? 0) > 0
-          if (!hadBlocks) {
-            const blocks = splitHtmlIntoBlocks(pages[i].html)
-            if (blocks) {
-              pages[i] = { ...pages[i], blocks }
-              console.log(`[blocks] split ${pages[i].slug}: ${blocks.length} blocks`)
-            } else {
-              console.warn(`[blocks] splitHtmlIntoBlocks returned null for ${pages[i].slug} (html: ${pages[i].html.length} chars)`)
-            }
-          }
-        }
-        const withBlocks = pages.filter(p => (p.blocks?.length ?? 0) > 0).length
-        console.log(`[blocks] ${withBlocks}/${pages.length} pages have blocks`)
-      } catch (e) {
-        console.error('[blocks] server-side split failed:', e)
-      }
+      console.log(`[blocks] server-side split DISABLED — ${pages.length} pages will use full HTML`)
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY
