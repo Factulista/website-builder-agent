@@ -1107,10 +1107,16 @@ ${colorSkeletonHtml}
 \`\`\``
       }
 
-      // Fix 7: micro-edit mode — for delete/simple tasks send only the targeted section HTML.
-      // SKIP if page has blocks — block mode sends fewer tokens and gives exact bytes.
-      const pageHasBlocksAlready = (p.blocks?.length ?? 0) >= 3
-      if (isMicroEdit && !pageHasBlocksAlready) {
+      // ── Fase 1: Block-aware context ──────────────────────────────────────────
+      // Declare pageBlocks FIRST — critical for avoiding TDZ in minified bundle.
+      // SWC/terser reuse variable names across block scopes; declaring here ensures
+      // pageBlocks gets a name BEFORE any inner-scope variables in the micro-edit block.
+      const pageBlocks: Block[] = p.blocks ?? splitHtmlIntoBlocks(p.html) ?? []
+      const useBlockMode = pageBlocks.length >= 3
+
+      // Fix 7: micro-edit mode — only when NO blocks available (fallback for old pages).
+      // If blocks exist, block mode is always better: fewer tokens, exact bytes.
+      if (isMicroEdit && !useBlockMode) {
         const targetSelector = identifyTargetSection(userMsg, sectionIndex)
         if (targetSelector) {
           const sectionHtml = extractSectionHtml(p.html, targetSelector)
@@ -1127,14 +1133,6 @@ Nota: il resto della pagina non è mostrato. Usa edit_page con operations o edit
           }
         }
       }
-
-      // ── Fase 1: Block-aware context ──────────────────────────────────────────
-      // If the page has blocks (or we can split it), send ONLY the block index
-      // (~50 tokens) + the selected/relevant block (~5k tokens) instead of the
-      // full HTML (73k tokens). The agent uses read_block/edit_block/replace_block.
-      // Falls back to full HTML if blocks aren't available or the page is small.
-      const pageBlocks: Block[] = p.blocks ?? splitHtmlIntoBlocks(p.html) ?? []
-      const useBlockMode = pageBlocks.length >= 3  // only worth it for multi-block pages
 
       if (useBlockMode && !isNavOrFooterEdit) {
         const blockIdx = buildBlockIndex(pageBlocks)
