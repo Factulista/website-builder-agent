@@ -1017,7 +1017,10 @@ export async function runHtmlAgent(
   const isDesignFromMockup = hasAttachedImagesInMsg(userMsg) && !isAssetReplacement
 
   // Detect if the request needs nav/footer HTML (menu changes, footer edits, etc.)
-  const isNavOrFooterEdit = /\b(nav|navbar|footer|menu|hamburger|menú|navigazione|navigación|mega.menu|header|cabecera|encabezado|mobile.menu)\b/i.test(userMsg)
+  // ONLY mark as "nav/footer edit" if the user explicitly asks to CHANGE nav/footer.
+  // "Put image in footer" != "edit footer" — it's a content edit in a block that happens to be footer.
+  // Use stricter patterns: "change nav", "modify footer", "update menu", etc.
+  const isNavOrFooterEdit = /\b(cambia|modifica|aggiorna|change|update|modify).*(nav|footer|menu|header)\b|\b(nav|footer|menu|header).*(cambia|modifica|aggiorna|change|update|modify)\b/i.test(userMsg)
 
   const mentionedPages = isDeleteRequest ? [] : pages.filter(p => {
     const slug = p.slug.toLowerCase()
