@@ -1,4 +1,4 @@
-type Page = { slug: string; name: string }
+type Page = { slug: string; name: string; inMenu?: boolean; robots?: { noindex?: boolean } }
 type BlogPostRef = { slug: string; published_at: string | null }
 
 export function generateSitemap(
@@ -7,7 +7,10 @@ export function generateSitemap(
   projectSlug?: string,
   blogPosts: BlogPostRef[] = []
 ): string {
-  const pageUrls = pages.map(page => {
+  // Exclude pages with inMenu=false (draft/hidden) or noindex=true
+  const visiblePages = pages.filter(p => p.inMenu !== false && !p.robots?.noindex)
+
+  const pageUrls = visiblePages.map(page => {
     const isHome = page.slug === 'home'
     const loc = isHome ? `${baseUrl}/` : `${baseUrl}/${page.slug}`
     const priority = isHome ? '1.0' : '0.8'
