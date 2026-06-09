@@ -22,10 +22,13 @@
 import { Block } from '../types'
 
 // Works in both Node.js (server) and browser (client component)
-const uuid = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+// Use function declaration (not const arrow) to avoid TDZ in minified bundles
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 
