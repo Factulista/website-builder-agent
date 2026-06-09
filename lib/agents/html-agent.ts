@@ -1107,9 +1107,10 @@ ${colorSkeletonHtml}
 \`\`\``
       }
 
-      // Fix 7: micro-edit mode — for delete/simple tasks send only the targeted section HTML
-      // instead of the full page skeleton (saves 60-80% of context tokens).
-      if (isMicroEdit) {
+      // Fix 7: micro-edit mode — for delete/simple tasks send only the targeted section HTML.
+      // SKIP if page has blocks — block mode sends fewer tokens and gives exact bytes.
+      const pageHasBlocksAlready = (p.blocks?.length ?? 0) >= 3
+      if (isMicroEdit && !pageHasBlocksAlready) {
         const targetSelector = identifyTargetSection(userMsg, sectionIndex)
         if (targetSelector) {
           const sectionHtml = extractSectionHtml(p.html, targetSelector)
