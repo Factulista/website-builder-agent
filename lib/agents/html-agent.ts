@@ -983,7 +983,7 @@ export async function runHtmlAgent(
 
   // Fix 2: word-boundary match — slug/name must appear as a whole word in the message,
   // not as a substring (prevents "Funcionalidades-Factulista" matching slug="funcionalidades")
-  const isDeleteRequest = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(userMsg)
+  const isDeleteRequest = /\b(elimina|rimuovi|cancella|togli|controlla.*togli|togli.*immagine|delete|remove|quita|borra|supprime|lösche)\b/i.test(userMsg)
 
   // Fix 7: micro-edit — targeted single-section edits (delete, round corners, single property change)
   // Identified by: delete keyword OR single-element style tweak with no image and no new section creation

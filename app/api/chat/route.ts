@@ -463,8 +463,10 @@ export async function POST(req: NextRequest) {
           } else if (result.tool === 'edit_block') {
             const find = String(result.input?.find ?? '')
             const replace = String(result.input?.replace ?? '')
+            console.log(`[edit_block] selector="${selector}" find="${find.slice(0,50)}..." replace="${replace.slice(0,50)}..."`)
             const editResult = editBlockFn(block, find, replace)
             if (!editResult.ok) {
+              console.warn(`[edit_block] FAILED: matches=${editResult.matches} on selector="${selector}"`)
               const hint = editResult.matches === 0
                 ? `non trovato${editResult.hint ? ` — riga simile: "${editResult.hint}"` : ''}`
                 : `${editResult.matches} occorrenze — allunga l'ancora`
