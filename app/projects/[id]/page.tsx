@@ -8553,13 +8553,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       <input
                         defaultValue={(post.tags ?? []).join(', ')}
                         placeholder="es: facturacion electronica, verifactu"
-                        onBlur={e => saveMeta(post.id, { tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const tags = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean); saveMeta(post.id, { tags }); (e.target as HTMLInputElement).blur() } }}
+                        onChange={e => {
+                          // Update local state immediately so occurrences panel stays in sync
+                          const tags = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                          setArticleKeywordChips(tags)
+                        }}
+                        onBlur={e => { const tags = e.target.value.split(',').map(s => s.trim()).filter(Boolean); setArticleKeywordChips(tags); saveMeta(post.id, { tags }) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const tags = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean); setArticleKeywordChips(tags); saveMeta(post.id, { tags }); (e.target as HTMLInputElement).blur() } }}
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
-                      {/* Keyword occurrences — always visible below Keywords field */}
+                      {/* Keyword occurrences — uses local state so list is always fixed & immediate */}
                       {(() => {
-                        const kwList = post.tags ?? []
+                        const kwList = articleKeywordChips
                         const html = (selectedPost?.id === post.id ? selectedPost?.content_html : null) ?? post.content_html ?? ''
                         const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
                         const getTexts = (pattern: RegExp) =>
