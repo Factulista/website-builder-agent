@@ -7,8 +7,9 @@ export function generateSitemap(
   projectSlug?: string,
   blogPosts: BlogPostRef[] = []
 ): string {
-  // Exclude pages with inMenu=false (draft/hidden) or noindex=true
-  const visiblePages = pages.filter(p => p.inMenu !== false && !p.robots?.noindex)
+  // Exclude pages that are explicitly hidden (inMenu=false or null) or noindex=true
+  const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
+  const visiblePages = pages.filter(isVisible)
 
   const pageUrls = visiblePages.map(page => {
     const isHome = page.slug === 'home'
@@ -47,8 +48,8 @@ ${allUrls.join('\n')}
 }
 
 export function generateRobots(baseUrl: string, pages: Page[] = []): string {
-  // Disallow draft/hidden pages (inMenu=false) and noindex pages
-  const hiddenPages = pages.filter(p => p.inMenu === false || p.robots?.noindex)
+  // Disallow draft/hidden pages (inMenu=false or null) and noindex pages
+  const hiddenPages = pages.filter(p => p.inMenu === false || p.inMenu === null || p.robots?.noindex)
   const disallowLines = hiddenPages
     .map(p => `Disallow: /${p.slug === 'home' ? '' : p.slug}`)
     .join('\n')
