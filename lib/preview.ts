@@ -465,10 +465,9 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName), {
     status: 200,
-    // Cache published pages on CDN for 5 min (s-maxage) — drastically reduces Supabase egress.
-    // Browser revalidates every time (no-cache) so users always get fresh content,
-    // but Vercel CDN serves from cache without hitting Supabase on every request.
-    // After Publish, stale CDN responses expire within 5 minutes (acceptable for a website builder).
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60' },
+    // Cache published pages on CDN for 30s (s-maxage). Short enough that after
+    // clicking "Pubblica" the new version is live within 30 seconds max.
+    // stale-while-revalidate=10 so CDN revalidates in background (no visible delay).
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=10' },
   })
 }

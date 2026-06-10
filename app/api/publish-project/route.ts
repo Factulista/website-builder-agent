@@ -57,6 +57,27 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // Purge Vercel CDN cache so the published changes are live immediately
+    // (without this, s-maxage=30 means users could see stale content for up to 30s)
+    try {
+      const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
+      const domain = isRootDomainProject
+        ? `www.${ROOT_DOMAIN}`
+        : (project.custom_domain_status === 'verified' ? project.custom_domain : null)
+      if (domain && process.env.VERCEL_TOKEN) {
+        // Purge all paths for this domain via Vercel's cache purge API
+        await fetch(`https://api.vercel.com/v1/purge-cache?domain=${domain}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        }).catch(e => console.warn('[publish] CDN purge failed (non-fatal):', e))
+      }
+    } catch (purgeErr) {
+      console.warn('[publish] CDN purge error (non-fatal):', purgeErr)
+    }
+
     return NextResponse.json({ success: true, publishedAt: new Date().toISOString() })
   } catch (err) {
     console.error(err)
