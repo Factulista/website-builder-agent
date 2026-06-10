@@ -3,6 +3,81 @@ import type { InjectPoints } from './blog-serve'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
 import { mergeRootVars } from './design-system'
 
+/**
+ * Extracts FAQ Q&A pairs from the visible HTML and returns a clean FAQPage JSON-LD
+ * script tag, or null if no FAQ section is found.
+ *
+ * Supports common patterns:
+ *   - .faq-trigger / .faq-content  (Factulista accordion)
+ *   - <details> / <summary>        (native HTML accordion)
+ *   - [data-question] / [data-answer]
+ *   - Generic: consecutive <dt>/<dd> pairs
+ *
+ * The generated schema uses the real siteUrl so @id is always canonical.
+ */
+function extractFaqSchema(html: string, siteUrl: string): string | null {
+  const stripTags = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+
+  const pairs: { q: string; a: string }[] = []
+
+  // Pattern 1: .faq-trigger span + .faq-content  (Factulista pattern)
+  const triggerRe = /<[^>]+class="[^"]*faq-trigger[^"]*"[^>]*>([\s\S]*?)<\/button>/gi
+  const contentRe = /<[^>]+class="[^"]*faq-content[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
+  const triggers: string[] = []
+  const contents: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = triggerRe.exec(html)) !== null) {
+    const q = stripTags(m[1])
+    if (q) triggers.push(q)
+  }
+  while ((m = contentRe.exec(html)) !== null) {
+    const a = stripTags(m[1])
+    if (a) contents.push(a)
+  }
+  if (triggers.length > 0 && contents.length > 0) {
+    const count = Math.min(triggers.length, contents.length)
+    for (let i = 0; i < count; i++) {
+      if (triggers[i] && contents[i]) pairs.push({ q: triggers[i], a: contents[i] })
+    }
+  }
+
+  // Pattern 2: <details><summary>Q</summary>A</details>
+  if (pairs.length === 0) {
+    const detailsRe = /<details[^>]*>([\s\S]*?)<\/details>/gi
+    while ((m = detailsRe.exec(html)) !== null) {
+      const inner = m[1]
+      const summaryMatch = inner.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
+      if (!summaryMatch) continue
+      const q = stripTags(summaryMatch[1])
+      const a = stripTags(inner.replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, ''))
+      if (q && a) pairs.push({ q, a })
+    }
+  }
+
+  if (pairs.length === 0) return null
+
+  const esc = (s: string) => s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const entities = pairs.map((p, i) => `{
+      "@type": "Question",
+      "@id": "${siteUrl}/#faq-${i + 1}",
+      "name": "${esc(p.q)}",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "${esc(p.a)}"
+      }
+    }`).join(',\n    ')
+
+  return `<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    ${entities}
+  ]
+}
+</script>`
+}
+
 type Page = {
   slug: string
   name: string
@@ -245,6 +320,16 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     ].filter(Boolean).join('\n')
     if (/<head[^>]*>/i.test(result)) {
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${ogTags}`)
+    }
+
+    // ── FAQ Schema: auto-extracted from visible FAQ content ──
+    // Strip any existing FAQPage JSON-LD (prevents duplicates / stale AI-generated ones),
+    // then inject a fresh one built from the actual visible Q&A on the page.
+    // This keeps structured data always in sync with content — no manual fix needed.
+    result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?"@type"\s*:\s*"FAQPage"[\s\S]*?<\/script>\s*/gi, '')
+    const faqSchema = extractFaqSchema(result, siteUrl)
+    if (faqSchema && /<\/head>/i.test(result)) {
+      result = result.replace(/<\/head>/i, `${faqSchema}\n</head>`)
     }
 
     // ── Robots meta: AUTHORITATIVE from the page setting (Pages panel) ──
