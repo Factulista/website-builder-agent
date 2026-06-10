@@ -2074,6 +2074,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const deletedSlugsRef = useRef<Set<string>>(new Set())
   const editIframeRef = useRef<HTMLIFrameElement>(null)
   const editBaseHtmlRef = useRef<string>('')
+  // Throttle inline-edit version snapshots: at most one every 90s during active
+  // editing. Without this, every 800ms autosave pause inserted a full-pages snapshot
+  // into project_versions — the main source of DB bloat + Disk IO during inline edits.
+  const lastInlineVersionRef = useRef<number>(0)
 
   // Ref mirrors of "site-wide" state fields. Used by buildSiteConfig to avoid
   // stale closures when saveState is fired from async callbacks/timers.
@@ -2312,7 +2316,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       autoSaveTimer.current = setTimeout(async () => {
         setEditSaving('saving')
         const curPages = latestPagesRef.current
-        void createVersion('Modifica inline', curPages)
+        // Version snapshot is throttled to once per 90s during continuous inline
+        // editing — the autosave below persists every change, so no data is lost;
+        // versions are only undo checkpoints and don't need per-keystroke granularity.
+        const now = Date.now()
+        if (now - lastInlineVersionRef.current > 90_000) {
+          lastInlineVersionRef.current = now
+          void createVersion('Modifica inline', curPages)
+        }
         const ok = await saveState(messages, curPages)
         if (ok) {
           setEditSaving('saved')
@@ -2320,7 +2331,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         } else {
           setEditSaving('failed')
         }
-      }, 800)
+      }, 2000)
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
