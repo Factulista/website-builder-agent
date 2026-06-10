@@ -2016,6 +2016,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'>('checks')
   const [sitemapDownloading, setSitemapDownloading] = useState(false)
   const [sitemapCopied, setSitemapCopied] = useState(false)
+  const [robotsCopied, setRobotsCopied] = useState(false)
   const [mediaAiGenerating, setMediaAiGenerating] = useState(false)
   const [cfApiToken, setCfApiToken] = useState('')
   const [cfZoneId, setCfZoneId] = useState('')
@@ -6491,7 +6492,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/robots.txt`
                               return `/preview/${projectSlug}/robots.txt`
                             })()
-                            const [robotsCopied, setRobotsCopied] = React.useState(false)
                             return (
                               <div>
                                 <h3 style={{ margin: '0 0 4px', fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Robots.txt</h3>
