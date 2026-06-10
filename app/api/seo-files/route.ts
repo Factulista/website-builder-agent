@@ -40,7 +40,8 @@ export async function GET(req: NextRequest) {
   if (!project) return new Response('Not found', { status: 404 })
 
   const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
-  const pages = (siteConfig.pages as { slug: string; name: string }[]) ?? []
+  const pages = (siteConfig.pages as { slug: string; name: string; html?: string }[]) ?? []
+  const seoKeywords = (siteConfig.keywords as Array<{keyword:string}>)?.map(k => k.keyword) ?? []
 
   // If the middleware passed a host override (e.g. www.factulista.com), use that directly;
   // otherwise derive the correct URL from domain config and env vars.
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
       .limit(20)
     const siteName = (siteConfig.siteName as string) || slug
     const siteDesc = (siteConfig.siteDescription as string) || undefined
-    const llms = generateLlmsTxt(pages, baseUrl, siteName, siteDesc, blogPosts ?? [])
+    const llms = generateLlmsTxt(pages, baseUrl, siteName, siteDesc, blogPosts ?? [], seoKeywords)
     return new Response(llms, {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })

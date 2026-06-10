@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
   const baseUrl = `https://${host}`
   const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
   const publishedPages = (siteConfig.published_pages as Array<{ slug: string; name: string; html: string }>) ?? []
+  const seoKeywords = (siteConfig.keywords as Array<{keyword:string}>)?.map(k => k.keyword) ?? []
   const siteContext = (siteConfig.context ?? {}) as Record<string, string>
   const lang = siteContext.language ?? 'it'
 
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
       .limit(20)
     const siteName = (siteConfig.siteName as string) || host
     const siteDesc = (siteConfig.siteDescription as string) || undefined
-    return new Response(generateLlmsTxt(publishedPages, baseUrl, siteName, siteDesc, blogPostsForLlms ?? []), {
+    return new Response(generateLlmsTxt(publishedPages, baseUrl, siteName, siteDesc, blogPostsForLlms ?? [], seoKeywords), {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
   }

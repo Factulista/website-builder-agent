@@ -1,5 +1,16 @@
-type Page = { slug: string; name: string; inMenu?: boolean; robots?: { noindex?: boolean; nofollow?: boolean } }
+type Page = { slug: string; name: string; html?: string; inMenu?: boolean; robots?: { noindex?: boolean; nofollow?: boolean }; og_title?: string }
 type BlogPostRef = { slug: string; title?: string; published_at: string | null; seo_description?: string }
+
+function extractMetaDescription(html: string): string | undefined {
+  const m = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{10,})/i)
+    ?? html.match(/<meta[^>]+content=["']([^"']{10,})["'][^>]+name=["']description["']/i)
+  return m?.[1]?.trim() || undefined
+}
+
+function extractH1(html: string): string | undefined {
+  const m = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+  return m?.[1]?.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() || undefined
+}
 
 export function generateSitemap(
   pages: Page[],
@@ -48,46 +59,88 @@ ${allUrls.join('\n')}
 }
 
 /**
- * Generate /llms.txt — a markdown summary of the site for AI assistants.
- * Standard: https://llmstxt.org
- * Helps LLMs (Claude, ChatGPT, Perplexity, etc.) understand the site
- * without crawling every page individually.
+ * Generate /llms.txt — a rich markdown summary for AI assistants.
+ * Schema inspired by framer.com/llms.txt — llmstxt.org standard.
+ * Dynamically generated from live pages + blog posts on every request.
+ *
+ * AI assistants (Claude, ChatGPT, Perplexity) read this to understand
+ * the site without crawling every page.
  */
 export function generateLlmsTxt(
   pages: Page[],
   baseUrl: string,
   siteName: string,
   siteDescription?: string,
-  blogPosts: BlogPostRef[] = []
+  blogPosts: BlogPostRef[] = [],
+  seoKeywords: string[] = []
 ): string {
   const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
   const visiblePages = pages.filter(isVisible)
 
-  const pageLines = visiblePages.map(p => {
+  // Extract descriptions and headings from page HTML when available
+  const richPages = visiblePages.map(p => {
+    const html = p.html ?? ''
+    const description = extractMetaDescription(html)
+    const h1 = extractH1(html)
+    return { ...p, description, h1 }
+  })
+
+  // ── Site description block ──
+  const descBlock = siteDescription ? `\n> ${siteDescription}\n` : ''
+
+  // ── Keywords hint (top 8 by presence) ──
+  const kwBlock = seoKeywords.length > 0
+    ? `\nKeyword principali: ${seoKeywords.slice(0, 8).join(', ')}.\n`
+    : ''
+
+  // ── Pages section ──
+  const home = richPages.find(p => p.slug === 'home')
+  const otherPages = richPages.filter(p => p.slug !== 'home')
+
+  const pageLines = richPages.map(p => {
     const url = p.slug === 'home' ? `${baseUrl}/` : `${baseUrl}/${p.slug}`
-    return `- [${p.name}](${url})`
+    const label = p.og_title || p.h1 || p.name
+    const desc = p.description ? `: ${p.description.slice(0, 150)}` : ''
+    return `- [${label}](${url})${desc}`
   }).join('\n')
 
-  const blogLines = blogPosts.slice(0, 20).map(post => {
-    const url = `${baseUrl}/blog/${post.slug}`
-    const title = post.title || post.slug
-    const desc = post.seo_description ? `: ${post.seo_description.slice(0, 120)}` : ''
-    return `- [${title}](${url})${desc}`
-  }).join('\n')
+  // ── Blog section ──
+  const blogLines = blogPosts.length > 0
+    ? blogPosts.slice(0, 30).map(post => {
+        const url = `${baseUrl}/blog/${post.slug}`
+        const title = post.title || post.slug
+        const desc = post.seo_description ? `: ${post.seo_description.slice(0, 150)}` : ''
+        return `- [${title}](${url})${desc}`
+      }).join('\n')
+    : ''
 
-  const desc = siteDescription ? `\n> ${siteDescription}\n` : ''
+  // ── Home page features extracted as bullet points ──
+  let featuresBlock = ''
+  if (home?.html) {
+    // Extract h2 headings as feature bullets
+    const h2matches = [...(home.html.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi))]
+    const h2s = h2matches
+      .map(m => m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim())
+      .filter(t => t.length > 3 && t.length < 120)
+      .slice(0, 8)
+    if (h2s.length > 0) {
+      featuresBlock = `\n## Caratteristiche principali\n\n${h2s.map(h => `- ${h}`).join('\n')}\n`
+    }
+  }
 
   return `# ${siteName}
-${desc}
-## Pagine principali
+${descBlock}${kwBlock}${featuresBlock}
+## Pagine
 
-${pageLines || '- Nessuna pagina disponibile'}
+${pageLines || `- [${siteName}](${baseUrl}/)`}
 ${blogPosts.length > 0 ? `\n## Blog\n\n${blogLines}` : ''}
 
-## Note
+## Informazioni
 
-- Sito web: ${baseUrl}
+- Sito: ${baseUrl}
 - Sitemap: ${baseUrl}/sitemap.xml
+- Robots: ${baseUrl}/robots.txt
+- Aggiornato: ${new Date().toISOString().slice(0, 10)}
 `
 }
 
