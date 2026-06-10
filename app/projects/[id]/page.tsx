@@ -2071,6 +2071,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blogGenTopicTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const articleKwInputRef = useRef<HTMLInputElement | null>(null)
   const mediaSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestPagesRef = useRef<Page[]>([])
@@ -8550,16 +8551,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const }}
                       />
                       <label style={{ display: 'block', fontSize: '0.7rem', color: C.textFaint, marginBottom: '4px', marginTop: '8px' }}>Keywords</label>
+                      {/* Chip list — one per keyword, × to remove */}
+                      {articleKeywordChips.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '5px', marginBottom: '6px' }}>
+                          {articleKeywordChips.map((kw, i) => (
+                            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#dbeafe', color: '#1d4ed8', borderRadius: '5px', padding: '2px 7px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {kw}
+                              <button onClick={() => { const next = articleKeywordChips.filter((_, j) => j !== i); setArticleKeywordChips(next); saveMeta(post.id, { tags: next }) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', fontSize: '0.85rem', lineHeight: 1, padding: '0 0 0 2px' }}>×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Input: Enter adds keyword, field clears */}
                       <input
-                        defaultValue={(post.tags ?? []).join(', ')}
-                        placeholder="es: facturacion electronica, verifactu"
-                        onChange={e => {
-                          // Update local state immediately so occurrences panel stays in sync
-                          const tags = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                          setArticleKeywordChips(tags)
+                        ref={articleKwInputRef}
+                        placeholder="Scrivi e premi Invio per aggiungere..."
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            const val = (e.target as HTMLInputElement).value.trim()
+                            if (!val) return
+                            // Split by comma to allow pasting multiple at once
+                            const newKws = val.split(',').map(s => s.trim()).filter(Boolean)
+                            const next = [...articleKeywordChips, ...newKws.filter(k => !articleKeywordChips.includes(k))]
+                            setArticleKeywordChips(next)
+                            saveMeta(post.id, { tags: next });
+                            (e.target as HTMLInputElement).value = ''
+                          }
                         }}
-                        onBlur={e => { const tags = e.target.value.split(',').map(s => s.trim()).filter(Boolean); setArticleKeywordChips(tags); saveMeta(post.id, { tags }) }}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const tags = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean); setArticleKeywordChips(tags); saveMeta(post.id, { tags }); (e.target as HTMLInputElement).blur() } }}
+                        onBlur={e => {
+                          const val = e.target.value.trim()
+                          if (!val) return
+                          const newKws = val.split(',').map(s => s.trim()).filter(Boolean)
+                          const next = [...articleKeywordChips, ...newKws.filter(k => !articleKeywordChips.includes(k))]
+                          setArticleKeywordChips(next)
+                          saveMeta(post.id, { tags: next })
+                          e.target.value = ''
+                        }}
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
                       {/* Keyword occurrences — uses local state so list is always fixed & immediate */}
