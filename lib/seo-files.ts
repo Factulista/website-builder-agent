@@ -59,12 +59,15 @@ ${allUrls.join('\n')}
 }
 
 /**
- * Generate /llms.txt — a rich markdown summary for AI assistants.
- * Schema inspired by framer.com/llms.txt — llmstxt.org standard.
- * Dynamically generated from live pages + blog posts on every request.
+ * Generate /llms.txt — a content-driven markdown summary for AI assistants.
+ * Schema: https://llmstxt.org (inspired by framer.com/llms.txt)
+ * Dynamically generated from live page HTML + blog posts on every request.
  *
- * AI assistants (Claude, ChatGPT, Perplexity) read this to understand
- * the site without crawling every page.
+ * Content-driven, NOT keyword-driven:
+ * - Extracts descriptions from meta tags, H1, H2 from page HTML
+ * - Shows all visible pages with their descriptions
+ * - Shows blog posts with their descriptions
+ * - NO artificial keyword lists — only what's on the pages
  */
 export function generateLlmsTxt(
   pages: Page[],
@@ -72,12 +75,12 @@ export function generateLlmsTxt(
   siteName: string,
   siteDescription?: string,
   blogPosts: BlogPostRef[] = [],
-  seoKeywords: string[] = []
+  _seoKeywords: string[] = [] // Unused — content comes from pages only
 ): string {
   const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
   const visiblePages = pages.filter(isVisible)
 
-  // Extract descriptions and headings from page HTML when available
+  // Extract metadata + content from page HTML
   const richPages = visiblePages.map(p => {
     const html = p.html ?? ''
     const description = extractMetaDescription(html)
@@ -85,62 +88,55 @@ export function generateLlmsTxt(
     return { ...p, description, h1 }
   })
 
-  // ── Site description block ──
-  const descBlock = siteDescription ? `\n> ${siteDescription}\n` : ''
-
-  // ── Keywords hint (top 8 by presence) ──
-  const kwBlock = seoKeywords.length > 0
-    ? `\nKeyword principali: ${seoKeywords.slice(0, 8).join(', ')}.\n`
-    : ''
-
-  // ── Pages section ──
+  // Home page extracts as intro + features
   const home = richPages.find(p => p.slug === 'home')
   const otherPages = richPages.filter(p => p.slug !== 'home')
 
-  const pageLines = richPages.map(p => {
-    const url = p.slug === 'home' ? `${baseUrl}/` : `${baseUrl}/${p.slug}`
-    const label = p.og_title || p.h1 || p.name
-    const desc = p.description ? `: ${p.description.slice(0, 150)}` : ''
-    return `- [${label}](${url})${desc}`
-  }).join('\n')
-
-  // ── Blog section ──
-  const blogLines = blogPosts.length > 0
-    ? blogPosts.slice(0, 30).map(post => {
-        const url = `${baseUrl}/blog/${post.slug}`
-        const title = post.title || post.slug
-        const desc = post.seo_description ? `: ${post.seo_description.slice(0, 150)}` : ''
-        return `- [${title}](${url})${desc}`
-      }).join('\n')
-    : ''
-
-  // ── Home page features extracted as bullet points ──
+  // Extract key features from home H2s
   let featuresBlock = ''
   if (home?.html) {
-    // Extract h2 headings as feature bullets
     const h2matches = [...(home.html.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi))]
     const h2s = h2matches
       .map(m => m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim())
       .filter(t => t.length > 3 && t.length < 120)
-      .slice(0, 8)
+      .slice(0, 10)
     if (h2s.length > 0) {
-      featuresBlock = `\n## Caratteristiche principali\n\n${h2s.map(h => `- ${h}`).join('\n')}\n`
+      featuresBlock = `\nKey features:\n${h2s.map(h => `- ${h}`).join('\n')}\n`
     }
   }
 
-  return `# ${siteName}
-${descBlock}${kwBlock}${featuresBlock}
-## Pagine
+  // All pages with descriptions
+  const pageLines = richPages.map(p => {
+    const url = p.slug === 'home' ? `${baseUrl}/` : `${baseUrl}/${p.slug}`
+    const label = p.og_title || p.h1 || p.name
+    const desc = p.description ? `: ${p.description.slice(0, 160)}` : ''
+    return `- [${label}](${url})${desc}`
+  }).join('\n')
 
-${pageLines || `- [${siteName}](${baseUrl}/)`}
+  // Blog posts with descriptions
+  const blogLines = blogPosts.length > 0
+    ? blogPosts.slice(0, 25).map(post => {
+        const url = `${baseUrl}/blog/${post.slug}`
+        const title = post.title || post.slug
+        const desc = post.seo_description ? `: ${post.seo_description.slice(0, 160)}` : ''
+        return `- [${title}](${url})${desc}`
+      }).join('\n')
+    : ''
+
+  const descBlock = siteDescription ? `\n> ${siteDescription}` : ''
+
+  return `# ${siteName}
+${descBlock}${featuresBlock}
+## Pages
+
+${pageLines}
 ${blogPosts.length > 0 ? `\n## Blog\n\n${blogLines}` : ''}
 
-## Informazioni
+## Resources
 
-- Sito: ${baseUrl}
-- Sitemap: ${baseUrl}/sitemap.xml
-- Robots: ${baseUrl}/robots.txt
-- Aggiornato: ${new Date().toISOString().slice(0, 10)}
+- [Sitemap](${baseUrl}/sitemap.xml): Full page list
+- [Robots.txt](${baseUrl}/robots.txt): Crawler directives
+- Updated: ${new Date().toISOString().slice(0, 10)}
 `
 }
 
