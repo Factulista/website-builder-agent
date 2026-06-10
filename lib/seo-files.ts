@@ -72,7 +72,7 @@ ${allUrls.join('\n')}
  * Dynamically generated from live page HTML + blog posts on every request.
  *
  * Content-driven, NOT keyword-driven:
- * - Extracts descriptions from meta tags, H1, H2 from page HTML
+ * - Uses custom llmsIntroduction if provided, else extracts from home page HTML
  * - Shows all visible pages with their descriptions
  * - Shows blog posts with their descriptions
  * - NO artificial keyword lists — only what's on the pages
@@ -82,7 +82,8 @@ export function generateLlmsTxt(
   baseUrl: string,
   siteName: string,
   siteDescription?: string,
-  blogPosts: BlogPostRef[] = []
+  blogPosts: BlogPostRef[] = [],
+  llmsIntroduction?: string
 ): string {
   const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
   const visiblePages = pages.filter(isVisible)
@@ -99,9 +100,11 @@ export function generateLlmsTxt(
   const home = richPages.find(p => p.slug === 'home')
   const otherPages = richPages.filter(p => p.slug !== 'home')
 
-  // Extract intro paragraph from home
+  // Use custom introduction if provided, otherwise extract from home
   let introBlock = ''
-  if (home?.html) {
+  if (llmsIntroduction) {
+    introBlock = `\n${llmsIntroduction}\n`
+  } else if (home?.html) {
     const firstParagraph = extractFirstParagraph(home.html)
     if (firstParagraph) {
       introBlock = `\n${firstParagraph}\n`
