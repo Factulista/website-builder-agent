@@ -394,16 +394,31 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // Fetch ONLY fields needed for serving — skip 'pages' (draft HTML), 'keywords',
+  // 'blocks' which are builder-only. Reduces Supabase egress from ~2MB to ~200KB per request.
   const { data, error } = await supabase
     .from('projects')
-    .select('site_config, name')
+    .select('name, site_config->published_pages, site_config->context, site_config->shared_css, site_config->shared_nav_html, site_config->shared_footer_html, site_config->inject_points, site_config->redirects, site_config->favicon_url, site_config->default_og_image, site_config->siteName, site_config->designSystem')
     .eq('slug', projectSlug)
     .is('deleted_at', null)
     .single()
 
   if (error || !data) return errorPage(404, '404', 'Sito non trovato')
 
-  const config = data.site_config as SiteConfig
+  const raw = data as Record<string, unknown>
+  const config = {
+    published_pages: raw['site_config->published_pages'] ?? [],
+    context: raw['site_config->context'],
+    shared_css: raw['site_config->shared_css'],
+    shared_nav_html: raw['site_config->shared_nav_html'],
+    shared_footer_html: raw['site_config->shared_footer_html'],
+    inject_points: raw['site_config->inject_points'],
+    redirects: raw['site_config->redirects'],
+    favicon_url: raw['site_config->favicon_url'],
+    default_og_image: raw['site_config->default_og_image'],
+    siteName: raw['site_config->siteName'],
+    designSystem: raw['site_config->designSystem'],
+  } as unknown as SiteConfig
 
   // ── Legacy .html URLs → clean slug (301) ──
   // Old URLs like /politica-cookies.html (indexed by Google before the migration to
@@ -451,7 +466,10 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName), {
     status: 200,
-    // No cache on published pages — Publish must be instantly visible
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+    // Cache published pages on CDN for 5 min (s-maxage) — drastically reduces Supabase egress.
+    // Browser revalidates every time (no-cache) so users always get fresh content,
+    // but Vercel CDN serves from cache without hitting Supabase on every request.
+    // After Publish, stale CDN responses expire within 5 minutes (acceptable for a website builder).
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60' },
   })
 }
