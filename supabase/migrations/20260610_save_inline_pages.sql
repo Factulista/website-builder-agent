@@ -46,3 +46,5 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public.save_inline_pages(uuid, jsonb, jsonb, jsonb) TO authenticated;
+-- Also used by server routes (seo-fix) that operate via the service role.
+GRANT EXECUTE ON FUNCTION public.save_inline_pages(uuid, jsonb, jsonb, jsonb) TO service_role;

@@ -828,18 +828,26 @@ Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza b
           summary: `✅ ${check.label} ottimizzato`,
         })
       } else {
-        // Regular page: persist updated HTML to site_config
-        const { data: currentProject } = await supabase
-          .from('projects')
-          .select('site_config')
-          .eq('id', projectId)
-          .single()
-
-        const currentConfig = (currentProject?.site_config ?? {}) as Record<string, unknown>
-        await supabase.from('projects').update({
-          site_config: { ...currentConfig, pages: updatedPages },
-          updated_at: new Date().toISOString(),
-        }).eq('id', projectId)
+        // Regular page: persist updated HTML via the save_inline_pages RPC, which
+        // jsonb_set's only the `pages` key inside Postgres — no full-blob read/write.
+        // SEO fixes never touch nav/footer, so passing null keeps them unchanged.
+        // Falls back to select+update if the RPC isn't deployed.
+        const { error: rpcErr } = await supabase.rpc('save_inline_pages', {
+          p_id: projectId,
+          p_pages: updatedPages,
+        })
+        if (rpcErr) {
+          const { data: currentProject } = await supabase
+            .from('projects')
+            .select('site_config')
+            .eq('id', projectId)
+            .single()
+          const currentConfig = (currentProject?.site_config ?? {}) as Record<string, unknown>
+          await supabase.from('projects').update({
+            site_config: { ...currentConfig, pages: updatedPages },
+            updated_at: new Date().toISOString(),
+          }).eq('id', projectId)
+        }
 
         emitDone({ tool: 'seo_fix', checkId, updatedPages, summary: `✅ ${check.label} ottimizzato` })
       }
