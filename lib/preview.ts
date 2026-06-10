@@ -235,6 +235,16 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // Step 0b: inject shared nav and footer — single source of truth for header/footer
   if (sharedNav || sharedFooter) html = injectSharedComponents(html, sharedNav, sharedFooter)
 
+  // Step 0c: remove duplicate Google Fonts <link> and @import declarations.
+  // The Design System injects the authoritative font <link> (async, optimised).
+  // Any <link href="fonts.googleapis.com"> baked into the page HTML by the AI
+  // is a duplicate that adds ~300ms of extra blocking load. Strip them all so
+  // only the Design System version survives.
+  html = html
+    .replace(/<link[^>]+href=["'][^"']*fonts\.googleapis\.com[^"']*["'][^>]*\/?>\s*/gi, '')
+    .replace(/<link[^>]+href=["'][^"']*fonts\.gstatic\.com[^"']*["'][^>]*\/?>\s*/gi, '')
+    .replace(/@import\s+url\(['"]?https:\/\/fonts\.googleapis\.com[^)'"]*['"]?\)[^;]*;\s*/gi, '')
+
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
 
