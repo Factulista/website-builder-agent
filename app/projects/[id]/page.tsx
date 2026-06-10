@@ -6458,15 +6458,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </div>
 
                           {/* Pages list */}
-                          <div>
+                          <div style={{ marginBottom: '28px' }}>
                             <div style={{
                               fontSize: '0.78rem', fontWeight: 700, color: C.text,
                               marginBottom: '8px', padding: '6px 0', borderBottom: `1px solid ${C.border}`,
                             }}>
-                              Pagine incluse ({pages.length})
+                              Pagine incluse ({pages.filter(p => p.inMenu !== false && !p.robots?.noindex).length})
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              {pages.map(p => (
+                              {pages.filter(p => p.inMenu !== false && !p.robots?.noindex).map(p => (
                                 <div key={p.slug} style={{
                                   display: 'flex', alignItems: 'center', gap: '8px',
                                   padding: '6px 10px', borderRadius: '6px',
@@ -6481,6 +6481,65 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               ))}
                             </div>
                           </div>
+
+                          {/* ── Robots.txt ── */}
+                          {(() => {
+                            const robotsUrl = (() => {
+                              const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
+                              const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
+                              if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}/robots.txt`
+                              if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/robots.txt`
+                              return `/preview/${projectSlug}/robots.txt`
+                            })()
+                            const [robotsCopied, setRobotsCopied] = React.useState(false)
+                            return (
+                              <div>
+                                <h3 style={{ margin: '0 0 4px', fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Robots.txt</h3>
+                                <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: C.textFaint }}>
+                                  Istruzioni per i motori di ricerca. Pagine bozza escluse automaticamente.
+                                </p>
+                                <div style={{
+                                  padding: '10px 14px', borderRadius: '8px',
+                                  background: C.bgPanel, border: `1px solid ${C.border}`,
+                                  fontFamily: 'monospace', fontSize: '0.82rem', color: C.text,
+                                  wordBreak: 'break-all', marginBottom: '12px',
+                                }}>
+                                  {robotsUrl.startsWith('/') ? `${typeof window !== 'undefined' ? window.location.origin : ''}${robotsUrl}` : robotsUrl}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                  <button
+                                    onClick={() => {
+                                      const full = robotsUrl.startsWith('/') ? `${window.location.origin}${robotsUrl}` : robotsUrl
+                                      navigator.clipboard?.writeText(full).catch(() => {})
+                                      setRobotsCopied(true)
+                                      setTimeout(() => setRobotsCopied(false), 2000)
+                                    }}
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                      padding: '7px 14px', borderRadius: '7px',
+                                      border: `1px solid ${robotsCopied ? '#86efac' : C.border}`,
+                                      background: robotsCopied ? '#f0fdf4' : C.white,
+                                      color: robotsCopied ? '#16a34a' : C.text,
+                                      fontSize: '0.8rem', fontWeight: 600,
+                                      cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                                    }}
+                                  >
+                                    {robotsCopied ? '✓ Copiato!' : '📋 Copia URL'}
+                                  </button>
+                                  <a href={robotsUrl} target="_blank" rel="noopener noreferrer" style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '7px 14px', borderRadius: '7px',
+                                    border: `1px solid ${C.border}`,
+                                    background: C.white, color: C.text,
+                                    fontSize: '0.8rem', fontWeight: 600,
+                                    cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none',
+                                  }}>
+                                    🔍 Visualizza
+                                  </a>
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </div>
                       )
                     })()}
