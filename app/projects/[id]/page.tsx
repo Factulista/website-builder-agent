@@ -8532,15 +8532,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
                     </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Tag</label>
-                      <input
-                        defaultValue={(post.tags ?? []).join(', ')}
-                        placeholder="es: web, design"
-                        onBlur={e => saveMeta(post.id, { tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
-                      />
-                    </div>
                     {/* Keyword occurrences in article */}
                     {(() => {
                       const kwList = post.tags ?? []
@@ -8617,6 +8608,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         onBlur={e => saveMeta(post.id, { seo_description: e.target.value.trim() || null })}
                         rows={3}
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const }}
+                      />
+                      <label style={{ display: 'block', fontSize: '0.7rem', color: C.textFaint, marginBottom: '4px', marginTop: '8px' }}>Keywords</label>
+                      <input
+                        defaultValue={(post.tags ?? []).join(', ')}
+                        placeholder="es: facturacion electronica, verifactu"
+                        onBlur={e => saveMeta(post.id, { tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                        style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
                     </div>
                     <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
