@@ -27,6 +27,51 @@ function stripFonts(html: string): { html: string; changed: boolean } {
   return { html: cleaned, changed: cleaned !== html }
 }
 
+const FONT_PRECONNECT = '<link rel="preconnect" href="https://fonts.googleapis.com">'
+const FONT_LINK_SPACE_GROTESK = '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">'
+
+function restoreFonts(html: string): { html: string; changed: boolean } {
+  if (html.includes('fonts.googleapis.com')) return { html, changed: false }
+  // Add font links after <head> opening tag
+  const restored = html.replace(/<head([^>]*)>/i,
+    `<head$1>\n${FONT_PRECONNECT}\n${FONT_LINK_SPACE_GROTESK}`)
+  return { html: restored, changed: restored !== html }
+}
+
+export async function PUT(req: NextRequest) {
+  const projectId = req.nextUrl.searchParams.get('projectId')
+  if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
+
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from('projects')
+    .select('id, site_config')
+    .eq('id', projectId)
+    .single()
+
+  if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
+
+  const config = (data.site_config ?? {}) as Record<string, unknown>
+  const pages = (config.pages as Array<{ slug: string; html: string }>) ?? []
+
+  let pagesChanged = 0
+  const restoredPages = pages.map(p => {
+    const { html, changed } = restoreFonts(p.html ?? '')
+    if (changed) pagesChanged++
+    return { ...p, html }
+  })
+
+  if (pagesChanged === 0) return NextResponse.json({ message: 'Font links already present', pagesChanged: 0 })
+
+  const { error: saveErr } = await supabase.rpc('save_inline_pages', {
+    p_id: projectId,
+    p_pages: restoredPages,
+  })
+
+  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  return NextResponse.json({ message: `Restored font links in ${pagesChanged} page(s)`, pagesChanged })
+}
+
 export async function POST(req: NextRequest) {
   const projectId = req.nextUrl.searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
