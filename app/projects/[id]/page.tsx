@@ -8542,11 +8542,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </div>
                     {/* Keyword occurrences in article */}
                     {(() => {
-                      const tags = post.tags ?? []
-                      // If no tags, use top-5 project keywords as reference
-                      const kwList = tags.length > 0
-                        ? tags
-                        : seoKeywords.slice(0, 5).map(k => k.keyword)
+                      const kwList = post.tags ?? []
                       if (kwList.length === 0) return null
                       // Prefer selectedPost.content_html (loaded on open) over list version
                       const html = (selectedPost?.id === post.id ? selectedPost?.content_html : null) ?? post.content_html ?? ''
@@ -8621,10 +8617,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       />
                     </div>
                     <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
-                      <button
-                        onClick={() => deletePost(post.id)}
-                        style={{ width: '100%', background: 'none', border: `1px solid #fca5a5`, color: '#ef4444', borderRadius: '7px', padding: '7px', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
-                      >✕ Elimina articolo</button>
                     </div>
                   </div>
 
