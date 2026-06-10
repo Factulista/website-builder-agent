@@ -322,6 +322,32 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${ogTags}`)
     }
 
+    // ── Organization Schema: always injected with correct canonical values ──
+    // Strip any existing Organization JSON-LD (may have wrong URL/logo from AI),
+    // then inject a clean one using the real siteUrl, faviconUrl and siteName.
+    result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?"@type"\s*:\s*"Organization"[\s\S]*?<\/script>\s*/gi, '')
+    if (/<\/head>/i.test(result) && siteName) {
+      const orgName = (siteName).replace(/"/g, '&quot;')
+      const orgDesc = (result.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? '').replace(/"/g, '&quot;')
+      const orgLogo = faviconUrl ?? ''
+      const orgSchema = `<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "${orgName}",
+  "url": "${siteUrl}",
+  ${orgLogo ? `"logo": "${orgLogo}",` : ''}
+  ${orgDesc ? `"description": "${orgDesc}",` : ''}
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "Customer Support",
+    "availableLanguage": "es"
+  }
+}
+</script>`
+      result = result.replace(/<\/head>/i, `${orgSchema}\n</head>`)
+    }
+
     // ── FAQ Schema: auto-extracted from visible FAQ content ──
     // Strip any existing FAQPage JSON-LD (prevents duplicates / stale AI-generated ones),
     // then inject a fresh one built from the actual visible Q&A on the page.
