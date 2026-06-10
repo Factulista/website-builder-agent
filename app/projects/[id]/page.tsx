@@ -2013,7 +2013,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [linkCheckTotals, setLinkCheckTotals] = useState<{ checked: number; broken: number } | null>(null)
   const [gtmId, setGtmId] = useState('')
   const [gtmSaving, setGtmSaving] = useState<'idle'|'saving'|'saved'>('idle')
-  const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'>('checks')
+  const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'|'keywords'>('checks')
+  const [seoKeywords, setSeoKeywords] = useState<Array<{keyword:string;volume:number;difficulty:number;intent?:string;parentKeyword?:string}>>([])
+  const [keywordsUploading, setKeywordsUploading] = useState(false)
   const [sitemapDownloading, setSitemapDownloading] = useState(false)
   const [sitemapCopied, setSitemapCopied] = useState(false)
   const [robotsCopied, setRobotsCopied] = useState(false)
@@ -3000,6 +3002,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           site_config: cleanConfig,
           updated_at: new Date().toISOString(),
         }).eq('id', id)
+      }
+
+      // Load SEO keywords
+      if ((config as any)?.keywords?.length) {
+        setSeoKeywords((config as any).keywords)
       }
     }
     load()
@@ -4109,6 +4116,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           ? { blockSelector: previewSelection.blockSelector, anchorText: previewSelection.anchorText, outerHtml: previewSelection.outerHtml }
           : undefined,
         visibleBlocks: visibleBlocks.length > 0 ? visibleBlocks : undefined,
+        seoKeywords: seoKeywords.length > 0 ? seoKeywords : undefined,
       }),
     })
 
@@ -5844,6 +5852,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         { id: 'checks', label: '📋 Analisi SEO' },
                         { id: 'tools', label: '🔧 Strumenti' },
                         { id: 'sitemap', label: '🗺️ Sitemap' },
+                        { id: 'keywords', label: '🎯 Keyword' },
                       ] as const).map(tab => (
                         <button
                           key={tab.id}
@@ -6542,6 +6551,169 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               </div>
                             )
                           })()}
+                        </div>
+                      )
+                    })()}
+
+                    {/* ── Tab: keywords ── */}
+                    {seoSubTab === 'keywords' && (() => {
+                      const saveKeywords = async (kws: typeof seoKeywords) => {
+                        setSeoKeywords(kws)
+                        const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+                        await supabase.from('projects').update({
+                          site_config: { ...(proj?.site_config ?? {}), keywords: kws },
+                          updated_at: new Date().toISOString(),
+                        }).eq('id', id)
+                      }
+
+                      const parseCSV = (text: string) => {
+                        // Detect and strip UTF-16 BOM / null bytes
+                        const clean = text.replace(/\x00/g, '').replace(/^﻿/, '')
+                        const lines = clean.split(/\r?\n/).filter(l => l.trim())
+                        if (lines.length < 2) return []
+                        const sep = lines[0].includes('\t') ? '\t' : ','
+                        const headers = lines[0].split(sep).map(h => h.trim().replace(/^["'\s]+|["'\s]+$/g, '').toLowerCase())
+                        const idx = (name: string) => headers.findIndex(h => h.includes(name))
+                        const kwIdx = (() => { const i = idx('keyword'); return i >= 0 ? i : idx('parola') })()
+                        const volIdx = (() => { const i = headers.findIndex(h => h.includes('volume') && !h.includes('global') && !h.includes('traffic')); return i >= 0 ? i : idx('vol') })()
+                        const diffIdx = idx('diff')
+                        const intentIdx = idx('intent')
+                        const parentIdx = idx('parent')
+                        if (kwIdx < 0) return []
+                        return lines.slice(1).map(line => {
+                          const cols = line.split(sep).map(c => c.trim().replace(/^["'\s]+|["'\s]+$/g, ''))
+                          const kw = cols[kwIdx] || ''
+                          if (!kw) return null
+                          return {
+                            keyword: kw,
+                            volume: parseInt(cols[volIdx] || '0') || 0,
+                            difficulty: parseInt(cols[diffIdx] || '0') || 0,
+                            intent: intentIdx >= 0 ? cols[intentIdx] : undefined,
+                            parentKeyword: parentIdx >= 0 ? cols[parentIdx] : undefined,
+                          }
+                        }).filter(Boolean) as typeof seoKeywords
+                      }
+
+                      return (
+                        <div>
+                          <div style={{ marginBottom: '20px' }}>
+                            <h3 style={{ margin: '0 0 4px', fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Keyword SEO</h3>
+                            <p style={{ margin: 0, fontSize: '0.78rem', color: C.textFaint }}>
+                              Carica le keyword da Ahrefs, SEMrush o Seozoom. Vengono usate da tutti gli agenti per ottimizzare titoli, meta e testi.
+                            </p>
+                          </div>
+
+                          {/* Upload */}
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center' }}>
+                            <label style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '6px',
+                              padding: '7px 14px', borderRadius: '7px',
+                              border: `1px solid ${C.border}`, background: C.white,
+                              color: C.text, fontSize: '0.8rem', fontWeight: 600,
+                              cursor: 'pointer', fontFamily: 'inherit',
+                            }}>
+                              {keywordsUploading ? '⏳ Caricamento…' : '📂 Carica CSV'}
+                              <input
+                                type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }}
+                                onChange={async e => {
+                                  const file = e.target.files?.[0]
+                                  if (!file) return
+                                  setKeywordsUploading(true)
+                                  try {
+                                    // Try UTF-16 first, fallback to UTF-8
+                                    const tryParse = (text: string) => {
+                                      const kws = parseCSV(text)
+                                      return kws
+                                    }
+                                    const text = await file.text()
+                                    const kws = tryParse(text)
+                                    if (kws.length === 0) {
+                                      alert('Nessuna keyword trovata nel file. Assicurati che il CSV abbia una colonna "Keyword".')
+                                      return
+                                    }
+                                    await saveKeywords(kws)
+                                  } finally {
+                                    setKeywordsUploading(false)
+                                    e.target.value = ''
+                                  }
+                                }}
+                              />
+                            </label>
+                            {seoKeywords.length > 0 && (
+                              <button
+                                onClick={async () => { if (confirm('Eliminare tutte le keyword?')) await saveKeywords([]) }}
+                                style={{
+                                  padding: '7px 14px', borderRadius: '7px',
+                                  border: `1px solid #fca5a5`, background: '#fff5f5',
+                                  color: '#dc2626', fontSize: '0.8rem', fontWeight: 600,
+                                  cursor: 'pointer', fontFamily: 'inherit',
+                                }}
+                              >
+                                🗑 Cancella tutto
+                              </button>
+                            )}
+                          </div>
+
+                          {seoKeywords.length === 0 ? (
+                            <div style={{
+                              padding: '32px', textAlign: 'center', borderRadius: '10px',
+                              border: `2px dashed ${C.border}`, color: C.textFaint, fontSize: '0.82rem',
+                            }}>
+                              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
+                              Nessuna keyword. Carica un CSV da Ahrefs, SEMrush o Seozoom.
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ fontSize: '0.75rem', color: C.textFaint, marginBottom: '8px' }}>
+                                {seoKeywords.length} keyword caricate · top 25 usate dagli agenti
+                              </div>
+                              <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                  <thead>
+                                    <tr style={{ background: C.bgPanel, borderBottom: `1px solid ${C.border}` }}>
+                                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: C.textFaint }}>Keyword</th>
+                                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: C.textFaint, width: '70px' }}>Volume</th>
+                                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: C.textFaint, width: '60px' }}>Diff.</th>
+                                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: C.textFaint, width: '100px' }}>Intent</th>
+                                      <th style={{ padding: '8px 6px', width: '30px' }}></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {seoKeywords
+                                      .sort((a, b) => b.volume - a.volume)
+                                      .slice(0, 100)
+                                      .map((kw, i) => (
+                                      <tr key={i} style={{ borderBottom: `1px solid ${C.borderLight}`, background: i % 2 === 0 ? C.white : C.bgPanel }}>
+                                        <td style={{ padding: '7px 10px', color: C.text, fontWeight: i < 25 ? 600 : 400 }}>
+                                          {i < 25 && <span style={{ color: '#6366f1', marginRight: '4px', fontSize: '0.65rem' }}>●</span>}
+                                          {kw.keyword}
+                                        </td>
+                                        <td style={{ padding: '7px 10px', textAlign: 'right', color: C.textFaint, fontFamily: 'monospace' }}>
+                                          {kw.volume >= 1000 ? `${(kw.volume/1000).toFixed(0)}k` : kw.volume}
+                                        </td>
+                                        <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                          <span style={{
+                                            padding: '1px 5px', borderRadius: '4px', fontSize: '0.72rem',
+                                            background: kw.difficulty > 50 ? '#fee2e2' : kw.difficulty > 25 ? '#fef3c7' : '#dcfce7',
+                                            color: kw.difficulty > 50 ? '#dc2626' : kw.difficulty > 25 ? '#d97706' : '#16a34a',
+                                          }}>{kw.difficulty || '—'}</span>
+                                        </td>
+                                        <td style={{ padding: '7px 10px', color: C.textFaint, fontSize: '0.72rem' }}>
+                                          {kw.intent?.split(',')[0]?.trim().split(' ')[0] || ''}
+                                        </td>
+                                        <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+                                          <button
+                                            onClick={() => saveKeywords(seoKeywords.filter((_, j) => j !== seoKeywords.sort((a,b) => b.volume - a.volume).indexOf(kw)))}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.8rem', padding: '0 2px' }}
+                                          >×</button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })()}

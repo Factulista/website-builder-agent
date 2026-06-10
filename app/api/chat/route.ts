@@ -178,11 +178,12 @@ export async function POST(req: NextRequest) {
   let runStartTime = Date.now()
 
   try {
-    const { projectId, messages: rawMessages, pages, activePageSlug, customDomain, previewSelection, visibleBlocks } = await req.json() as {
+    const { projectId, messages: rawMessages, pages, activePageSlug, customDomain, previewSelection, visibleBlocks, seoKeywords } = await req.json() as {
       projectId: string
       messages: { role: string; content: string }[]
       pages: Page[]
       activePageSlug: string | null
+      seoKeywords?: Array<{keyword:string;volume:number;difficulty:number;intent?:string}>
       customDomain?: string | null
       previewSelection?: { blockSelector: string; anchorText: string; outerHtml: string } | null
       visibleBlocks?: string[]
@@ -428,7 +429,7 @@ export async function POST(req: NextRequest) {
       let result = await runHtmlAgent(
         agentMessages, pages ?? [], activePageSlug, apiKey,
         projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
-        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined },
+        { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined, seoKeywords: seoKeywords ?? undefined },
         previewSelection ?? undefined,
         visibleBlocks ?? undefined
       )
@@ -516,7 +517,7 @@ export async function POST(req: NextRequest) {
           result = await runHtmlAgent(
             correctionMessages, pages ?? [], activePageSlug, apiKey,
             projectMedia, contextLogo, injectPoints, userLang, siteLang, context,
-            { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined }
+            { pages: pages ?? [], designSystem: designSystem ?? undefined, sharedCss: sharedCss ?? undefined, blogPosts, projectRules, sessionMemory: sessionMemory || undefined, seoKeywords: seoKeywords ?? undefined }
           )
           qualityRetried = true
         }

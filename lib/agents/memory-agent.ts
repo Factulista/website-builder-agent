@@ -87,6 +87,14 @@ REGOLE:
   }
 }
 
+export type SeoKeyword = {
+  keyword: string
+  volume: number
+  difficulty: number
+  intent?: string
+  parentKeyword?: string
+}
+
 export type RichContext = {
   context: ProjectContext
   pages?: Array<{ slug: string; name: string; html: string }>
@@ -96,6 +104,8 @@ export type RichContext = {
   projectRules?: ProjectRules
   /** Running design diary updated after every turn. Captures decisions, corrections, structure. */
   sessionMemory?: string
+  /** SEO keywords uploaded by user (from Ahrefs, SEMrush, etc.) */
+  seoKeywords?: SeoKeyword[]
 }
 
 export function buildContextPrompt(context: ProjectContext): string {
@@ -106,7 +116,7 @@ export function buildContextPrompt(context: ProjectContext): string {
  * Builds the full project context prompt including Design System, pages, blog tone.
  * The richer the input, the better the agent's output quality.
  */
-export function buildRichContextPrompt({ context, pages, designSystem, sharedCss, blogPosts, projectRules, sessionMemory }: RichContext): string {
+export function buildRichContextPrompt({ context, pages, designSystem, sharedCss, blogPosts, projectRules, sessionMemory, seoKeywords }: RichContext): string {
   if (!context || Object.keys(context).length === 0) return ''
 
   const parts: string[] = ['## CONTESTO PROGETTO (usa sempre queste informazioni):']
@@ -199,6 +209,20 @@ export function buildRichContextPrompt({ context, pages, designSystem, sharedCss
   if (projectRules) {
     const rulesText = formatRulesForAgent(projectRules)
     parts.push(`\n${rulesText}`)
+  }
+
+  // ── SEO Keywords ──
+  if (seoKeywords && seoKeywords.length > 0) {
+    const top = seoKeywords
+      .sort((a, b) => b.volume - a.volume)
+      .slice(0, 25)
+    const lines = top.map(k => {
+      const vol = k.volume >= 1000 ? `${Math.round(k.volume / 1000)}k` : String(k.volume)
+      const diff = k.difficulty ? ` diff:${k.difficulty}` : ''
+      const intent = k.intent ? ` [${k.intent.split(',')[0].trim()}]` : ''
+      return `- ${k.keyword} (vol:${vol}${diff}${intent})`
+    }).join('\n')
+    parts.push(`\n## KEYWORD TARGET SEO (usa nei titoli, meta, testi quando pertinente):\n${lines}`)
   }
 
   return parts.join('\n')
