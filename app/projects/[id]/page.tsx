@@ -2016,6 +2016,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'|'keywords'>('checks')
   const [seoKeywords, setSeoKeywords] = useState<Array<{keyword:string;volume:number;difficulty:number;intent?:string;parentKeyword?:string}>>([])
   const [keywordsUploading, setKeywordsUploading] = useState(false)
+  const [kwSearch, setKwSearch] = useState('')
+  const [kwVolSort, setKwVolSort] = useState<'desc'|'asc'>('desc')
+  const [kwIntentFilter, setKwIntentFilter] = useState('')
+  const [kwPage, setKwPage] = useState(0)
   const [sitemapDownloading, setSitemapDownloading] = useState(false)
   const [sitemapCopied, setSitemapCopied] = useState(false)
   const [robotsCopied, setRobotsCopied] = useState(false)
@@ -6557,10 +6561,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                     {/* ── Tab: keywords ── */}
                     {seoSubTab === 'keywords' && (() => {
-                      const [kwSearch, setKwSearch] = React.useState('')
-                      const [kwVolSort, setKwVolSort] = React.useState<'desc'|'asc'>('desc')
-                      const [kwIntentFilter, setKwIntentFilter] = React.useState('')
-                      const [kwPage, setKwPage] = React.useState(0)
                       const KW_PAGE_SIZE = 50
 
                       const saveKeywords = async (kws: typeof seoKeywords) => {
