@@ -6557,6 +6557,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                     {/* ── Tab: keywords ── */}
                     {seoSubTab === 'keywords' && (() => {
+                      const [kwSearch, setKwSearch] = React.useState('')
+                      const [kwVolSort, setKwVolSort] = React.useState<'desc'|'asc'>('desc')
+                      const [kwIntentFilter, setKwIntentFilter] = React.useState('')
+                      const [kwPage, setKwPage] = React.useState(0)
+                      const KW_PAGE_SIZE = 50
+
                       const saveKeywords = async (kws: typeof seoKeywords) => {
                         setSeoKeywords(kws)
                         const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
@@ -6567,7 +6573,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       }
 
                       const parseCSV = (text: string) => {
-                        // Detect and strip UTF-16 BOM / null bytes
                         const clean = text.replace(/\x00/g, '').replace(/^﻿/, '')
                         const lines = clean.split(/\r?\n/).filter(l => l.trim())
                         if (lines.length < 2) return []
@@ -6594,9 +6599,38 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         }).filter(Boolean) as typeof seoKeywords
                       }
 
+                      // Sorted base (by volume, used to determine top-25 badge)
+                      const sortedByVolume = [...seoKeywords].sort((a, b) => b.volume - a.volume)
+                      const top25Set = new Set(sortedByVolume.slice(0, 25).map(k => k.keyword))
+
+                      // Unique intents for filter dropdown
+                      const allIntents = Array.from(new Set(
+                        seoKeywords.map(k => k.intent?.split(',')[0]?.trim() || '').filter(Boolean)
+                      )).sort()
+
+                      // Apply filters + sort
+                      const filtered = seoKeywords
+                        .filter(k => !kwSearch || k.keyword.toLowerCase().includes(kwSearch.toLowerCase()))
+                        .filter(k => !kwIntentFilter || k.intent?.toLowerCase().includes(kwIntentFilter.toLowerCase()))
+                        .sort((a, b) => kwVolSort === 'desc' ? b.volume - a.volume : a.volume - b.volume)
+
+                      const totalPages = Math.ceil(filtered.length / KW_PAGE_SIZE)
+                      const paginated = filtered.slice(kwPage * KW_PAGE_SIZE, (kwPage + 1) * KW_PAGE_SIZE)
+
+                      const Pagination = () => totalPages > 1 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: C.textFaint }}>
+                          <button onClick={() => setKwPage(p => Math.max(0, p-1))} disabled={kwPage === 0}
+                            style={{ padding: '3px 8px', borderRadius: '5px', border: `1px solid ${C.border}`, background: kwPage === 0 ? C.bgPanel : C.white, cursor: kwPage === 0 ? 'default' : 'pointer', color: kwPage === 0 ? C.textFaint : C.text, fontFamily: 'inherit', fontSize: '0.78rem' }}>‹</button>
+                          <span>Pag. {kwPage + 1} / {totalPages}</span>
+                          <button onClick={() => setKwPage(p => Math.min(totalPages-1, p+1))} disabled={kwPage >= totalPages-1}
+                            style={{ padding: '3px 8px', borderRadius: '5px', border: `1px solid ${C.border}`, background: kwPage >= totalPages-1 ? C.bgPanel : C.white, cursor: kwPage >= totalPages-1 ? 'default' : 'pointer', color: kwPage >= totalPages-1 ? C.textFaint : C.text, fontFamily: 'inherit', fontSize: '0.78rem' }}>›</button>
+                          <span style={{ marginLeft: '4px' }}>{filtered.length} risultati</span>
+                        </div>
+                      ) : null
+
                       return (
                         <div>
-                          <div style={{ marginBottom: '20px' }}>
+                          <div style={{ marginBottom: '16px' }}>
                             <h3 style={{ margin: '0 0 4px', fontSize: '0.95rem', fontWeight: 700, color: C.text }}>Keyword SEO</h3>
                             <p style={{ margin: 0, fontSize: '0.78rem', color: C.textFaint }}>
                               Carica le keyword da Ahrefs, SEMrush o Seozoom. Vengono usate da tutti gli agenti per ottimizzare titoli, meta e testi.
@@ -6604,114 +6638,103 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </div>
 
                           {/* Upload */}
-                          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center' }}>
-                            <label style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '6px',
-                              padding: '7px 14px', borderRadius: '7px',
-                              border: `1px solid ${C.border}`, background: C.white,
-                              color: C.text, fontSize: '0.8rem', fontWeight: 600,
-                              cursor: 'pointer', fontFamily: 'inherit',
-                            }}>
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '7px', border: `1px solid ${C.border}`, background: C.white, color: C.text, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                               {keywordsUploading ? '⏳ Caricamento…' : '📂 Carica CSV'}
-                              <input
-                                type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }}
+                              <input type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }}
                                 onChange={async e => {
-                                  const file = e.target.files?.[0]
-                                  if (!file) return
+                                  const file = e.target.files?.[0]; if (!file) return
                                   setKeywordsUploading(true)
                                   try {
-                                    // Try UTF-16 first, fallback to UTF-8
-                                    const tryParse = (text: string) => {
-                                      const kws = parseCSV(text)
-                                      return kws
-                                    }
                                     const text = await file.text()
-                                    const kws = tryParse(text)
-                                    if (kws.length === 0) {
-                                      alert('Nessuna keyword trovata nel file. Assicurati che il CSV abbia una colonna "Keyword".')
-                                      return
-                                    }
-                                    await saveKeywords(kws)
-                                  } finally {
-                                    setKeywordsUploading(false)
-                                    e.target.value = ''
-                                  }
-                                }}
-                              />
+                                    const kws = parseCSV(text)
+                                    if (kws.length === 0) { alert('Nessuna keyword trovata. Assicurati che il CSV abbia una colonna "Keyword".'); return }
+                                    await saveKeywords(kws); setKwPage(0)
+                                  } finally { setKeywordsUploading(false); e.target.value = '' }
+                                }} />
                             </label>
                             {seoKeywords.length > 0 && (
-                              <button
-                                onClick={async () => { if (confirm('Eliminare tutte le keyword?')) await saveKeywords([]) }}
-                                style={{
-                                  padding: '7px 14px', borderRadius: '7px',
-                                  border: `1px solid #fca5a5`, background: '#fff5f5',
-                                  color: '#dc2626', fontSize: '0.8rem', fontWeight: 600,
-                                  cursor: 'pointer', fontFamily: 'inherit',
-                                }}
-                              >
+                              <button onClick={async () => { if (confirm('Eliminare tutte le keyword?')) { await saveKeywords([]); setKwPage(0) } }}
+                                style={{ padding: '7px 14px', borderRadius: '7px', border: '1px solid #fca5a5', background: '#fff5f5', color: '#dc2626', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                                 🗑 Cancella tutto
                               </button>
                             )}
                           </div>
 
                           {seoKeywords.length === 0 ? (
-                            <div style={{
-                              padding: '32px', textAlign: 'center', borderRadius: '10px',
-                              border: `2px dashed ${C.border}`, color: C.textFaint, fontSize: '0.82rem',
-                            }}>
+                            <div style={{ padding: '32px', textAlign: 'center', borderRadius: '10px', border: `2px dashed ${C.border}`, color: C.textFaint, fontSize: '0.82rem' }}>
                               <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
                               Nessuna keyword. Carica un CSV da Ahrefs, SEMrush o Seozoom.
                             </div>
                           ) : (
                             <div>
-                              <div style={{ fontSize: '0.75rem', color: C.textFaint, marginBottom: '8px' }}>
-                                {seoKeywords.length} keyword caricate · top 25 usate dagli agenti
+                              {/* Filters row */}
+                              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <div style={{ position: 'relative', flex: 1, minWidth: '160px' }}>
+                                  <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', pointerEvents: 'none' }}>🔍</span>
+                                  <input value={kwSearch} onChange={e => { setKwSearch(e.target.value); setKwPage(0) }}
+                                    placeholder="Cerca keyword…"
+                                    style={{ width: '100%', paddingLeft: '28px', paddingRight: '8px', paddingTop: '6px', paddingBottom: '6px', borderRadius: '7px', border: `1px solid ${C.border}`, fontSize: '0.78rem', fontFamily: 'inherit', background: C.white, color: C.text, boxSizing: 'border-box' }} />
+                                </div>
+                                <select value={kwIntentFilter} onChange={e => { setKwIntentFilter(e.target.value); setKwPage(0) }}
+                                  style={{ padding: '6px 10px', borderRadius: '7px', border: `1px solid ${C.border}`, fontSize: '0.78rem', fontFamily: 'inherit', background: C.white, color: kwIntentFilter ? C.text : C.textFaint, cursor: 'pointer' }}>
+                                  <option value="">Tutti gli intent</option>
+                                  {allIntents.map(i => <option key={i} value={i}>{i}</option>)}
+                                </select>
+                                <div style={{ fontSize: '0.75rem', color: C.textFaint, marginLeft: 'auto' }}>
+                                  {seoKeywords.length} kw · <span style={{ color: '#6366f1' }}>●</span> top 25 usate dagli agenti
+                                </div>
                               </div>
+
+                              {/* Pagination top */}
+                              {totalPages > 1 && <div style={{ marginBottom: '8px' }}><Pagination /></div>}
+
                               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                                   <thead>
                                     <tr style={{ background: C.bgPanel, borderBottom: `1px solid ${C.border}` }}>
                                       <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: C.textFaint }}>Keyword</th>
-                                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: C.textFaint, width: '70px' }}>Volume</th>
+                                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: C.text, width: '80px', cursor: 'pointer', userSelect: 'none' }}
+                                        onClick={() => { setKwVolSort(s => s === 'desc' ? 'asc' : 'desc'); setKwPage(0) }}>
+                                        Volume {kwVolSort === 'desc' ? '↓' : '↑'}
+                                      </th>
                                       <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: C.textFaint, width: '60px' }}>Diff.</th>
-                                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: C.textFaint, width: '100px' }}>Intent</th>
+                                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: C.textFaint, width: '110px' }}>Intent</th>
                                       <th style={{ padding: '8px 6px', width: '30px' }}></th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {seoKeywords
-                                      .sort((a, b) => b.volume - a.volume)
-                                      .slice(0, 100)
-                                      .map((kw, i) => (
-                                      <tr key={i} style={{ borderBottom: `1px solid ${C.borderLight}`, background: i % 2 === 0 ? C.white : C.bgPanel }}>
-                                        <td style={{ padding: '7px 10px', color: C.text, fontWeight: i < 25 ? 600 : 400 }}>
-                                          {i < 25 && <span style={{ color: '#6366f1', marginRight: '4px', fontSize: '0.65rem' }}>●</span>}
-                                          {kw.keyword}
-                                        </td>
-                                        <td style={{ padding: '7px 10px', textAlign: 'right', color: C.textFaint, fontFamily: 'monospace' }}>
-                                          {kw.volume >= 1000 ? `${(kw.volume/1000).toFixed(0)}k` : kw.volume}
-                                        </td>
-                                        <td style={{ padding: '7px 10px', textAlign: 'right' }}>
-                                          <span style={{
-                                            padding: '1px 5px', borderRadius: '4px', fontSize: '0.72rem',
-                                            background: kw.difficulty > 50 ? '#fee2e2' : kw.difficulty > 25 ? '#fef3c7' : '#dcfce7',
-                                            color: kw.difficulty > 50 ? '#dc2626' : kw.difficulty > 25 ? '#d97706' : '#16a34a',
-                                          }}>{kw.difficulty || '—'}</span>
-                                        </td>
-                                        <td style={{ padding: '7px 10px', color: C.textFaint, fontSize: '0.72rem' }}>
-                                          {kw.intent?.split(',')[0]?.trim().split(' ')[0] || ''}
-                                        </td>
-                                        <td style={{ padding: '7px 6px', textAlign: 'center' }}>
-                                          <button
-                                            onClick={() => saveKeywords(seoKeywords.filter((_, j) => j !== seoKeywords.sort((a,b) => b.volume - a.volume).indexOf(kw)))}
-                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.8rem', padding: '0 2px' }}
-                                          >×</button>
-                                        </td>
-                                      </tr>
-                                    ))}
+                                    {paginated.map((kw, i) => {
+                                      const globalIdx = kwPage * KW_PAGE_SIZE + i
+                                      const isTop25 = top25Set.has(kw.keyword)
+                                      return (
+                                        <tr key={i} style={{ borderBottom: `1px solid ${C.borderLight}`, background: i % 2 === 0 ? C.white : C.bgPanel }}>
+                                          <td style={{ padding: '7px 10px', color: C.text, fontWeight: isTop25 ? 600 : 400 }}>
+                                            {isTop25 && <span style={{ color: '#6366f1', marginRight: '4px', fontSize: '0.65rem' }}>●</span>}
+                                            {kw.keyword}
+                                          </td>
+                                          <td style={{ padding: '7px 10px', textAlign: 'right', color: C.textFaint, fontFamily: 'monospace' }}>
+                                            {kw.volume >= 1000 ? `${(kw.volume/1000).toFixed(0)}k` : kw.volume || '—'}
+                                          </td>
+                                          <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                            {kw.difficulty ? <span style={{ padding: '1px 5px', borderRadius: '4px', fontSize: '0.72rem', background: kw.difficulty > 50 ? '#fee2e2' : kw.difficulty > 25 ? '#fef3c7' : '#dcfce7', color: kw.difficulty > 50 ? '#dc2626' : kw.difficulty > 25 ? '#d97706' : '#16a34a' }}>{kw.difficulty}</span> : <span style={{ color: C.textFaint }}>—</span>}
+                                          </td>
+                                          <td style={{ padding: '7px 10px', color: C.textFaint, fontSize: '0.72rem' }}>
+                                            {kw.intent?.split(',')[0]?.trim().split(' ')[0] || ''}
+                                          </td>
+                                          <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+                                            <button onClick={() => saveKeywords(seoKeywords.filter(k => k.keyword !== kw.keyword))}
+                                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.8rem', padding: '0 2px' }}>×</button>
+                                          </td>
+                                        </tr>
+                                      )
+                                    })}
                                   </tbody>
                                 </table>
                               </div>
+
+                              {/* Pagination bottom */}
+                              {totalPages > 1 && <div style={{ marginTop: '10px' }}><Pagination /></div>}
                             </div>
                           )}
                         </div>
