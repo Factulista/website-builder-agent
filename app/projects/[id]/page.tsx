@@ -7289,8 +7289,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     codeAutoSaveTimer.current = setTimeout(async () => {
                       setCodeSaving('saving')
                       const curPages = latestPagesRef.current
-                      void createVersion('Modifica HTML manuale', curPages)
-                      await saveState(messages, curPages)
+                      // Throttle version snapshots (shared 90s window with inline editor)
+                      const now = Date.now()
+                      if (now - lastInlineVersionRef.current > 90_000) {
+                        lastInlineVersionRef.current = now
+                        void createVersion('Modifica HTML manuale', curPages)
+                      }
+                      // Fast-path: pages-only save via RPC (no full-blob read/write)
+                      await savePagesInline(curPages)
                       setCodeSaving('saved')
                       setTimeout(() => setCodeSaving('idle'), 2000)
                     }, 2000)
@@ -7312,8 +7318,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: content } : p)
                     setPages(newPages)
                     latestPagesRef.current = newPages
+                    // Explicit save (Cmd+S) → keep the version checkpoint (user intent)
                     void createVersion('Modifica HTML manuale', newPages)
-                    await saveState(messages, newPages)
+                    // Fast-path: pages-only save via RPC (no full-blob read/write)
+                    await savePagesInline(newPages)
                   }
                   setCodeSaving('saved')
                   setTimeout(() => setCodeSaving('idle'), 2000)
