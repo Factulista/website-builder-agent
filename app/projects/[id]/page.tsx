@@ -1980,6 +1980,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [blogGenerating, setBlogGenerating] = useState(false)
   const [blogGenTopic, setBlogGenTopic] = useState('')
   const [blogGenKeywords, setBlogGenKeywords] = useState('')
+  // Keyword chip UI for the blog generator — auto-suggested from project keywords
+  const [blogGenKwChips, setBlogGenKwChips] = useState<string[]>([])
+  const [blogGenKwInput, setBlogGenKwInput] = useState('')
   const [blogGenWordCount, setBlogGenWordCount] = useState(1200)
   const [blogGenParaCount, setBlogGenParaCount] = useState(4)
   const [blogGenH3Count, setBlogGenH3Count] = useState(2)
@@ -2067,6 +2070,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const blogGenTopicTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mediaSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestPagesRef = useRef<Page[]>([])
@@ -7848,11 +7852,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 setBlogGenLiveContent('')
                 openPost(draftJson.post)
 
-                // Parse keywords: comma or newline separated, max 5
-                const keywords = blogGenKeywords
-                  .split(/[,\n]+/)
-                  .map(k => k.trim())
-                  .filter(Boolean)
+                // Keywords: use chip UI tags + any pending text in input + legacy text field
+                const keywords = [
+                  ...blogGenKwChips,
+                  ...(blogGenKwInput.trim() ? [blogGenKwInput.trim()] : []),
+                  ...blogGenKeywords.split(/[,\n]+/).map(k => k.trim()).filter(Boolean),
+                ].filter((k, i, arr) => k && arr.indexOf(k) === i) // deduplicate
                   .slice(0, 5)
 
                 // Stream generation via SSE
@@ -8021,28 +8026,61 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px' }}>✦ Argomento</span>
                         <input
                           value={blogGenTopic}
-                          onChange={e => setBlogGenTopic(e.target.value)}
+                          onChange={e => {
+                            const val = e.target.value
+                            setBlogGenTopic(val)
+                            // Auto-suggest 5 keywords from project database after 600ms pause
+                            if (blogGenTopicTimer.current) clearTimeout(blogGenTopicTimer.current)
+                            blogGenTopicTimer.current = setTimeout(() => {
+                              if (val.trim().length > 8 && seoKeywords.length > 0) {
+                                const suggested = suggestKeywordsForArticle(val, seoKeywords, undefined, 5)
+                                if (suggested.length > 0) {
+                                  // Add suggestions not already in chips
+                                  const newKws = suggested.map(k => k.keyword).filter(k => !blogGenKwChips.includes(k))
+                                  if (newKws.length > 0) setBlogGenKwChips(prev => [...new Set([...prev, ...newKws])].slice(0, 8))
+                                }
+                              }
+                            }, 600)
+                          }}
                           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) void generateWithAI() }}
                           placeholder="Es: Software di fatturazione per autónomos in Spagna"
                           autoFocus
                           style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', background: C.white }}
                         />
                       </div>
-                      {/* Row 2: keywords + generate */}
-                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px' }}>🔑 Keyword</span>
-                        <input
-                          value={blogGenKeywords}
-                          onChange={e => setBlogGenKeywords(e.target.value)}
-                          placeholder="Es: fatturazione, Verifactu, autónomo, software contabilità, PYME"
-                          style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', background: C.white }}
-                        />
+                      {/* Row 2: keyword chips + generate */}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px', paddingTop: '7px' }}>🔑 Keyword</span>
+                        <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap' as const, gap: '6px', alignItems: 'center', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', background: C.white, minHeight: '38px' }}>
+                          {blogGenKwChips.map((chip, i) => (
+                            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#dbeafe', color: '#1d4ed8', borderRadius: '5px', padding: '2px 8px', fontSize: '0.78rem', fontWeight: 600 }}>
+                              {chip}
+                              <button onClick={() => setBlogGenKwChips(prev => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', fontSize: '0.9rem', lineHeight: 1, padding: '0 0 0 2px' }}>×</button>
+                            </span>
+                          ))}
+                          <input
+                            value={blogGenKwInput}
+                            onChange={e => setBlogGenKwInput(e.target.value)}
+                            onKeyDown={e => {
+                              if ((e.key === 'Enter' || e.key === ',') && blogGenKwInput.trim()) {
+                                e.preventDefault()
+                                const kw = blogGenKwInput.trim().replace(/,$/, '')
+                                if (kw && !blogGenKwChips.includes(kw)) setBlogGenKwChips(prev => [...prev, kw])
+                                setBlogGenKwInput('')
+                              } else if (e.key === 'Backspace' && !blogGenKwInput && blogGenKwChips.length > 0) {
+                                setBlogGenKwChips(prev => prev.slice(0, -1))
+                              }
+                            }}
+                            placeholder={blogGenKwChips.length === 0 ? 'Keyword suggerite automaticamente...' : '+ aggiungi...'}
+                            style={{ border: 'none', outline: 'none', fontSize: '0.82rem', fontFamily: 'inherit', minWidth: '140px', flex: 1, background: 'transparent' }}
+                          />
+                        </div>
                         <button
                           onClick={() => void generateWithAI()}
                           disabled={blogGenerating || !blogGenTopic.trim()}
-                          style={{ background: blogGenTopic.trim() && !blogGenerating ? C.blue : '#93c5fd', color: 'white', border: 'none', padding: '7px 18px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: blogGenTopic.trim() && !blogGenerating ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' as const }}
+                          style={{ background: blogGenTopic.trim() && !blogGenerating ? C.blue : '#93c5fd', color: 'white', border: 'none', padding: '7px 18px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: blogGenTopic.trim() && !blogGenerating ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' as const, marginTop: '1px' }}
                         >{blogGenerating ? '⏳ Generazione...' : '✦ Genera'}</button>
-                        <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0, lineHeight: 1 }}>✕</button>
+                        <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords(''); setBlogGenKwChips([]); setBlogGenKwInput('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0, lineHeight: 1, marginTop: '6px' }}>✕</button>
                       </div>
                       {/* Row 3: word count + paragraph count */}
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
