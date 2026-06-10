@@ -229,19 +229,7 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // the page's own styles so the shared frame renders identically on every page.
   const frameCss = sharedCss ? buildSharedFrameCss(sharedNav ?? '', sharedFooter ?? '', sharedCss) : ''
 
-  // Step 0a-pre: strip duplicate Google Fonts from the RAW stored HTML BEFORE
-  // Design System injection. Must happen first so we don't accidentally strip
-  // the @import that applySharedCss is about to inject from shared_css.
-  html = html
-    .replace(/<link[^>]+rel=["']preconnect["'][^>]*href=["'][^"']*googleapis\.com[^"']*["'][^>]*\/?>\s*/gi, '')
-    .replace(/<link[^>]+href=["'][^"']*googleapis\.com[^"']*["'][^>]*rel=["']preconnect["'][^>]*\/?>\s*/gi, '')
-    .replace(/<link[^>]+rel=["']preconnect["'][^>]*href=["'][^"']*gstatic\.com[^"']*["'][^>]*\/?>\s*/gi, '')
-    .replace(/<link[^>]+href=["'][^"']*fonts\.googleapis\.com[^"']*["'][^>]*\/?>\s*/gi, '')
-    .replace(/<link[^>]+href=["'][^"']*fonts\.gstatic\.com[^"']*["'][^>]*\/?>\s*/gi, '')
-    .replace(/@import\s+url\(['"]?https:\/\/fonts\.googleapis\.com[^)'"]*['"]?\)[^;]*;\s*/gi, '')
-
   // Step 0a: apply shared_css if available (replaces page-level <style> blocks)
-  // shared_css contains the Design System @import — the authoritative font source.
   if (sharedCss) html = applySharedCss(html, sharedCss)
 
   // Step 0b: inject shared nav and footer — single source of truth for header/footer
