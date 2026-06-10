@@ -8543,8 +8543,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     {/* Keyword occurrences in article */}
                     {(() => {
                       const tags = post.tags ?? []
-                      if (tags.length === 0) return null
-                      const html = post.content_html ?? ''
+                      // If no tags, use top-5 project keywords as reference
+                      const kwList = tags.length > 0
+                        ? tags
+                        : seoKeywords.slice(0, 5).map(k => k.keyword)
+                      if (kwList.length === 0) return null
+                      // Prefer selectedPost.content_html (loaded on open) over list version
+                      const html = (selectedPost?.id === post.id ? selectedPost?.content_html : null) ?? post.content_html ?? ''
                       if (!html) return null
                       // Extract text per tag type from HTML
                       const getTexts = (pattern: RegExp) =>
@@ -8556,7 +8561,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       const ps  = getTexts(/<p[^>]*>([\s\S]*?)<\/p>/gi)
                       const countIn = (texts: string[], kw: string) =>
                         texts.filter(t => t.includes(kw.toLowerCase())).length
-                      const rows = tags.map(kw => ({
+                      const rows = kwList.map(kw => ({
                         kw,
                         h1: countIn(h1s, kw),
                         h2: countIn(h2s, kw),
