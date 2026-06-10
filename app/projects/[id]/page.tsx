@@ -8614,6 +8614,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         defaultValue={(post.tags ?? []).join(', ')}
                         placeholder="es: facturacion electronica, verifactu"
                         onBlur={e => saveMeta(post.id, { tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const tags = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean); saveMeta(post.id, { tags }); (e.target as HTMLInputElement).blur() } }}
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
                     </div>
