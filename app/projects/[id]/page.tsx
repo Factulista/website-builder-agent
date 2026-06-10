@@ -8548,16 +8548,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       // Prefer selectedPost.content_html (loaded on open) over list version
                       const html = (selectedPost?.id === post.id ? selectedPost?.content_html : null) ?? post.content_html ?? ''
                       if (!html) return null
-                      // Extract text per tag type from HTML
+                      // Normalize: lowercase + remove accents (á→a, é→e, ñ→n, etc.)
+                      const norm = (s: string) =>
+                        s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
                       const getTexts = (pattern: RegExp) =>
-                        [...html.matchAll(pattern)].map(m => m[1].replace(/<[^>]+>/g, '').toLowerCase())
+                        [...html.matchAll(pattern)].map(m => norm(m[1].replace(/<[^>]+>/g, '')))
                       const h1s = getTexts(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)
                       const h2s = getTexts(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)
                       const h3s = getTexts(/<h3[^>]*>([\s\S]*?)<\/h3>/gi)
                       const h4s = getTexts(/<h4[^>]*>([\s\S]*?)<\/h4>/gi)
                       const ps  = getTexts(/<p[^>]*>([\s\S]*?)<\/p>/gi)
                       const countIn = (texts: string[], kw: string) =>
-                        texts.filter(t => t.includes(kw.toLowerCase())).length
+                        texts.filter(t => t.includes(norm(kw))).length
                       const rows = kwList.map(kw => ({
                         kw,
                         h1: countIn(h1s, kw),
