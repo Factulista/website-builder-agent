@@ -74,8 +74,7 @@ export function generateLlmsTxt(
   baseUrl: string,
   siteName: string,
   siteDescription?: string,
-  blogPosts: BlogPostRef[] = [],
-  _seoKeywords: string[] = [] // Unused — content comes from pages only
+  blogPosts: BlogPostRef[] = []
 ): string {
   const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
   const visiblePages = pages.filter(isVisible)

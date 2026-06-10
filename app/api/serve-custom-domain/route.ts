@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
       .limit(20)
     const siteName = (siteConfig.siteName as string) || host
     const siteDesc = (siteConfig.siteDescription as string) || undefined
-    return new Response(generateLlmsTxt(publishedPages, baseUrl, siteName, siteDesc, blogPostsForLlms ?? [], seoKeywords), {
+    return new Response(generateLlmsTxt(publishedPages, baseUrl, siteName, siteDesc, blogPostsForLlms ?? []), {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
   }
