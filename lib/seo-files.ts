@@ -12,6 +12,14 @@ function extractH1(html: string): string | undefined {
   return m?.[1]?.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() || undefined
 }
 
+function extractFirstParagraph(html: string): string | undefined {
+  // Extract first <p> tag after H1
+  const m = html.match(/<h1[^>]*>[\s\S]*?<\/h1>\s*<p[^>]*>([\s\S]*?)<\/p>/i)
+    ?? html.match(/<p[^>]*>([\s\S]*?)<\/p>/i) // Fallback: any first <p>
+  const text = m?.[1]?.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+  return text && text.length > 50 ? text : undefined // Min 50 chars to be meaningful
+}
+
 export function generateSitemap(
   pages: Page[],
   baseUrl: string,
@@ -87,9 +95,18 @@ export function generateLlmsTxt(
     return { ...p, description, h1 }
   })
 
-  // Home page extracts as intro + features
+  // Home page: extract intro paragraph + features
   const home = richPages.find(p => p.slug === 'home')
   const otherPages = richPages.filter(p => p.slug !== 'home')
+
+  // Extract intro paragraph from home
+  let introBlock = ''
+  if (home?.html) {
+    const firstParagraph = extractFirstParagraph(home.html)
+    if (firstParagraph) {
+      introBlock = `\n${firstParagraph}\n`
+    }
+  }
 
   // Extract key features from home H2s
   let featuresBlock = ''
@@ -125,7 +142,7 @@ export function generateLlmsTxt(
   const descBlock = siteDescription ? `\n> ${siteDescription}` : ''
 
   return `# ${siteName}
-${descBlock}${featuresBlock}
+${descBlock}${introBlock}${featuresBlock}
 ## Pages
 
 ${pageLines}
