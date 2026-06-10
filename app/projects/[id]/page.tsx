@@ -7839,7 +7839,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     content_html: '<p style="color:#999;">⏳ Generazione in corso...</p>',
                     excerpt: '',
                     categories: [],
-                    tags: [],
+                    // Save keyword chips as tags so the occurrences panel can track them
+                    tags: [...blogGenKwChips, ...(blogGenKwInput.trim() ? [blogGenKwInput.trim()] : [])],
                   }),
                 })
                 const draftJson = await draftRes.json()
