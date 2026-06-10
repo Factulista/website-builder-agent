@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
 
   // Serve robots.txt
   if (pathname === '/robots.txt') {
-    return new Response(generateRobots(baseUrl), {
+    return new Response(generateRobots(baseUrl, publishedPages), {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
   }

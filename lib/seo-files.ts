@@ -1,4 +1,4 @@
-type Page = { slug: string; name: string; inMenu?: boolean; robots?: { noindex?: boolean } }
+type Page = { slug: string; name: string; inMenu?: boolean; robots?: { noindex?: boolean; nofollow?: boolean } }
 type BlogPostRef = { slug: string; published_at: string | null }
 
 export function generateSitemap(
@@ -46,9 +46,22 @@ ${allUrls.join('\n')}
 </urlset>`
 }
 
-export function generateRobots(baseUrl: string): string {
+export function generateRobots(baseUrl: string, pages: Page[] = []): string {
+  // Disallow draft/hidden pages (inMenu=false) and noindex pages
+  const hiddenPages = pages.filter(p => p.inMenu === false || p.robots?.noindex)
+  const disallowLines = hiddenPages
+    .map(p => `Disallow: /${p.slug === 'home' ? '' : p.slug}`)
+    .join('\n')
+
   return `User-agent: *
 Allow: /
 
+# App routes — not public content
+Disallow: /api/
+Disallow: /back-office/
+Disallow: /projects/
+Disallow: /login
+Disallow: /register
+${disallowLines ? `\n# Draft / hidden pages\n${disallowLines}\n` : ''}
 Sitemap: ${baseUrl}/sitemap.xml`
 }

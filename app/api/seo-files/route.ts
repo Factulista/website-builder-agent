@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const robots = generateRobots(baseUrl)
+  const robots = generateRobots(baseUrl, pages)
   return new Response(robots, {
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
   })
