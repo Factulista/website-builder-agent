@@ -8532,66 +8532,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
                     </div>
-                    {/* Keyword occurrences in article */}
-                    {(() => {
-                      const kwList = post.tags ?? []
-                      if (kwList.length === 0) return null
-                      // Prefer selectedPost.content_html (loaded on open) over list version
-                      const html = (selectedPost?.id === post.id ? selectedPost?.content_html : null) ?? post.content_html ?? ''
-                      if (!html) return null
-                      // Normalize: lowercase + remove accents (á→a, é→e, ñ→n, etc.)
-                      const norm = (s: string) =>
-                        s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-                      const getTexts = (pattern: RegExp) =>
-                        [...html.matchAll(pattern)].map(m => norm(m[1].replace(/<[^>]+>/g, '')))
-                      const h1s = getTexts(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)
-                      const h2s = getTexts(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)
-                      const h3s = getTexts(/<h3[^>]*>([\s\S]*?)<\/h3>/gi)
-                      const h4s = getTexts(/<h4[^>]*>([\s\S]*?)<\/h4>/gi)
-                      const ps  = getTexts(/<p[^>]*>([\s\S]*?)<\/p>/gi)
-                      const countIn = (texts: string[], kw: string) =>
-                        texts.filter(t => t.includes(norm(kw))).length
-                      const rows = kwList.map(kw => ({
-                        kw,
-                        h1: countIn(h1s, kw),
-                        h2: countIn(h2s, kw),
-                        h3: countIn(h3s, kw),
-                        h4: countIn(h4s, kw),
-                        p:  countIn(ps,  kw),
-                      }))
-                      const Cell = ({ n, target }: { n: number; target: number }) => {
-                        const color = n === 0 ? '#d1d5db' : n >= target ? '#16a34a' : '#f59e0b'
-                        return (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '4px', background: n === 0 ? '#f3f4f6' : n >= target ? '#dcfce7' : '#fef3c7', color, fontSize: '0.7rem', fontWeight: 700 }}>
-                            {n === 0 ? '–' : n}
-                          </span>
-                        )
-                      }
-                      return (
-                        <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
-                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>🎯 Keyword nel testo</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr repeat(5, 22px)', gap: '4px', alignItems: 'center' }}>
-                            {/* Header */}
-                            <span style={{ fontSize: '0.62rem', color: C.textFaint }}></span>
-                            {['H1','H2','H3','H4','P'].map(h => (
-                              <span key={h} style={{ fontSize: '0.6rem', fontWeight: 700, color: C.textFaint, textAlign: 'center' }}>{h}</span>
-                            ))}
-                            {/* Rows */}
-                            {rows.map(r => (
-                              <>
-                                <span key={r.kw} style={{ fontSize: '0.72rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }} title={r.kw}>{r.kw}</span>
-                                <Cell n={r.h1} target={1} />
-                                <Cell n={r.h2} target={1} />
-                                <Cell n={r.h3} target={1} />
-                                <Cell n={r.h4} target={1} />
-                                <Cell n={r.p}  target={2} />
-                              </>
-                            ))}
-                          </div>
-                          <div style={{ fontSize: '0.6rem', color: C.textFaint, marginTop: '6px' }}>🟢 presente · 🟡 bassa · – assente</div>
-                        </div>
-                      )
-                    })()}
                     <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>SEO</div>
                       <label style={{ display: 'block', fontSize: '0.7rem', color: C.textFaint, marginBottom: '4px' }}>Meta title</label>
@@ -8617,6 +8557,43 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const tags = (e.target as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean); saveMeta(post.id, { tags }); (e.target as HTMLInputElement).blur() } }}
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
+                      {/* Keyword occurrences — shown below Keywords field */}
+                      {(() => {
+                        const kwList = post.tags ?? []
+                        if (kwList.length === 0) return null
+                        const html = (selectedPost?.id === post.id ? selectedPost?.content_html : null) ?? post.content_html ?? ''
+                        if (!html) return null
+                        const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+                        const getTexts = (pattern: RegExp) =>
+                          [...html.matchAll(pattern)].map(m => norm(m[1].replace(/<[^>]+>/g, '')))
+                        const h1s = getTexts(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)
+                        const h2s = getTexts(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)
+                        const h3s = getTexts(/<h3[^>]*>([\s\S]*?)<\/h3>/gi)
+                        const h4s = getTexts(/<h4[^>]*>([\s\S]*?)<\/h4>/gi)
+                        const ps  = getTexts(/<p[^>]*>([\s\S]*?)<\/p>/gi)
+                        const countIn = (texts: string[], kw: string) => texts.filter(t => t.includes(norm(kw))).length
+                        const rows = kwList.map(kw => ({ kw, h1: countIn(h1s, kw), h2: countIn(h2s, kw), h3: countIn(h3s, kw), h4: countIn(h4s, kw), p: countIn(ps, kw) }))
+                        const Cell = ({ n, target }: { n: number; target: number }) => {
+                          const color = n === 0 ? '#d1d5db' : n >= target ? '#16a34a' : '#f59e0b'
+                          return <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '4px', background: n === 0 ? '#f3f4f6' : n >= target ? '#dcfce7' : '#fef3c7', color, fontSize: '0.7rem', fontWeight: 700 }}>{n === 0 ? '–' : n}</span>
+                        }
+                        return (
+                          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>🎯 Keyword nel testo</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr repeat(5, 22px)', gap: '4px', alignItems: 'center' }}>
+                              <span />
+                              {['H1','H2','H3','H4','P'].map(h => <span key={h} style={{ fontSize: '0.6rem', fontWeight: 700, color: C.textFaint, textAlign: 'center' }}>{h}</span>)}
+                              {rows.map(r => (
+                                <>
+                                  <span key={r.kw} style={{ fontSize: '0.72rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }} title={r.kw}>{r.kw}</span>
+                                  <Cell n={r.h1} target={1} /><Cell n={r.h2} target={1} /><Cell n={r.h3} target={1} /><Cell n={r.h4} target={1} /><Cell n={r.p} target={2} />
+                                </>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: '0.6rem', color: C.textFaint, marginTop: '5px' }}>🟢 presente · 🟡 bassa · – assente</div>
+                          </div>
+                        )
+                      })()}
                     </div>
                     <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
                     </div>
