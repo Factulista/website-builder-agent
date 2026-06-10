@@ -3085,8 +3085,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     newMessages: Message[],
     newMedia: Record<string, MediaMeta>,
   ): Promise<Record<string, unknown>> => {
-    const { data: existing } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const base = (existing?.site_config ?? {}) as Record<string, unknown>
+    const { data: existing, error: readErr } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    // CRITICAL data-loss guard: if the base read fails (e.g. DB timeout during an
+    // outage), DO NOT build a config from an empty base — that would write back
+    // { pages, messages, media } only, WIPING keywords, published_pages, favicon,
+    // context, and every other top-level key. This is exactly how the keywords +
+    // published_pages were lost during today's DB outage. Abort instead.
+    if (readErr || !existing?.site_config) {
+      throw new Error('buildSiteConfig: base read failed — aborting save to prevent wiping site_config keys')
+    }
+    const base = existing.site_config as Record<string, unknown>
     const cfg: Record<string, unknown> = {
       ...base,
       pages: newPages,
@@ -3213,7 +3221,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     // ── End collaborative merge ────────────────────────────────────────────────
 
-    const merged = await buildSiteConfig(pagesToSave, newMessages, med)
+    let merged: Record<string, unknown>
+    try {
+      merged = await buildSiteConfig(pagesToSave, newMessages, med)
+    } catch (e) {
+      // Base read failed (DB unreachable) — abort WITHOUT writing, so we never
+      // overwrite site_config with a stripped object that drops keywords/published_pages.
+      console.error('[saveState] buildSiteConfig failed — aborting to prevent data loss:', e)
+      setSaveError('⚠️ Salvataggio non riuscito (database non raggiungibile) — riprova tra poco')
+      return false
+    }
 
     // Retry up to 3 times with exponential back-off (1s, 2s) so transient
     // Supabase timeouts don't silently lose messages.
