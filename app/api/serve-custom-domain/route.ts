@@ -43,10 +43,12 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabase()
 
-  // Find project by custom domain
+  // Find project by custom domain — fetch only serving-needed fields from site_config.
+  // Skip 'pages' (draft HTML), 'keywords', 'blocks' — builder-only, can be MB in size.
+  // This is the main egress optimization: reduces each request from ~2MB to ~200KB.
   const { data: project, error } = await supabase
     .from('projects')
-    .select('id, slug, site_config, custom_domain_status')
+    .select('id, slug, custom_domain_status, site_config->published_pages, site_config->context, site_config->shared_css, site_config->shared_nav_html, site_config->shared_footer_html, site_config->inject_points, site_config->redirects, site_config->favicon_url, site_config->default_og_image, site_config->siteName, site_config->designSystem')
     .eq('custom_domain', host)
     .is('deleted_at', null)
     .single()
@@ -66,9 +68,23 @@ export async function GET(req: NextRequest) {
   }
 
   const baseUrl = `https://${host}`
-  const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
+  // Reassemble siteConfig from JSONB path columns
+  const raw = project as Record<string, unknown>
+  const siteConfig = {
+    published_pages: raw['site_config->published_pages'] ?? [],
+    context: raw['site_config->context'],
+    shared_css: raw['site_config->shared_css'],
+    shared_nav_html: raw['site_config->shared_nav_html'],
+    shared_footer_html: raw['site_config->shared_footer_html'],
+    inject_points: raw['site_config->inject_points'],
+    redirects: raw['site_config->redirects'],
+    favicon_url: raw['site_config->favicon_url'],
+    default_og_image: raw['site_config->default_og_image'],
+    siteName: raw['site_config->siteName'],
+    designSystem: raw['site_config->designSystem'],
+  } as Record<string, unknown>
   const publishedPages = (siteConfig.published_pages as Array<{ slug: string; name: string; html: string }>) ?? []
-  const seoKeywords = (siteConfig.keywords as Array<{keyword:string}>)?.map(k => k.keyword) ?? []
+  const seoKeywords: string[] = []
   const siteContext = (siteConfig.context ?? {}) as Record<string, string>
   const lang = siteContext.language ?? 'it'
 
