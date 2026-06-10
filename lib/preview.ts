@@ -394,16 +394,30 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('site_config, name')
-    .eq('slug', projectSlug)
-    .is('deleted_at', null)
-    .single()
+  // Optimized path: RPC extracts ONLY the serving fields inside Postgres, returning
+  // a small payload (no draft pages / blocks / messages / media / keywords). This is
+  // the main egress optimization for public traffic. Falls back to a full select if
+  // the RPC migration hasn't been applied yet — so the deploy is always safe.
+  let config: SiteConfig
+  let projectName: string
 
-  if (error || !data) return errorPage(404, '404', 'Sito non trovato')
+  const rpc = await supabase.rpc('get_published_site', { p_slug: projectSlug }).maybeSingle()
 
-  const config = data.site_config as SiteConfig
+  if (!rpc.error && rpc.data) {
+    config = (rpc.data as { config: SiteConfig }).config
+    projectName = (rpc.data as { name: string }).name ?? ''
+  } else {
+    // Fallback: full select (pre-migration, or RPC unavailable)
+    const { data, error } = await supabase
+      .from('projects')
+      .select('site_config, name')
+      .eq('slug', projectSlug)
+      .is('deleted_at', null)
+      .single()
+    if (error || !data) return errorPage(404, '404', 'Sito non trovato')
+    config = data.site_config as SiteConfig
+    projectName = data.name ?? ''
+  }
 
   // ── Legacy .html URLs → clean slug (301) ──
   // Old URLs like /politica-cookies.html (indexed by Google before the migration to
@@ -430,7 +444,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   }
 
   if (!config?.published_pages || config.published_pages.length === 0) {
-    return errorPage(200, data.name, 'Il sito non è ancora stato pubblicato.')
+    return errorPage(200, projectName, 'Il sito non è ancora stato pubblicato.')
   }
 
   const page = config.published_pages.find(p => p.slug === pageSlug)
@@ -448,7 +462,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedNav = config.shared_nav_html
   const sharedFooter = config.shared_footer_html
 
-  const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
+  const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName), {
     status: 200,
     // Cache published pages on CDN for 5 min (s-maxage) — drastically reduces Supabase egress.
