@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { generateSitemap, generateRobots } from '../../../lib/seo-files'
+import { generateSitemap, generateRobots, generateLlmsTxt } from '../../../lib/seo-files'
 
 export const runtime = 'nodejs'
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   // passes ?host=www.factulista.com so we can build the correct canonical base URL.
   const hostOverride = req.nextUrl.searchParams.get('host')
 
-  if (!slug || (file !== 'sitemap.xml' && file !== 'robots.txt')) {
+  if (!slug || (file !== 'sitemap.xml' && file !== 'robots.txt' && file !== 'llms.txt')) {
     return new Response('Not found', { status: 404 })
   }
 
@@ -59,6 +59,22 @@ export async function GET(req: NextRequest) {
     const xml = generateSitemap(pages, baseUrl, slug, blogPosts ?? [])
     return new Response(xml, {
       headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    })
+  }
+
+  if (file === 'llms.txt') {
+    const { data: blogPosts } = await supabase
+      .from('blog_posts')
+      .select('slug, title, published_at, seo_description')
+      .eq('project_id', project.id)
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(20)
+    const siteName = (siteConfig.siteName as string) || slug
+    const siteDesc = (siteConfig.siteDescription as string) || undefined
+    const llms = generateLlmsTxt(pages, baseUrl, siteName, siteDesc, blogPosts ?? [])
+    return new Response(llms, {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
   }
 

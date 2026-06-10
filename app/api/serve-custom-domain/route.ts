@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { servePublished } from '../../../lib/preview'
-import { generateSitemap, generateRobots } from '../../../lib/seo-files'
+import { generateSitemap, generateRobots, generateLlmsTxt } from '../../../lib/seo-files'
 import { buildBlogPostPage as buildBlogPostPageFromLib, buildBlogListPage as buildBlogListPageFromLib, type Post as LibPost, type BlogSidebarBanner, type InjectPoints, escapeHtml, safeUrl } from '../../../lib/blog-serve'
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../lib/design-system'
 
@@ -89,6 +89,22 @@ export async function GET(req: NextRequest) {
   // Serve robots.txt
   if (pathname === '/robots.txt') {
     return new Response(generateRobots(baseUrl, publishedPages), {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    })
+  }
+
+  // Serve llms.txt — AI assistant summary (llmstxt.org standard)
+  if (pathname === '/llms.txt') {
+    const { data: blogPostsForLlms } = await supabase
+      .from('blog_posts')
+      .select('slug, title, published_at, seo_description')
+      .eq('project_id', project.id)
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(20)
+    const siteName = (siteConfig.siteName as string) || host
+    const siteDesc = (siteConfig.siteDescription as string) || undefined
+    return new Response(generateLlmsTxt(publishedPages, baseUrl, siteName, siteDesc, blogPostsForLlms ?? []), {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
   }

@@ -6498,6 +6498,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </div>
                           </div>
 
+                          {/* ── llms.txt ── */}
+                          {(() => {
+                            const llmsUrl = (() => {
+                              const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
+                              const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
+                              if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}/llms.txt`
+                              if (customDomain && customDomainStatus === 'verified') return `https://${publicDomain}/llms.txt`
+                              return `/preview/${projectSlug}/llms.txt`
+                            })()
+                            return (
+                              <div style={{ marginBottom: '28px' }}>
+                                <h3 style={{ margin: '0 0 4px', fontSize: '0.95rem', fontWeight: 700, color: C.text }}>llms.txt</h3>
+                                <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: C.textFaint }}>
+                                  Sommario del sito in markdown per AI assistant (Claude, ChatGPT, Perplexity). Standard llmstxt.org.
+                                </p>
+                                <div style={{ padding: '10px 14px', borderRadius: '8px', background: C.bgPanel, border: `1px solid ${C.border}`, fontFamily: 'monospace', fontSize: '0.82rem', color: C.text, wordBreak: 'break-all', marginBottom: '12px' }}>
+                                  {llmsUrl.startsWith('/') ? `${typeof window !== 'undefined' ? window.location.origin : ''}${llmsUrl}` : llmsUrl}
+                                </div>
+                                <a href={llmsUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '7px', border: `1px solid ${C.border}`, background: C.white, color: C.text, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none' }}>
+                                  🔍 Visualizza
+                                </a>
+                              </div>
+                            )
+                          })()}
+
                           {/* ── Robots.txt ── */}
                           {(() => {
                             const robotsUrl = (() => {

@@ -1,5 +1,5 @@
 type Page = { slug: string; name: string; inMenu?: boolean; robots?: { noindex?: boolean; nofollow?: boolean } }
-type BlogPostRef = { slug: string; published_at: string | null }
+type BlogPostRef = { slug: string; title?: string; published_at: string | null; seo_description?: string }
 
 export function generateSitemap(
   pages: Page[],
@@ -45,6 +45,50 @@ export function generateSitemap(
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${allUrls.join('\n')}
 </urlset>`
+}
+
+/**
+ * Generate /llms.txt — a markdown summary of the site for AI assistants.
+ * Standard: https://llmstxt.org
+ * Helps LLMs (Claude, ChatGPT, Perplexity, etc.) understand the site
+ * without crawling every page individually.
+ */
+export function generateLlmsTxt(
+  pages: Page[],
+  baseUrl: string,
+  siteName: string,
+  siteDescription?: string,
+  blogPosts: BlogPostRef[] = []
+): string {
+  const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
+  const visiblePages = pages.filter(isVisible)
+
+  const pageLines = visiblePages.map(p => {
+    const url = p.slug === 'home' ? `${baseUrl}/` : `${baseUrl}/${p.slug}`
+    return `- [${p.name}](${url})`
+  }).join('\n')
+
+  const blogLines = blogPosts.slice(0, 20).map(post => {
+    const url = `${baseUrl}/blog/${post.slug}`
+    const title = post.title || post.slug
+    const desc = post.seo_description ? `: ${post.seo_description.slice(0, 120)}` : ''
+    return `- [${title}](${url})${desc}`
+  }).join('\n')
+
+  const desc = siteDescription ? `\n> ${siteDescription}\n` : ''
+
+  return `# ${siteName}
+${desc}
+## Pagine principali
+
+${pageLines || '- Nessuna pagina disponibile'}
+${blogPosts.length > 0 ? `\n## Blog\n\n${blogLines}` : ''}
+
+## Note
+
+- Sito web: ${baseUrl}
+- Sitemap: ${baseUrl}/sitemap.xml
+`
 }
 
 export function generateRobots(baseUrl: string, pages: Page[] = []): string {
