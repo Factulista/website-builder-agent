@@ -2324,7 +2324,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           lastInlineVersionRef.current = now
           void createVersion('Modifica inline', curPages)
         }
-        const ok = await saveState(messages, curPages)
+        // Fast-path: inline edits only touch page HTML → save pages-only via RPC
+        // (no full-blob read/write). Falls back to full saveState on any error.
+        const ok = await savePagesInline(curPages)
         if (ok) {
           setEditSaving('saved')
           setTimeout(() => setEditSaving(prev => prev === 'saved' ? 'idle' : prev), 2000)
@@ -3129,6 +3131,46 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
 
     return cfg
+  }
+
+  // Fast-path save for the INLINE EDITOR only (high-frequency content edits).
+  // Updates ONLY pages + shared nav/footer via the save_inline_pages RPC, which
+  // uses jsonb_set inside Postgres — the full site_config never crosses the network
+  // (no SELECT) and only the pages key is written. ~12MB → ~1-2MB per inline save.
+  //
+  // Safe because inline editing never changes messages/media/structure/settings —
+  // only page HTML (+ nav/footer derived from home). jsonb_set preserves every other
+  // key. Structural changes (chat, add/delete page) still use the full saveState below.
+  // Falls back to saveState if the RPC isn't deployed or errors.
+  const savePagesInline = async (newPages: Page[]): Promise<boolean> => {
+    if (!Array.isArray(newPages) || newPages.length === 0) return false
+    // Re-derive shared nav/footer from home (mirrors buildSiteConfig's logic)
+    const homePage = newPages.find(p => p.slug === 'home') ?? newPages[0]
+    let navJson: string | null = null
+    let footerJson: string | null = null
+    if (homePage?.html) {
+      const navMatch = homePage.html.match(/<nav[\s\S]*?<\/nav>/i)
+      if (navMatch) { navJson = navMatch[0]; sharedNavHtmlRef.current = navMatch[0] }
+      const footerMatch = homePage.html.match(/<footer[\s\S]*?<\/footer>/i)
+      if (footerMatch) { footerJson = footerMatch[0]; sharedFooterHtmlRef.current = footerMatch[0] }
+    }
+    try {
+      const { error } = await supabase.rpc('save_inline_pages', {
+        p_id: id,
+        p_pages: newPages,
+        p_shared_nav: navJson,
+        p_shared_footer: footerJson,
+      })
+      if (error) {
+        console.warn('[savePagesInline] RPC failed, falling back to saveState:', error.message)
+        return saveState(messages, newPages)
+      }
+      latestPagesRef.current = newPages
+      return true
+    } catch (e) {
+      console.warn('[savePagesInline] unexpected, falling back to saveState:', e)
+      return saveState(messages, newPages)
+    }
   }
 
   // NOTE: `_newVersions` is accepted for backwards-compat with existing call sites
