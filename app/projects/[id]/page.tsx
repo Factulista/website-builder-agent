@@ -3051,7 +3051,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           : v))
       }
       // Prune old versions beyond the most-recent 30, server-side
-      void supabase.rpc('prune_project_versions', { p_project_id: id, p_keep: 30 })
+      void supabase.rpc('prune_project_versions', { p_project_id: id, p_keep: 10 })
         .then(({ error: pErr }: { error: { message: string } | null }) => {
           if (pErr) console.warn('[createVersion] prune skipped:', pErr.message)
         })
