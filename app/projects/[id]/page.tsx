@@ -8440,44 +8440,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             }}
                             style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                           />
-                          {/* Suggested keywords */}
-                          {suggestedKeywordsForArticle.length > 0 && (
-                            <div style={{ marginTop: '8px' }}>
-                              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, marginBottom: '6px' }}>💡 KEYWORD SUGGERITE</div>
-                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                {suggestedKeywordsForArticle.map(kw => (
-                                  <button
-                                    key={kw.keyword}
-                                    onClick={() => {
-                                      const isSelected = articleKeywordChips.includes(kw.keyword)
-                                      const newChips = isSelected
-                                        ? articleKeywordChips.filter(k => k !== kw.keyword)
-                                        : [...articleKeywordChips, kw.keyword]
-                                      setArticleKeywordChips(newChips)
-                                      saveMeta(post.id, { tags: newChips })
-                                    }}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      padding: '4px 8px',
-                                      borderRadius: '5px',
-                                      border: `1px solid ${articleKeywordChips.includes(kw.keyword) ? '#6366f1' : C.border}`,
-                                      background: articleKeywordChips.includes(kw.keyword) ? '#e0e7ff' : C.white,
-                                      color: articleKeywordChips.includes(kw.keyword) ? '#4f46e5' : C.text,
-                                      fontSize: '0.72rem',
-                                      cursor: 'pointer',
-                                      fontFamily: 'inherit',
-                                      transition: 'all 0.15s',
-                                    }}
-                                  >
-                                    {articleKeywordChips.includes(kw.keyword) ? '✓' : '+'} {kw.keyword}
-                                    <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>({kw.volume})</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                         </div>
                         <div>
                           <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug URL</label>
@@ -8578,6 +8540,63 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                       />
                     </div>
+                    {/* Keyword occurrences in article */}
+                    {(() => {
+                      const tags = post.tags ?? []
+                      if (tags.length === 0) return null
+                      const html = post.content_html ?? ''
+                      if (!html) return null
+                      // Extract text per tag type from HTML
+                      const getTexts = (pattern: RegExp) =>
+                        [...html.matchAll(pattern)].map(m => m[1].replace(/<[^>]+>/g, '').toLowerCase())
+                      const h1s = getTexts(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)
+                      const h2s = getTexts(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)
+                      const h3s = getTexts(/<h3[^>]*>([\s\S]*?)<\/h3>/gi)
+                      const h4s = getTexts(/<h4[^>]*>([\s\S]*?)<\/h4>/gi)
+                      const ps  = getTexts(/<p[^>]*>([\s\S]*?)<\/p>/gi)
+                      const countIn = (texts: string[], kw: string) =>
+                        texts.filter(t => t.includes(kw.toLowerCase())).length
+                      const rows = tags.map(kw => ({
+                        kw,
+                        h1: countIn(h1s, kw),
+                        h2: countIn(h2s, kw),
+                        h3: countIn(h3s, kw),
+                        h4: countIn(h4s, kw),
+                        p:  countIn(ps,  kw),
+                      }))
+                      const Cell = ({ n, target }: { n: number; target: number }) => {
+                        const color = n === 0 ? '#d1d5db' : n >= target ? '#16a34a' : '#f59e0b'
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '4px', background: n === 0 ? '#f3f4f6' : n >= target ? '#dcfce7' : '#fef3c7', color, fontSize: '0.7rem', fontWeight: 700 }}>
+                            {n === 0 ? '–' : n}
+                          </span>
+                        )
+                      }
+                      return (
+                        <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
+                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>🎯 Keyword nel testo</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr repeat(5, 22px)', gap: '4px', alignItems: 'center' }}>
+                            {/* Header */}
+                            <span style={{ fontSize: '0.62rem', color: C.textFaint }}></span>
+                            {['H1','H2','H3','H4','P'].map(h => (
+                              <span key={h} style={{ fontSize: '0.6rem', fontWeight: 700, color: C.textFaint, textAlign: 'center' }}>{h}</span>
+                            ))}
+                            {/* Rows */}
+                            {rows.map(r => (
+                              <>
+                                <span key={r.kw} style={{ fontSize: '0.72rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }} title={r.kw}>{r.kw}</span>
+                                <Cell n={r.h1} target={1} />
+                                <Cell n={r.h2} target={1} />
+                                <Cell n={r.h3} target={1} />
+                                <Cell n={r.h4} target={1} />
+                                <Cell n={r.p}  target={2} />
+                              </>
+                            ))}
+                          </div>
+                          <div style={{ fontSize: '0.6rem', color: C.textFaint, marginTop: '6px' }}>🟢 presente · 🟡 bassa · – assente</div>
+                        </div>
+                      )
+                    })()}
                     <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
                       <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>SEO</div>
                       <label style={{ display: 'block', fontSize: '0.7rem', color: C.textFaint, marginBottom: '4px' }}>Meta title</label>
