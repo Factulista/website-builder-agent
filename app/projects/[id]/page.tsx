@@ -2682,7 +2682,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // Root project ALWAYS canonicalises to www, even if its custom_domain is the apex.
     const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
     if (rootProject && projectSlug === rootProject) return `https://www.${ROOT_DOMAIN}`
-    if (customDomainStatus === 'verified' && customDomain) return `https://${customDomain}`
+    // Always use www for apex domains (no subdomain prefix)
+    const wwwDomain = customDomain && !customDomain.startsWith('www.') ? `www.${customDomain}` : customDomain
+    if (customDomainStatus === 'verified' && customDomain) return `https://${wwwDomain}`
     if (typeof window === 'undefined') return ''
     const host = window.location.host
     const isProduction = host === ROOT_DOMAIN || host.endsWith(`.${ROOT_DOMAIN}`)
@@ -6323,12 +6325,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     {/* ── Tab: sitemap ── */}
                     {seoSubTab === 'sitemap' && (() => {
                       // Public URL shown to user (for Search Console).
-                      // Root project ALWAYS shows www, even if its custom_domain is the apex.
+                      const publicDomain = customDomain && !customDomain.startsWith('www.') ? `www.${customDomain}` : customDomain
                       const sitemapUrl = (() => {
                         const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
                         const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
                         if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}/sitemap.xml`
-                        if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/sitemap.xml`
+                        if (customDomain && customDomainStatus === 'verified') return `https://${publicDomain}/sitemap.xml`
                         return `/preview/${projectSlug}/sitemap.xml`
                       })()
                       // Internal API URL for download (same-origin, no CORS issues)
@@ -6489,7 +6491,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               const rootProject = process.env.NEXT_PUBLIC_ROOT_DOMAIN_PROJECT ?? ''
                               const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
                               if (rootProject && projectSlug === rootProject) return `https://www.${rootDomain}/robots.txt`
-                              if (customDomain && customDomainStatus === 'verified') return `https://${customDomain}/robots.txt`
+                              if (customDomain && customDomainStatus === 'verified') return `https://${publicDomain}/robots.txt`
                               return `/preview/${projectSlug}/robots.txt`
                             })()
                             return (
