@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
 
   const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
   const pages = (siteConfig.pages as { slug: string; name: string; html?: string }[]) ?? []
-  const seoKeywords = (siteConfig.keywords as Array<{keyword:string}>)?.map(k => k.keyword) ?? []
+  // Support both full {keyword} and compact {k} format
+  const seoKeywords = ((siteConfig.keywords as Array<any>) ?? []).map((k: any) => k.keyword ?? k.k ?? '').filter(Boolean)
 
   // If the middleware passed a host override (e.g. www.factulista.com), use that directly;
   // otherwise derive the correct URL from domain config and env vars.

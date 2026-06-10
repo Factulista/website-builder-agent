@@ -211,9 +211,17 @@ export function buildRichContextPrompt({ context, pages, designSystem, sharedCss
     parts.push(`\n${rulesText}`)
   }
 
-  // ── SEO Keywords ──
+  // ── SEO Keywords (supports both full {keyword,volume,...} and compact {k,v,d,i} format) ──
   if (seoKeywords && seoKeywords.length > 0) {
+    const normalize = (k: SeoKeyword) => ({
+      keyword: k.keyword ?? (k as any).k ?? '',
+      volume:  k.volume  ?? (k as any).v ?? 0,
+      difficulty: k.difficulty ?? (k as any).d ?? 0,
+      intent: k.intent ?? (k as any).i ?? '',
+    })
     const top = seoKeywords
+      .map(normalize)
+      .filter(k => k.keyword)
       .sort((a, b) => b.volume - a.volume)
       .slice(0, 25)
     const lines = top.map(k => {

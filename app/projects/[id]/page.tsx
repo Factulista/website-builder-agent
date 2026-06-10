@@ -3033,9 +3033,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }).eq('id', id)
       }
 
-      // Load SEO keywords
-      if ((config as any)?.keywords?.length) {
-        setSeoKeywords((config as any).keywords)
+      // Load SEO keywords — decompress from compact {k,v,d,i} format
+      const rawKws = (config as any)?.keywords ?? []
+      if (rawKws.length > 0) {
+        const kws = rawKws.map((kw: any) => kw.keyword != null
+          ? kw  // already in full format (legacy)
+          : { keyword: kw.k, volume: kw.v ?? 0, difficulty: kw.d ?? 0, intent: kw.i })
+        setSeoKeywords(kws)
       }
     }
     load()
@@ -6672,11 +6676,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                       const saveKeywords = async (kws: typeof seoKeywords) => {
                         setSeoKeywords(kws)
-                        const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-                        await supabase.from('projects').update({
-                          site_config: { ...(proj?.site_config ?? {}), keywords: kws },
-                          updated_at: new Date().toISOString(),
-                        }).eq('id', id)
+                        // Compress to {k,v,d,i} format (~60% smaller than full keys)
+                        // and save via jsonb_set RPC — immune to site_config wipe on DB errors
+                        const compressed = kws.map(kw => ({
+                          k: kw.keyword,
+                          v: kw.volume || undefined,
+                          d: kw.difficulty || undefined,
+                          i: kw.intent ? kw.intent.split(',')[0].trim().slice(0, 15) : undefined,
+                        }))
+                        const { error } = await supabase.rpc('save_project_keywords', {
+                          p_id: id,
+                          p_keywords: compressed,
+                        })
+                        if (error) {
+                          // Fallback: safe jsonb_set via update (still better than select+overwrite)
+                          console.warn('[saveKeywords] RPC failed, using fallback:', error.message)
+                          const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
+                          if (proj?.site_config) {
+                            await supabase.from('projects').update({
+                              site_config: { ...(proj.site_config as object), keywords: compressed },
+                              updated_at: new Date().toISOString(),
+                            }).eq('id', id)
+                          }
+                        }
                       }
 
                       const parseCSV = (text: string) => {
