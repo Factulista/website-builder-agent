@@ -241,6 +241,9 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // is a duplicate that adds ~300ms of extra blocking load. Strip them all so
   // only the Design System version survives.
   html = html
+    .replace(/<link[^>]+rel=["']preconnect["'][^>]*href=["'][^"']*googleapis\.com[^"']*["'][^>]*\/?>\s*/gi, '')
+    .replace(/<link[^>]+href=["'][^"']*googleapis\.com[^"']*["'][^>]*rel=["']preconnect["'][^>]*\/?>\s*/gi, '')
+    .replace(/<link[^>]+rel=["']preconnect["'][^>]*href=["'][^"']*gstatic\.com[^"']*["'][^>]*\/?>\s*/gi, '')
     .replace(/<link[^>]+href=["'][^"']*fonts\.googleapis\.com[^"']*["'][^>]*\/?>\s*/gi, '')
     .replace(/<link[^>]+href=["'][^"']*fonts\.gstatic\.com[^"']*["'][^>]*\/?>\s*/gi, '')
     .replace(/@import\s+url\(['"]?https:\/\/fonts\.googleapis\.com[^)'"]*['"]?\)[^;]*;\s*/gi, '')

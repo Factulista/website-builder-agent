@@ -15,8 +15,14 @@ function getSupabase() {
 
 function stripFonts(html: string): { html: string; changed: boolean } {
   const cleaned = html
+    // preconnect hints to google font servers
+    .replace(/<link[^>]+rel=["']preconnect["'][^>]*href=["'][^"']*googleapis\.com[^"']*["'][^>]*\/?>\s*/gi, '')
+    .replace(/<link[^>]+href=["'][^"']*googleapis\.com[^"']*["'][^>]*rel=["']preconnect["'][^>]*\/?>\s*/gi, '')
+    .replace(/<link[^>]+rel=["']preconnect["'][^>]*href=["'][^"']*gstatic\.com[^"']*["'][^>]*\/?>\s*/gi, '')
+    // stylesheet links
     .replace(/<link[^>]+href=["'][^"']*fonts\.googleapis\.com[^"']*["'][^>]*\/?>\s*/gi, '')
     .replace(/<link[^>]+href=["'][^"']*fonts\.gstatic\.com[^"']*["'][^>]*\/?>\s*/gi, '')
+    // @import inside <style>
     .replace(/@import\s+url\(['"]?https:\/\/fonts\.googleapis\.com[^)'"]*['"]?\)[^;]*;\s*/gi, '')
   return { html: cleaned, changed: cleaned !== html }
 }
