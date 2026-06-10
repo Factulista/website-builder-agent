@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, use, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
+import { suggestKeywordsForArticle, type SeoKeyword } from '../../../lib/keyword-suggester'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
@@ -2020,6 +2021,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [kwVolSort, setKwVolSort] = useState<'desc'|'asc'>('desc')
   const [kwIntentFilter, setKwIntentFilter] = useState('')
   const [kwPage, setKwPage] = useState(0)
+  const [suggestedKeywordsForArticle, setSuggestedKeywordsForArticle] = useState<Array<{keyword:string;volume:number;difficulty:number}>>([])
+  const [articleKeywordChips, setArticleKeywordChips] = useState<string[]>([])
   const [sitemapDownloading, setSitemapDownloading] = useState(false)
   const [sitemapCopied, setSitemapCopied] = useState(false)
   const [robotsCopied, setRobotsCopied] = useState(false)
@@ -2325,6 +2328,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }, [viewMode, activePage?.slug, messages, versions])
 
   // Listen for inline edits on blog post content
+  // Sync article keyword chips when post changes
+  useEffect(() => {
+    if (selectedPost?.tags?.length) {
+      setArticleKeywordChips(selectedPost.tags)
+    } else {
+      setArticleKeywordChips([])
+    }
+  }, [selectedPost?.id])
+
   useEffect(() => {
     if (viewMode !== 'blog' || !selectedPost) return
     const handleBlogMessage = (e: MessageEvent) => {
@@ -8270,6 +8282,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Titolo</label>
                           <input
                             defaultValue={post.title}
+                            onChange={e => {
+                              // Real-time suggestion as user types
+                              const title = e.target.value.trim()
+                              if (title && seoKeywords.length > 0) {
+                                const suggested = suggestKeywordsForArticle(title, seoKeywords, undefined, 6)
+                                setSuggestedKeywordsForArticle(suggested)
+                              }
+                            }}
                             onBlur={e => {
                               const newTitle = e.target.value.trim() || post.title
                               saveMeta(post.id, { title: newTitle })
@@ -8282,6 +8302,44 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             }}
                             style={{ width: '100%', border: `1px solid ${C.border}`, borderRadius: '7px', padding: '6px 10px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}
                           />
+                          {/* Suggested keywords */}
+                          {suggestedKeywordsForArticle.length > 0 && (
+                            <div style={{ marginTop: '8px' }}>
+                              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, marginBottom: '6px' }}>💡 KEYWORD SUGGERITE</div>
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {suggestedKeywordsForArticle.map(kw => (
+                                  <button
+                                    key={kw.keyword}
+                                    onClick={() => {
+                                      const isSelected = articleKeywordChips.includes(kw.keyword)
+                                      const newChips = isSelected
+                                        ? articleKeywordChips.filter(k => k !== kw.keyword)
+                                        : [...articleKeywordChips, kw.keyword]
+                                      setArticleKeywordChips(newChips)
+                                      saveMeta(post.id, { tags: newChips })
+                                    }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '4px 8px',
+                                      borderRadius: '5px',
+                                      border: `1px solid ${articleKeywordChips.includes(kw.keyword) ? '#6366f1' : C.border}`,
+                                      background: articleKeywordChips.includes(kw.keyword) ? '#e0e7ff' : C.white,
+                                      color: articleKeywordChips.includes(kw.keyword) ? '#4f46e5' : C.text,
+                                      fontSize: '0.72rem',
+                                      cursor: 'pointer',
+                                      fontFamily: 'inherit',
+                                      transition: 'all 0.15s',
+                                    }}
+                                  >
+                                    {articleKeywordChips.includes(kw.keyword) ? '✓' : '+'} {kw.keyword}
+                                    <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>({kw.volume})</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                         <div>
                           <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug URL</label>
