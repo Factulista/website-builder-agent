@@ -2185,6 +2185,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Blog posts are rendered to their published HTML form (same builder used by the
   // /preview and custom-domain routes) so the SEO checks see exactly what Google sees.
   // Guard: skip expensive regex parsing unless the user is actually on the SEO tab.
+  // SEO panel follows the top URL-bar page selector (activeSlug), like the other views.
+  // No separate page dropdown — change page from the top selector and the SEO analysis follows.
+  useEffect(() => {
+    if (viewMode === 'seo') setSeoPageSlug(activeSlug)
+  }, [viewMode, activeSlug])
+
   useEffect(() => {
     if (pages.length === 0) return
     if (viewMode !== 'seo') return
@@ -5846,38 +5852,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </p>
                   </div>
 
-                  {/* Page selector */}
-                  <div>
-                    <p style={{ margin: '0 0 6px', fontSize: '0.7rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pagina</p>
-                    <select
-                      value={seoPageSlug}
-                      onChange={e => setSeoPageSlug(e.target.value)}
-                      style={{
-                        width: '100%', padding: '6px 8px', borderRadius: '7px',
-                        border: `1px solid ${C.border}`, background: C.white,
-                        fontSize: '0.78rem', color: C.text, fontFamily: 'inherit', cursor: 'pointer',
-                      }}
-                    >
-                      <option value="all">Tutte le pagine</option>
-                      {pages.map(p => {
-                        const a = seoAnalyses.find(x => x.pageSlug === p.slug)
-                        return (
-                          <option key={p.slug} value={p.slug}>
-                            {p.name} {a ? `(${a.overallScore})` : ''}
-                          </option>
-                        )
-                      })}
-                      {seoAnalyses.filter(a => a.pageSlug.startsWith('blog/')).length > 0 && (
-                        <optgroup label="📝 Blog">
-                          {seoAnalyses.filter(a => a.pageSlug.startsWith('blog/')).map(a => (
-                            <option key={a.pageSlug} value={a.pageSlug}>
-                              {a.pageName.replace(/^📝 /, '')} ({a.overallScore})
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                  </div>
+                  {/* Page selector removed — SEO follows the top URL-bar selector */}
 
                   {/* Score breakdown by group */}
                   <div>
