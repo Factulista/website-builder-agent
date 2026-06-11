@@ -2,81 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { InjectPoints } from './blog-serve'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
 import { mergeRootVars } from './design-system'
-
-/**
- * Extracts FAQ Q&A pairs from the visible HTML and returns a clean FAQPage JSON-LD
- * script tag, or null if no FAQ section is found.
- *
- * Supports common patterns:
- *   - .faq-trigger / .faq-content  (Factulista accordion)
- *   - <details> / <summary>        (native HTML accordion)
- *   - [data-question] / [data-answer]
- *   - Generic: consecutive <dt>/<dd> pairs
- *
- * The generated schema uses the real siteUrl so @id is always canonical.
- */
-function extractFaqSchema(html: string, siteUrl: string): string | null {
-  const stripTags = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
-
-  const pairs: { q: string; a: string }[] = []
-
-  // Pattern 1: .faq-trigger span + .faq-content  (Factulista pattern)
-  const triggerRe = /<[^>]+class="[^"]*faq-trigger[^"]*"[^>]*>([\s\S]*?)<\/button>/gi
-  const contentRe = /<[^>]+class="[^"]*faq-content[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
-  const triggers: string[] = []
-  const contents: string[] = []
-  let m: RegExpExecArray | null
-  while ((m = triggerRe.exec(html)) !== null) {
-    const q = stripTags(m[1])
-    if (q) triggers.push(q)
-  }
-  while ((m = contentRe.exec(html)) !== null) {
-    const a = stripTags(m[1])
-    if (a) contents.push(a)
-  }
-  if (triggers.length > 0 && contents.length > 0) {
-    const count = Math.min(triggers.length, contents.length)
-    for (let i = 0; i < count; i++) {
-      if (triggers[i] && contents[i]) pairs.push({ q: triggers[i], a: contents[i] })
-    }
-  }
-
-  // Pattern 2: <details><summary>Q</summary>A</details>
-  if (pairs.length === 0) {
-    const detailsRe = /<details[^>]*>([\s\S]*?)<\/details>/gi
-    while ((m = detailsRe.exec(html)) !== null) {
-      const inner = m[1]
-      const summaryMatch = inner.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
-      if (!summaryMatch) continue
-      const q = stripTags(summaryMatch[1])
-      const a = stripTags(inner.replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, ''))
-      if (q && a) pairs.push({ q, a })
-    }
-  }
-
-  if (pairs.length === 0) return null
-
-  const esc = (s: string) => s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const entities = pairs.map((p, i) => `{
-      "@type": "Question",
-      "@id": "${siteUrl}/#faq-${i + 1}",
-      "name": "${esc(p.q)}",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "${esc(p.a)}"
-      }
-    }`).join(',\n    ')
-
-  return `<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    ${entities}
-  ]
-}
-</script>`
-}
+import { applySeoMeta } from './seo/crawler-view'
 
 type Page = {
   slug: string
@@ -276,102 +202,11 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
       result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${noindex}`)
     }
   } else {
-    // ── Production: set the canonical + og:url AUTHORITATIVELY from the served URL ──
-    // The serving layer knows the real public URL, so it owns the canonical — immune
-    // to stored HTML having apex (no-www), stale, or missing canonical tags. This is
-    // the single source of truth and guarantees every page has the correct www canonical.
-    const canonicalUrl = (!pageSlug || pageSlug === 'home') ? `${siteUrl}/` : `${siteUrl}/${pageSlug}`
-    // Strip any existing canonical (whatever the stored HTML had) and inject the definitive one
-    result = result.replace(/<link[^>]+rel=["']canonical["'][^>]*\/?>\s*/gi, '')
-    if (/<head[^>]*>/i.test(result)) {
-      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n<link rel="canonical" href="${canonicalUrl}">`)
-    }
-
-    // ── Open Graph: COMPLETE, AUTHORITATIVE, DEDUPLICATED set on every page ──
-    // Strip ALL existing og:* tags (removes duplicates + stale values), then inject
-    // one clean, full set. Sources: og_title override → <title>; description from the
-    // page <meta description>; locale from <html lang>; image 1200×630 (OG format).
-    const esc = (s: string) => s.replace(/"/g, '&quot;').replace(/\s+/g, ' ').trim()
-    const titleFromHtml = (result.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
-    const descFromHtml = (
-      result.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ??
-      result.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i)?.[1] ?? ''
-    ).trim()
-    const langFromHtml = (result.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? 'es').slice(0, 2).toLowerCase()
-    const localeMap: Record<string, string> = { es: 'es_ES', it: 'it_IT', en: 'en_US', fr: 'fr_FR', de: 'de_DE', pt: 'pt_PT', ca: 'ca_ES' }
-    const ogLocale = localeMap[langFromHtml] ?? 'es_ES'
-    const ogTitleVal = esc(ogTitle?.trim() || titleFromHtml || pageSlug)
-    const ogDescVal = esc(descFromHtml)
-    const ogSiteName = esc(siteName ?? '')
-
-    result = result.replace(/<meta[^>]+property=["']og:[^"']*["'][^>]*\/?>\s*/gi, '')
-
-    const ogTags = [
-      `<meta property="og:title" content="${ogTitleVal}">`,
-      ogDescVal ? `<meta property="og:description" content="${ogDescVal}">` : '',
-      `<meta property="og:type" content="website">`,
-      `<meta property="og:url" content="${canonicalUrl}">`,
-      ogSiteName ? `<meta property="og:site_name" content="${ogSiteName}">` : '',
-      `<meta property="og:locale" content="${ogLocale}">`,
-      ogImageUrl ? `<meta property="og:image" content="${ogImageUrl}">` : '',
-      ogImageUrl ? `<meta property="og:image:alt" content="${ogTitleVal}">` : '',
-      ogImageUrl ? `<meta property="og:image:width" content="1200">` : '',
-      ogImageUrl ? `<meta property="og:image:height" content="630">` : '',
-    ].filter(Boolean).join('\n')
-    if (/<head[^>]*>/i.test(result)) {
-      result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${ogTags}`)
-    }
-
-    // ── Organization Schema: always injected with correct canonical values ──
-    // Strip any existing Organization JSON-LD (may have wrong URL/logo from AI),
-    // then inject a clean one using the real siteUrl, faviconUrl and siteName.
-    result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?"@type"\s*:\s*"Organization"[\s\S]*?<\/script>\s*/gi, '')
-    if (/<\/head>/i.test(result) && siteName) {
-      const orgName = (siteName).replace(/"/g, '&quot;')
-      const orgDesc = (result.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? '').replace(/"/g, '&quot;')
-      const orgLogo = faviconUrl ?? ''
-      const orgSchema = `<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  "name": "${orgName}",
-  "url": "${siteUrl}",
-  ${orgLogo ? `"logo": "${orgLogo}",` : ''}
-  ${orgDesc ? `"description": "${orgDesc}",` : ''}
-  "contactPoint": {
-    "@type": "ContactPoint",
-    "contactType": "Customer Support",
-    "availableLanguage": "es"
-  }
-}
-</script>`
-      result = result.replace(/<\/head>/i, `${orgSchema}\n</head>`)
-    }
-
-    // ── FAQ Schema: auto-extracted from visible FAQ content ──
-    // Strip any existing FAQPage JSON-LD (prevents duplicates / stale AI-generated ones),
-    // then inject a fresh one built from the actual visible Q&A on the page.
-    // This keeps structured data always in sync with content — no manual fix needed.
-    result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?"@type"\s*:\s*"FAQPage"[\s\S]*?<\/script>\s*/gi, '')
-    const faqSchema = extractFaqSchema(result, siteUrl)
-    if (faqSchema && /<\/head>/i.test(result)) {
-      result = result.replace(/<\/head>/i, `${faqSchema}\n</head>`)
-    }
-
-    // ── Robots meta: AUTHORITATIVE from the page setting (Pages panel) ──
-    // Always strip any stale robots meta from the stored HTML, then inject the
-    // directive from the page's setting. Default (index, follow) = no tag.
-    // This makes the per-page toggle the single source of truth and neutralises
-    // any leftover noindex baked into the HTML.
-    result = result.replace(/<meta[^>]+name=["']robots["'][^>]*\/?>\s*/gi, '')
-    if (robots?.noindex || robots?.nofollow) {
-      const idx = robots?.noindex ? 'noindex' : 'index'
-      const flw = robots?.nofollow ? 'nofollow' : 'follow'
-      const robotsTag = `<meta name="robots" content="${idx}, ${flw}">`
-      if (/<head[^>]*>/i.test(result)) {
-        result = result.replace(/<head[^>]*>/i, (m) => `${m}\n${robotsTag}`)
-      }
-    }
+    // ── Production: inject all SEO-relevant <head> meta via the SHARED function ──
+    // applySeoMeta() is the single source of truth (also used by the SEO analyzer),
+    // so the SEO panel evaluates the exact HTML a crawler sees. Handles: canonical,
+    // complete Open Graph, Organization JSON-LD, FAQPage JSON-LD, robots meta, favicon.
+    result = applySeoMeta(result, { siteUrl, pageSlug, faviconUrl, siteName, ogTitle, ogImageUrl, robots })
   }
 
   // Inject favicon (OG image is handled in the complete OG block above, production only)

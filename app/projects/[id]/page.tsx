@@ -19,6 +19,7 @@ const ComponentCanvas = dynamic(
 import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
 import { analyzeAllPages, getAggregateScore, scoreColor, formatCheckValue, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
+import { applySeoMeta } from '../../../lib/seo/crawler-view'
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
@@ -2234,7 +2235,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       })
 
-    setSeoAnalyses(analyzeAllPages([...pages, ...blogPagesForSeo], { faviconUrl: faviconUrlRef.current || undefined, siteUrl: publicBaseUrl || undefined }))
+    // CRITICAL: analyze the HTML as the CRAWLER sees it = raw HTML + server-side meta
+    // injection (canonical, complete OG, Organization + FAQ JSON-LD, robots, favicon).
+    // applySeoMeta is the SAME function the serving layer uses, so the SEO panel
+    // evaluates exactly the final page — not the raw stored HTML.
+    const siteUrlForSeo = (publicBaseUrl || '').replace(/\/$/, '')
+    const businessName = projectContext?.businessName || ''
+    const pagesAsCrawlerSees = pages.map(p => ({
+      ...p,
+      html: siteUrlForSeo
+        ? applySeoMeta(p.html, {
+            siteUrl: siteUrlForSeo,
+            pageSlug: p.slug,
+            faviconUrl: faviconUrlRef.current || undefined,
+            siteName: businessName,
+            ogTitle: (p as { og_title?: string }).og_title,
+            ogImageUrl: (p as { og_image?: string }).og_image,
+            robots: (p as { robots?: { noindex?: boolean; nofollow?: boolean } }).robots,
+          })
+        : p.html,
+    }))
+    setSeoAnalyses(analyzeAllPages([...pagesAsCrawlerSees, ...blogPagesForSeo], { faviconUrl: faviconUrlRef.current || undefined, siteUrl: publicBaseUrl || undefined }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, viewMode, blogPosts, projectSlug, projectContext, blogSidebarBannerUrl, blogSidebarBannerLink])
 
