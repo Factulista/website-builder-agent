@@ -18,7 +18,7 @@ const ComponentCanvas = dynamic(
 )
 import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
-import { analyzeAllPages, getAggregateScore, scoreColor, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
+import { analyzeAllPages, getAggregateScore, scoreColor, formatCheckValue, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
 import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
@@ -6037,6 +6037,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                   <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: C.textFaint, lineHeight: 1.4 }}>
                                     {result.detail || check.description}
                                   </p>
+                                  {/* Actual value being evaluated (from HTML / system) */}
+                                  {(() => {
+                                    const val = formatCheckValue(check.id, result.data)
+                                    if (!val) return null
+                                    return (
+                                      <p style={{ margin: '3px 0 0', fontSize: '0.7rem', color: C.text, lineHeight: 1.4, background: C.bgPanel, padding: '3px 7px', borderRadius: '4px', fontFamily: 'ui-monospace, monospace', wordBreak: 'break-word' as const }}>
+                                        {val}
+                                      </p>
+                                    )
+                                  })()}
                                   {/* Score bar */}
                                   <div style={{ marginTop: '5px', height: '3px', borderRadius: '2px', background: C.border, overflow: 'hidden', maxWidth: '240px' }}>
                                     <div style={{

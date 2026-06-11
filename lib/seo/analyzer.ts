@@ -648,6 +648,104 @@ function checkTitleKeywordCoherence(html: string): CheckResult {
   }
 }
 
+// ── Actual-value formatter ──────────────────────────────────────────────────────
+// Returns the real value being evaluated for a check (from HTML or system),
+// so the SEO panel can show "what it's actually looking at", not just the verdict.
+// Returns null when there's nothing meaningful to surface.
+export function formatCheckValue(checkId: CheckId, data?: Record<string, unknown>): string | null {
+  if (!data) return null
+  const d = data as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v))
+  const arr = (v: unknown) => (Array.isArray(v) ? (v as unknown[]).map(str) : [])
+  const trunc = (s: string, n = 120) => (s.length > n ? s.slice(0, n) + '…' : s)
+
+  switch (checkId) {
+    case 'title':
+    case 'meta-description':
+      return d.current ? `"${trunc(str(d.current))}"` : (d.missing ? 'Assente nell\'HTML' : null)
+    case 'canonical':
+      return d.url ? str(d.url) : 'Nessun tag canonical'
+    case 'lang':
+      return d.lang ? `lang="${str(d.lang)}"` : 'Attributo lang assente'
+    case 'noindex':
+      return d.hasNoindex ? `noindex presente (${str(d.source)})` : 'Nessun noindex'
+    case 'open-graph': {
+      const present = arr(d.present), missing = arr(d.missing)
+      const parts: string[] = []
+      if (present.length) parts.push(`Presenti: ${present.join(', ')}`)
+      if (missing.length) parts.push(`Mancanti: ${missing.join(', ')}`)
+      return parts.join(' · ') || null
+    }
+    case 'h1-unique':
+    case 'h1-coherence': {
+      const texts = arr(d.texts)
+      if (texts.length) return `H1: ${texts.map(t => `"${trunc(t, 60)}"`).join(', ')}`
+      return typeof d.count === 'number' ? `${d.count} tag H1 trovati` : null
+    }
+    case 'h1-keyword':
+      return d.text ? `H1: "${trunc(str(d.text), 80)}"` : null
+    case 'heading-hierarchy': {
+      const headings = arr(d.headings)
+      const issues = arr(d.issues)
+      const base = headings.length ? `Struttura: ${headings.join(' → ')}` : null
+      return issues.length ? `${base ? base + ' · ' : ''}Problemi: ${issues.join('; ')}` : base
+    }
+    case 'title-keyword-coherence': {
+      const missing = arr(d.missing)
+      return missing.length ? `Keyword titolo assenti nel testo: ${missing.join(', ')}` : 'Tutte le keyword del titolo presenti nel testo'
+    }
+    case 'alt-text':
+    case 'img-dimensions':
+    case 'lazy-loading': {
+      const total = typeof d.total === 'number' ? d.total : 0
+      const ok = typeof d.withAlt === 'number' ? d.withAlt
+        : typeof d.withDims === 'number' ? d.withDims
+        : typeof d.withLazy === 'number' ? d.withLazy : null
+      const missing = arr(d.missing)
+      if (total === 0) return 'Nessuna immagine nella pagina'
+      const base = ok != null ? `${ok}/${total} immagini OK` : `${total} immagini`
+      return missing.length ? `${base} · mancano su: ${missing.slice(0, 3).map(s => trunc(s, 40)).join(', ')}${missing.length > 3 ? ` +${missing.length - 3}` : ''}` : base
+    }
+    case 'broken-links': {
+      const broken = arr(d.broken)
+      return broken.length ? `Link rotti: ${broken.slice(0, 5).join(', ')}${broken.length > 5 ? ` +${broken.length - 5}` : ''}` : 'Nessun link interno rotto'
+    }
+    case 'word-count':
+      return typeof d.wordCount === 'number' ? `${d.wordCount} parole nel contenuto` : null
+    case 'text-html-ratio':
+      return typeof d.ratio === 'number' ? `${(d.ratio as number * 100).toFixed(0)}% testo (${str(d.textSize)} testo / ${str(d.htmlSize)} HTML byte)` : null
+    case 'schema-organization':
+      return d.has ? 'Schema Organization presente' : 'Schema Organization assente'
+    case 'schema-faq':
+      return d.hasFaqSection ? (d.has ? 'Sezione FAQ + schema JSON-LD presenti' : 'Sezione FAQ presente ma schema JSON-LD mancante') : 'Nessuna sezione FAQ rilevata'
+    case 'semantic-html': {
+      const issues = arr(d.issues)
+      return issues.length ? `Problemi: ${issues.join('; ')}` : 'Markup semantico corretto'
+    }
+    case 'obsolete-tags': {
+      const probl = arr(d.problematic)
+      return probl.length ? `Tag obsoleti: ${probl.join(', ')}` : 'Nessun tag obsoleto'
+    }
+    case 'favicon':
+      return d.has ? 'Favicon configurata' : 'Favicon assente'
+    case 'viewport':
+      return d.has ? 'Meta viewport presente' : 'Meta viewport assente'
+    case 'doctype':
+      return d.has ? '<!DOCTYPE html> presente' : 'DOCTYPE assente'
+    case 'font-preconnect':
+      return typeof d.count === 'number' ? `${d.count} preconnect ai font` : null
+    case 'link-title-attr': {
+      const total = typeof d.total === 'number' ? d.total : 0
+      const missing = typeof d.missing === 'number' ? d.missing : 0
+      return total ? `${total - missing}/${total} link con attributo title` : null
+    }
+    case 'iframe-usage':
+      return typeof d.count === 'number' ? `${d.count} iframe nella pagina` : null
+    default:
+      return null
+  }
+}
+
 // ── Main analyzer ──────────────────────────────────────────────────────────────
 
 const ANALYZERS: Record<CheckId, (html: string) => CheckResult> = {
