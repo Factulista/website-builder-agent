@@ -2208,8 +2208,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const sidebarBanner = blogSidebarBannerUrl
       ? { url: blogSidebarBannerUrl, link: blogSidebarBannerLink }
       : null
-    const baseUrl = `/preview/${projectSlug}`
-
     // CRITICAL: analyze the HTML as the CRAWLER sees it = raw HTML + server-side meta
     // injection (canonical, complete OG, Organization + FAQ JSON-LD, robots, favicon).
     // applySeoMeta is the SAME function the serving layer uses, so the SEO panel
@@ -2217,6 +2215,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // regular pages and blog articles.
     const siteUrlForSeo = (publicBaseUrl || '').replace(/\/$/, '')
     const businessName = projectContext?.businessName || ''
+    // Use the PRODUCTION base URL for blog rendering so canonical/OG match what's
+    // actually served (not the /preview staging path which fails the canonical check).
+    const baseUrl = siteUrlForSeo || `/preview/${projectSlug}`
 
     const blogPagesForSeo = blogPosts
       .filter(bp => bp.status === 'published' && bp.content_html)  // only analyze published posts with content
