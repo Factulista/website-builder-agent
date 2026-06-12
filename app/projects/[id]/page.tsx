@@ -2210,6 +2210,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       : null
     const baseUrl = `/preview/${projectSlug}`
 
+    // CRITICAL: analyze the HTML as the CRAWLER sees it = raw HTML + server-side meta
+    // injection (canonical, complete OG, Organization + FAQ JSON-LD, robots, favicon).
+    // applySeoMeta is the SAME function the serving layer uses, so the SEO panel
+    // evaluates exactly the final page — not the raw stored HTML. Applied to BOTH
+    // regular pages and blog articles.
+    const siteUrlForSeo = (publicBaseUrl || '').replace(/\/$/, '')
+    const businessName = projectContext?.businessName || ''
+
     const blogPagesForSeo = blogPosts
       .filter(bp => bp.status === 'published' && bp.content_html)  // only analyze published posts with content
       .map(bp => {
@@ -2227,6 +2235,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           seo_description: bp.seo_description,
           author: bp.author,
         }
+        // Blog pages are served via buildBlogPostPage which ALREADY embeds canonical,
+        // OG tags, and Article/BlogPosting JSON-LD — they do NOT go through applySeoMeta.
+        // So analyze the buildBlogPostPage output AS-IS (crawler-accurate for blog).
         const html = buildBlogPostPage(post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner)
         return {
           slug: `blog/${bp.slug}`,         // prefix to avoid collision with regular page slugs
@@ -2235,12 +2246,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       })
 
-    // CRITICAL: analyze the HTML as the CRAWLER sees it = raw HTML + server-side meta
-    // injection (canonical, complete OG, Organization + FAQ JSON-LD, robots, favicon).
-    // applySeoMeta is the SAME function the serving layer uses, so the SEO panel
-    // evaluates exactly the final page — not the raw stored HTML.
-    const siteUrlForSeo = (publicBaseUrl || '').replace(/\/$/, '')
-    const businessName = projectContext?.businessName || ''
     const pagesAsCrawlerSees = pages.map(p => ({
       ...p,
       html: siteUrlForSeo
@@ -5580,10 +5585,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {pages.map(p => {
                     const urlPath = p.slug === 'home' ? '' : p.slug
                     // A page is active only when no blog post is selected
-                    const isActive = !activeCodeBlogPostId
-                      && viewMode !== 'blog'
-                      && activeSlug === p.slug
-                      && !(viewMode === 'preview' && previewIframePath && previewIframePath !== '/')
+                    const isActive = viewMode === 'seo'
+                      ? seoPageSlug === p.slug
+                      : !activeCodeBlogPostId
+                        && viewMode !== 'blog'
+                        && activeSlug === p.slug
+                        && !(viewMode === 'preview' && previewIframePath && previewIframePath !== '/')
                     return (
                       <button key={p.slug} onClick={() => {
                         setShowUrlDropdown(false)
@@ -5626,7 +5633,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         const isActive =
                           (viewMode === 'blog' && selectedPost?.id === post.id) ||
                           (viewMode === 'code' && activeCodeBlogPostId === post.id) ||
-                          (viewMode === 'preview' && previewIframePath === '/' + postPath)
+                          (viewMode === 'preview' && previewIframePath === '/' + postPath) ||
+                          (viewMode === 'seo' && seoPageSlug === `blog/${post.slug}`)
                         return (
                           <button key={post.id} onClick={async () => {
                             setShowUrlDropdown(false)
@@ -5644,6 +5652,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             } else if (viewMode === 'preview') {
                               // Preview: navigate iframe to article
                               setPreviewIframePath('/' + postPath)
+                            } else if (viewMode === 'seo') {
+                              // SEO: select this article's analysis (stay in SEO view)
+                              setSeoPageSlug(`blog/${post.slug}`)
                             } else {
                               // All other modes: open blog editor on this article
                               setViewMode('blog')
