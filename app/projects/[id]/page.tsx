@@ -20,7 +20,7 @@ import { useLanguage } from '../../../lib/i18n/useLanguage'
 import { t } from '../../../lib/i18n/translations'
 import { analyzeAllPages, getAggregateScore, scoreColor, formatCheckValue, type PageAnalysis, type CheckResult } from '../../../lib/seo/analyzer'
 import { applySeoMeta } from '../../../lib/seo/crawler-view'
-import { SEO_CHECKS, SEO_GROUPS, type CheckId } from '../../../lib/seo/checks'
+import { SEO_CHECKS, SEO_GROUPS, getCheckSource, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
@@ -6029,6 +6029,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     {check.fixOwner === 'seo' && (
                                       <span style={{ fontSize: '0.62rem', color: C.textFaint, background: C.bgPanel, padding: '1px 5px', borderRadius: '4px' }}>AI</span>
                                     )}
+                                    {/* Source tag: where the evaluated value comes from */}
+                                    {(() => {
+                                      const src = getCheckSource(check.id)
+                                      const isSoftware = src === 'software'
+                                      return (
+                                        <span
+                                          title={isSoftware
+                                            ? 'Iniettato dalla piattaforma nell\'HTML servito (non modificabile dall\'editor)'
+                                            : 'Presente nell\'HTML che scrivi nell\'editor'}
+                                          style={{
+                                            fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.03em',
+                                            padding: '1px 5px', borderRadius: '4px',
+                                            background: isSoftware ? '#ede9fe' : '#e0f2fe',
+                                            color: isSoftware ? '#7c3aed' : '#0369a1',
+                                          }}
+                                        >
+                                          {isSoftware ? '⚙ Software' : '◇ HTML'}
+                                        </span>
+                                      )
+                                    })()}
                                   </div>
                                   <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: C.textFaint, lineHeight: 1.4 }}>
                                     {result.detail || check.description}

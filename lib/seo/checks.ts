@@ -36,6 +36,28 @@ export type CheckId =
 export type CheckGroup = 'meta' | 'structure' | 'images' | 'performance' | 'schema'
 export type FixOwner = 'html' | 'seo'
 
+/**
+ * Where the evaluated value comes from:
+ *  - 'software': injected into the <head> by the platform at serve time
+ *    (lib/seo/crawler-view.ts applySeoMeta) — the user can't break it from the HTML.
+ *  - 'html': lives in the page HTML the user/AI writes in the editor.
+ */
+export type CheckSource = 'html' | 'software'
+
+// Checks whose value is INJECTED by applySeoMeta (canonical, OG, schemas, robots, favicon).
+const SOFTWARE_BASED_CHECKS = new Set<CheckId>([
+  'canonical',
+  'open-graph',
+  'schema-organization',
+  'schema-faq',
+  'favicon',
+  'noindex',
+])
+
+export function getCheckSource(id: CheckId): CheckSource {
+  return SOFTWARE_BASED_CHECKS.has(id) ? 'software' : 'html'
+}
+
 export type SeoCheck = {
   id: CheckId
   label: string
