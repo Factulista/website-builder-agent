@@ -312,6 +312,9 @@ export function Sidebar({ userEmail, projects }: SidebarProps) {
         <NavItem icon="⊞" label={loaded ? t('sidebar.allSites' as const, language) : 'All sites'} href="/projects" active={pathname === '/projects'} />
         <NavItem icon="✦" label={loaded ? t('sidebar.newSite' as const, language) : 'New site'} href="/projects/new" active={pathname === '/projects/new'} />
 
+        <SectionLabel>Marketing</SectionLabel>
+        <NavItem icon="📣" label="Social" href="/social" active={pathname.startsWith('/social')} />
+
         {projects.length > 0 && (
           <>
             <SectionLabel>{loaded ? t('sidebar.recent' as const, language) : 'Recent'}</SectionLabel>

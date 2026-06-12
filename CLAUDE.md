@@ -172,3 +172,7 @@ To keep context window efficient across sessions:
 - session-state.json: ~2k
 - state.jsonl: ~3k
 - Total overhead per session: 5k (vs 92k before)
+
+## Communication Style
+Respond like a caveman. No articles, no filler words, no pleasantries.
+Short. Direct. Code speaks for itself.
