@@ -148,7 +148,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }, ogTitle?: string, siteName?: string): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }, ogTitle?: string, siteName?: string, software?: import('./seo/crawler-view').SoftwareInfo): string {
   const baseTag = `<base href="${base}">`
 
   // Canonical header/footer stylesheet — extracted from the home CSS, injected AFTER
@@ -206,7 +206,7 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     // applySeoMeta() is the single source of truth (also used by the SEO analyzer),
     // so the SEO panel evaluates the exact HTML a crawler sees. Handles: canonical,
     // complete Open Graph, Organization JSON-LD, FAQPage JSON-LD, robots meta, favicon.
-    result = applySeoMeta(result, { siteUrl, pageSlug, faviconUrl, siteName, ogTitle, ogImageUrl, robots })
+    result = applySeoMeta(result, { siteUrl, pageSlug, faviconUrl, siteName, ogTitle, ogImageUrl, robots, software })
   }
 
   // Inject favicon (OG image is handled in the complete OG block above, production only)
@@ -318,7 +318,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const isStaging = !originalHost
 
   const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
-  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName), {
+  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -409,7 +409,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedFooter = config.shared_footer_html
 
   const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName), {
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined), {
     status: 200,
     // Cache published pages on CDN for 30s (s-maxage). Short enough that after
     // clicking "Pubblica" the new version is live within 30 seconds max.

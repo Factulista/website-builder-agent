@@ -29,7 +29,8 @@ AS $$
       'shared_css',         p.site_config->'shared_css',
       'shared_nav_html',    p.site_config->'shared_nav_html',
       'shared_footer_html', p.site_config->'shared_footer_html',
-      'context',            p.site_config->'context'
+      'context',            p.site_config->'context',
+      'software',           p.site_config->'software'
     )) AS config
   FROM projects p
   WHERE p.slug = p_slug

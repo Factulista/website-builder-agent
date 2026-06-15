@@ -12,6 +12,16 @@
  * (extracted from visible FAQ), robots meta, favicon.
  */
 
+export type SoftwareOffer = { name?: string; price: string; priceCurrency?: string }
+export type SoftwareInfo = {
+  name?: string
+  applicationCategory?: string   // e.g. BusinessApplication, FinanceApplication
+  operatingSystem?: string       // e.g. Web
+  description?: string
+  offers?: SoftwareOffer[]        // pricing tiers
+  aggregateRating?: { ratingValue: string | number; ratingCount: string | number }
+}
+
 export type SeoMetaContext = {
   siteUrl: string                 // canonical root, no trailing slash, e.g. https://www.factulista.com
   pageSlug: string                // 'home' or 'funcionalidades' etc.
@@ -20,6 +30,7 @@ export type SeoMetaContext = {
   ogTitle?: string                // per-page OG title override
   ogImageUrl?: string
   robots?: { noindex?: boolean; nofollow?: boolean }
+  software?: SoftwareInfo         // if set, inject SoftwareApplication JSON-LD (SaaS sites)
 }
 
 /**
@@ -83,7 +94,7 @@ export function extractFaqSchema(html: string, siteUrl: string): string | null {
  * result — exactly the <head> a crawler sees in production.
  */
 export function applySeoMeta(html: string, ctx: SeoMetaContext): string {
-  const { siteUrl, pageSlug, faviconUrl, siteName, ogTitle, ogImageUrl, robots } = ctx
+  const { siteUrl, pageSlug, faviconUrl, siteName, ogTitle, ogImageUrl, robots, software } = ctx
   let result = html
 
   const canonicalUrl = (!pageSlug || pageSlug === 'home') ? `${siteUrl}/` : `${siteUrl}/${pageSlug}`
@@ -148,6 +159,41 @@ export function applySeoMeta(html: string, ctx: SeoMetaContext): string {
 }
 </script>`
     result = result.replace(/<\/head>/i, `${orgSchema}\n</head>`)
+  }
+
+  // ── SoftwareApplication JSON-LD (SaaS sites — from site config) ──
+  // Strip any existing, then inject from the configured product info. Gives Google
+  // rich results (price/rating) and tells LLMs "this is a software product with pricing".
+  result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?"@type"\s*:\s*"SoftwareApplication"[\s\S]*?<\/script>\s*/gi, '')
+  if (software && /<\/head>/i.test(result)) {
+    const sEsc = (s: string) => String(s).replace(/"/g, '&quot;')
+    const offers = (software.offers ?? []).map(o => `{
+      "@type": "Offer",
+      ${o.name ? `"name": "${sEsc(o.name)}",` : ''}
+      "price": "${sEsc(o.price)}",
+      "priceCurrency": "${sEsc(o.priceCurrency || 'EUR')}"
+    }`).join(',\n    ')
+    const rating = software.aggregateRating ? `,
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "${sEsc(String(software.aggregateRating.ratingValue))}",
+    "ratingCount": "${sEsc(String(software.aggregateRating.ratingCount))}"
+  }` : ''
+    const swSchema = `<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "${sEsc(software.name || siteName || '')}",
+  "applicationCategory": "${sEsc(software.applicationCategory || 'BusinessApplication')}",
+  "operatingSystem": "${sEsc(software.operatingSystem || 'Web')}",
+  "url": "${siteUrl}"${software.description ? `,
+  "description": "${sEsc(software.description)}"` : ''}${offers ? `,
+  "offers": [
+    ${offers}
+  ]` : ''}${rating}
+}
+</script>`
+    result = result.replace(/<\/head>/i, `${swSchema}\n</head>`)
   }
 
   // ── FAQPage JSON-LD (from visible FAQ) ──
