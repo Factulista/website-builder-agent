@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase'
 import { Sidebar } from '../../components/Sidebar'
@@ -45,7 +45,7 @@ function statusColor(s: string) {
     : s === 'scheduled' ? '#2563eb' : '#9b9896'
 }
 
-export default function SocialPage() {
+function SocialPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [userEmail, setUserEmail] = useState('')
@@ -236,5 +236,13 @@ export default function SocialPage() {
         <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: C.text, color: '#fff', padding: '10px 20px', borderRadius: '10px', fontSize: '0.85rem', boxShadow: '0 6px 20px rgba(0,0,0,0.2)', zIndex: 1000 }}>{toast}</div>
       )}
     </div>
+  )
+}
+
+export default function SocialPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: '40px', color: '#9b9896' }}>Caricamento...</div>}>
+      <SocialPageInner />
+    </Suspense>
   )
 }
