@@ -39,14 +39,21 @@ export async function POST(req: NextRequest) {
       return { ...p, html: r.html }
     })
 
-  // Fix BOTH draft (pages) and live (published_pages) so it's immediate.
+  // Fix draft (pages), live (published_pages), AND shared_css — the frame CSS is
+  // extracted from shared_css and injected on every page, so the black rule there
+  // overrides the per-page one. Must fix all three.
   const fixedPages = fixArr(config.pages as Array<{ slug: string; html: string }>)
   const fixedPublished = fixArr(config.published_pages as Array<{ slug: string; html: string }>)
+  let fixedSharedCss = config.shared_css as string | undefined
+  if (typeof fixedSharedCss === 'string') {
+    const r = fixHover(fixedSharedCss, color)
+    if (r.changed) { fixedSharedCss = r.html; changed++ }
+  }
 
   if (changed === 0) return NextResponse.json({ message: 'Nothing to change', changed: 0 })
 
   const { error: saveErr } = await supabase.from('projects').update({
-    site_config: { ...config, pages: fixedPages, published_pages: fixedPublished },
+    site_config: { ...config, pages: fixedPages, published_pages: fixedPublished, shared_css: fixedSharedCss },
     updated_at: new Date().toISOString(),
   }).eq('id', projectId)
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
