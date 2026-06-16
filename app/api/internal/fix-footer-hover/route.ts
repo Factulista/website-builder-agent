@@ -31,18 +31,24 @@ export async function POST(req: NextRequest) {
   if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
 
   const config = (data.site_config ?? {}) as Record<string, unknown>
-  const pages = (config.pages as Array<{ slug: string; html: string }>) ?? []
-
   let changed = 0
-  const fixed = pages.map(p => {
-    const r = fixHover(p.html ?? '', color)
-    if (r.changed) changed++
-    return { ...p, html: r.html }
-  })
+  const fixArr = (arr: Array<{ slug: string; html: string }> | undefined) =>
+    (arr ?? []).map(p => {
+      const r = fixHover(p.html ?? '', color)
+      if (r.changed) changed++
+      return { ...p, html: r.html }
+    })
+
+  // Fix BOTH draft (pages) and live (published_pages) so it's immediate.
+  const fixedPages = fixArr(config.pages as Array<{ slug: string; html: string }>)
+  const fixedPublished = fixArr(config.published_pages as Array<{ slug: string; html: string }>)
 
   if (changed === 0) return NextResponse.json({ message: 'Nothing to change', changed: 0 })
 
-  const { error: saveErr } = await supabase.rpc('save_inline_pages', { p_id: projectId, p_pages: fixed })
+  const { error: saveErr } = await supabase.from('projects').update({
+    site_config: { ...config, pages: fixedPages, published_pages: fixedPublished },
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId)
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
-  return NextResponse.json({ message: `Footer hover aligned to ${color} on ${changed} page(s)`, changed })
+  return NextResponse.json({ message: `Footer hover aligned to ${color} (draft + live), ${changed} page(s)`, changed })
 }
