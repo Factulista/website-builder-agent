@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { buildSourcesBlock } from '../../../lib/fetch-source'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
     projectId,
     context,
     designSystem,
+    sourceUrls = [],
   } = body as {
     topic: string
     keywords?: string[]
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
     h3Count?: number
     h4Count?: number
     flags?: Record<string, boolean>
+    sourceUrls?: string[]
     projectId?: string
     context?: {
       businessName?: string
@@ -158,7 +161,14 @@ REGOLA ASSOLUTA — HTML SEMANTICO PURO:
 - Un articolo con style="" inline è SBAGLIATO e inutilizzabile.
 ${businessCtx}${toneSection}`
 
-  const userMessage = `Scrivi un articolo di blog su: "${topic}"
+  // Fetch reference sources (links the user provided) — capped to keep tokens in check
+  const sourcesBlock = await buildSourcesBlock(Array.isArray(sourceUrls) ? sourceUrls : [])
+
+  const userMessage = `Scrivi un articolo di blog su: "${topic}"${sourcesBlock ? `
+
+MATERIALE DI RIFERIMENTO (usa questi contenuti come fonte per essere preciso e accurato; NON copiare letteralmente, rielabora con parole tue; cita dati/fatti reali presenti qui):
+${sourcesBlock}
+` : ''}
 
 Keyword primaria: "${primaryKw}"
 ${secondaryKws.length > 0 ? `Keyword secondarie: ${secondaryKws.map(k => `"${k}"`).join(', ')}` : ''}

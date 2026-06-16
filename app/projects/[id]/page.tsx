@@ -1984,6 +1984,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Keyword chip UI for the blog generator — auto-suggested from project keywords
   const [blogGenKwChips, setBlogGenKwChips] = useState<string[]>([])
   const [blogGenKwInput, setBlogGenKwInput] = useState('')
+  // Reference source links for the blog generator (newline/comma separated URLs)
+  const [blogGenSources, setBlogGenSources] = useState('')
   const [blogGenWordCount, setBlogGenWordCount] = useState(1200)
   const [blogGenParaCount, setBlogGenParaCount] = useState(4)
   const [blogGenH3Count, setBlogGenH3Count] = useState(2)
@@ -7904,7 +7906,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 const res = await fetch('/api/generate-blog-post', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, h3Count: blogGenH3Count, h4Count: blogGenH4Count, flags: blogGenFlags, projectId: id, context: projectContext, designSystem }),
+                  body: JSON.stringify({ topic: blogGenTopic, keywords, wordCount: blogGenWordCount, paragraphCount: blogGenParaCount, h3Count: blogGenH3Count, h4Count: blogGenH4Count, flags: blogGenFlags, projectId: id, context: projectContext, designSystem, sourceUrls: blogGenSources.split(/[\n,]+/).map(s => s.trim()).filter(Boolean) }),
                 })
 
                 if (!res.ok) {
@@ -8120,7 +8122,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           disabled={blogGenerating || !blogGenTopic.trim()}
                           style={{ background: blogGenTopic.trim() && !blogGenerating ? C.blue : '#93c5fd', color: 'white', border: 'none', padding: '7px 18px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: blogGenTopic.trim() && !blogGenerating ? 'pointer' : 'not-allowed', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' as const, marginTop: '1px' }}
                         >{blogGenerating ? '⏳ Generazione...' : '✦ Genera'}</button>
-                        <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords(''); setBlogGenKwChips([]); setBlogGenKwInput('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0, lineHeight: 1, marginTop: '6px' }}>✕</button>
+                        <button onClick={() => { setShowBlogGenPrompt(false); setBlogGenTopic(''); setBlogGenKeywords(''); setBlogGenKwChips([]); setBlogGenKwInput(''); setBlogGenSources('') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '1.1rem', flexShrink: 0, lineHeight: 1, marginTop: '6px' }}>✕</button>
+                      </div>
+                      {/* Row 2b: reference source links */}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: C.blue, flexShrink: 0, width: '90px', paddingTop: '7px' }}>📎 Fonti</span>
+                        <textarea
+                          value={blogGenSources}
+                          onChange={e => setBlogGenSources(e.target.value)}
+                          placeholder="Incolla link di riferimento (uno per riga) — l'AI li leggerà per scrivere un articolo più preciso. Max 3."
+                          rows={2}
+                          style={{ flex: 1, border: `1px solid ${C.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', background: C.white, resize: 'vertical' as const, boxSizing: 'border-box' as const }}
+                        />
                       </div>
                       {/* Row 3: word count + paragraph count */}
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
