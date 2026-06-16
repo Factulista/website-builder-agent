@@ -1452,7 +1452,7 @@ export const SAAS2_FEATURE_TEMPLATE = `<!DOCTYPE html>
       transition: color 0.2s;
     }
 
-    .footer-links a:hover { color: #000; }
+    .footer-links a:hover { color: #fbbf24; }
 
     .footer-bottom {
       max-width: 1120px;
@@ -1477,7 +1477,7 @@ export const SAAS2_FEATURE_TEMPLATE = `<!DOCTYPE html>
       transition: color 0.2s;
     }
 
-    .footer-bottom-links a:hover { color: #000; }
+    .footer-bottom-links a:hover { color: #fbbf24; }
 
     /* ── RESPONSIVE ── */
     @media (max-width: 1024px) {
