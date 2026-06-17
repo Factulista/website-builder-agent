@@ -97,6 +97,11 @@ export function applySeoMeta(html: string, ctx: SeoMetaContext): string {
   const { siteUrl, pageSlug, faviconUrl, siteName, ogTitle, ogImageUrl, robots, software } = ctx
   let result = html
 
+  // ── Remove orphaned/empty JSON-LD scripts (unclosed → swallow following markup) ──
+  // A leftover `<script type="application/ld+json">` with no JSON content (followed by
+  // a tag, not `{`) is unclosed and breaks the page in the browser. Strip the open tag.
+  result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>\s*(?=<)/gi, '')
+
   const canonicalUrl = (!pageSlug || pageSlug === 'home') ? `${siteUrl}/` : `${siteUrl}/${pageSlug}`
 
   // ── Canonical ──

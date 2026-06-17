@@ -1480,6 +1480,11 @@ function mergeSharedCssIntoPage(html: string, sharedCss: string): string {
 
 function stripEditorArtifacts(html: string): string {
   if (typeof window === 'undefined' || !html) return html
+  // ALWAYS remove orphaned/empty <script type="application/ld+json"> OPEN tags that
+  // have no JSON content (immediately followed by a tag instead of `{`). Unclosed,
+  // they swallow all following markup (hero, sections) as script text in the browser
+  // → the hero vanishes from the preview and a save would persist the broken DOM.
+  html = html.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>\s*(?=<)/gi, '')
   // Quick exit if no markers present (also check for <base> which may have accumulated)
   if (!/fact-edit|contenteditable|html-change|<base/i.test(html)) return html
 
