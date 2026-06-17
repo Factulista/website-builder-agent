@@ -144,3 +144,4 @@ vite.config.ts.timestamp-*
 scripts/_blog-editor-test.html
 .vercel
 .env*
+.DS_Store
