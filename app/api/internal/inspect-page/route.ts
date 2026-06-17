@@ -31,6 +31,15 @@ export async function GET(req: NextRequest) {
   const blocks = p.blocks
   const blocksHtml = Array.isArray(blocks) ? blocks.map(b => b.html ?? '').join('') : ''
 
+  // ?dump=1 → return raw html + shared nav/footer (base64) to reproduce injectBase client-side
+  if (req.nextUrl.searchParams.get('dump') === '1') {
+    return NextResponse.json({
+      html_b64: Buffer.from(html).toString('base64'),
+      shared_nav_b64: Buffer.from((config.shared_nav_html as string) ?? '').toString('base64'),
+      shared_footer_b64: Buffer.from((config.shared_footer_html as string) ?? '').toString('base64'),
+    })
+  }
+
   return NextResponse.json({
     slug,
     html: {
