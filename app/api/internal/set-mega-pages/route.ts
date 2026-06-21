@@ -1,7 +1,7 @@
 /**
  * POST /api/internal/set-mega-pages
- * Assigns megaMenu field to pages (both draft + published) in bulk.
- * Body: { projectId, assignments: [{ slug, megaMenu }] }
+ * Assigns megaMenu, megaMenuIcon fields to pages (both draft + published) in bulk.
+ * Body: { projectId, assignments: [{ slug, megaMenu, megaMenuIcon? }] }
  * Pass megaMenu: "" to remove a page from all mega menus.
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -15,7 +15,7 @@ function getSupabase() {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const projectId = body?.projectId as string | undefined
-  const assignments = (body?.assignments as Array<{ slug: string; megaMenu: string }>) ?? []
+  const assignments = (body?.assignments as Array<{ slug: string; megaMenu: string; megaMenuIcon?: string }>) ?? []
   if (!projectId || !assignments.length) {
     return NextResponse.json({ error: 'projectId and assignments required' }, { status: 400 })
   }
@@ -24,14 +24,23 @@ export async function POST(req: NextRequest) {
   if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
 
   const cfg = (data.site_config ?? {}) as Record<string, unknown>
-  const assignMap = new Map(assignments.map(a => [a.slug, a.megaMenu]))
+  const assignMap = new Map(assignments.map(a => [a.slug, a]))
 
   const applyToList = (list: Array<Record<string, unknown>>) =>
     list.map(p => {
       const slug = p.slug as string
       if (!assignMap.has(slug)) return p
-      const mm = assignMap.get(slug)
-      return mm ? { ...p, megaMenu: mm } : { ...p, megaMenu: undefined }
+      const a = assignMap.get(slug)!
+      const updated = { ...p }
+      if (a.megaMenu) {
+        updated.megaMenu = a.megaMenu
+      } else {
+        delete updated.megaMenu
+      }
+      if (a.megaMenuIcon) {
+        updated.megaMenuIcon = a.megaMenuIcon
+      }
+      return updated
     })
 
   const pages = applyToList((cfg.pages as Array<Record<string, unknown>>) ?? [])

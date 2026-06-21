@@ -199,7 +199,7 @@ const NFD_ICONS: Record<string, string> = {
 }
 
 /** Resolves an icon field: named key → built-in SVG, inline SVG → pass-through, else default */
-function resolveNfdIcon(icon: string): string {
+export function resolveNfdIcon(icon: string): string {
   if (!icon) return NFD_ICONS.default
   if (icon.trim().startsWith('<')) return icon  // already SVG markup
   const key = icon.toLowerCase().replace(/[^a-z]/g, '')

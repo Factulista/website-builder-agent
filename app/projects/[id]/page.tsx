@@ -27,7 +27,7 @@ import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibD
 import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
 import { compileSeo, formatSeoReport } from '../../../lib/seo-compiler'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
-import { renderComponentById } from '../../../lib/components/index'
+import { renderComponentById, resolveNfdIcon } from '../../../lib/components/index'
 
 /** Format HTML with indentation for the code editor. Also fixes &quot; inside style attributes. */
 function prettifyHtml(raw: string): string {
@@ -1661,7 +1661,7 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string }
+type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string }
 
 function megaLabel(p: MegaPage): string {
   const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
@@ -1670,12 +1670,14 @@ function megaLabel(p: MegaPage): string {
 
 function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
-  const items = megaPages
-    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${megaLabel(p)}</span></a>`)
-    .join('\n      ')
+  const items = megaPages.map(p => {
+    const label = megaLabel(p)
+    const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
+    return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
+  }).join('\n      ')
   return html.replace(
-    /(<div class="comp-nfd-panel"[^>]*>)[\s\S]*?(<\/div>)/,
-    `$1\n      ${items}\n  $2`
+    /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
+    `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
   )
 }
 
@@ -1713,7 +1715,7 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
   // Canonical header/footer CSS + global layout fix — injected just before </head>
   // (AFTER page styles) so the shared frame wins in cascade. Mirrors lib/preview.ts.
   const frameCss = sharedCss ? buildSharedFrameCss(sharedNav ?? '', sharedFooter ?? '', sharedCss) : ''
-  const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;}.comp-nfd-label{color:#737373!important;}.comp-nfd-icon{color:#000!important;opacity:0.7!important;}`
+  const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:repeat(3,1fr)!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}`
   const frameTag = `<style data-fact-editor id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style data-fact-editor id="nfd-frame-css">${frameCss}</style>` : ''}\n<style data-fact-editor id="nfd-mega-menu-fix">${megaMenuFix}</style>`
   if (/<\/body>/i.test(clean)) {
     return clean
@@ -10033,7 +10035,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   // For regular pages use srcDoc (inline HTML, no round-trip needed).
                   {...(previewIframePath && previewIframePath !== '/'
                     ? { src: `/preview/${projectSlug}${previewIframePath}`, key: previewIframePath }
-                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined, pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel }))) }
+                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined, pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon }))) }
                   )}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"

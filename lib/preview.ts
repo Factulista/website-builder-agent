@@ -3,6 +3,7 @@ import type { InjectPoints } from './blog-serve'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
 import { mergeRootVars } from './design-system'
 import { applySeoMeta } from './seo/crawler-view'
+import { resolveNfdIcon } from './components/index'
 
 type Page = {
   slug: string
@@ -19,6 +20,8 @@ type Page = {
   megaMenu?: string
   /** Display label inside the mega menu panel (overrides name/menuLabel). */
   megaMenuLabel?: string
+  /** Icon name (from NFD_ICONS) or inline SVG for the mega menu item. */
+  megaMenuIcon?: string
 }
 type SiteConfig = {
   html?: string
@@ -144,31 +147,27 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
   return result
 }
 
-type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string }
+type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string }
 
-/**
- * Returns the best display label for a mega menu item.
- * Priority: megaMenuLabel > menuLabel > name stripped of "Site | " prefix.
- * Strips any "Anything | " prefix that comes from SEO-formatted page titles.
- */
 function megaLabel(p: MegaPage): string {
   const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
   return raw.includes('|') ? raw.split('|').pop()!.trim() : raw
 }
 
 /**
- * Replaces the content of .comp-nfd-panel with items built from megaPages.
- * Called at serve-time so the panel reflects DB-managed page assignments.
- * No-ops if megaPages is empty (keeps whatever is baked in shared_nav_html).
+ * Replaces the content of .comp-nfd-panel with items (with icons) built from megaPages.
+ * Panel gets data-count attribute so CSS can switch column count per item count.
  */
 function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
-  const items = megaPages
-    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${megaLabel(p)}</span></a>`)
-    .join('\n      ')
+  const items = megaPages.map(p => {
+    const label = megaLabel(p)
+    const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
+    return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
+  }).join('\n      ')
   return html.replace(
-    /(<div class="comp-nfd-panel"[^>]*>)[\s\S]*?(<\/div>)/,
-    `$1\n      ${items}\n  $2`
+    /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
+    `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
   )
 }
 
@@ -276,7 +275,7 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     // Canonical mega-menu styles — hardcoded here so builder publishes can never
     // overwrite them via shared_css → buildSharedFrameCss. These must always match
     // the Precios/Blog nav link style (#737373, 500, nowrap).
-    const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;}.comp-nfd-label{color:#737373!important;}.comp-nfd-icon{color:#000!important;opacity:0.7!important;}`
+    const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:repeat(3,1fr)!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}`
     const frameStyle = `<style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style id="nfd-frame-css">${frameCss}</style>` : ''}\n<style id="nfd-mega-menu-fix">${megaMenuFix}</style>`
     result = result.replace(/<\/head>/i, `${frameStyle}\n</head>`)
   }
@@ -373,7 +372,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
   const megaPages = (config?.pages ?? [])
     .filter(p => p.megaMenu === 'funcionalidades')
-    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel }))
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon }))
   return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     headers: {
@@ -467,7 +466,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
   const megaPages = (config?.published_pages ?? [])
     .filter(p => p.megaMenu === 'funcionalidades')
-    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel }))
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon }))
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     // Cache published pages on CDN for 30s (s-maxage). Short enough that after

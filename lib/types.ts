@@ -38,4 +38,6 @@ export type Page = {
   megaMenu?: string
   /** Display label inside the mega menu panel (overrides name/menuLabel). */
   megaMenuLabel?: string
+  /** Icon name (from NFD_ICONS) or inline SVG for the mega menu item. */
+  megaMenuIcon?: string
 }
