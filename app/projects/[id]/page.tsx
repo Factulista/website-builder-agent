@@ -6609,30 +6609,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             💡 Incolla questo URL in <strong>Google Search Console → Sitemap</strong> per indicizzare tutte le pagine.
                           </div>
 
-                          {/* Pages list */}
-                          <div style={{ marginBottom: '28px' }}>
-                            <div style={{
-                              fontSize: '0.78rem', fontWeight: 700, color: C.text,
-                              marginBottom: '8px', padding: '6px 0', borderBottom: `1px solid ${C.border}`,
-                            }}>
-                              Pagine incluse ({pages.filter(p => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex).length})
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              {pages.filter(p => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex).map(p => (
-                                <div key={p.slug} style={{
-                                  display: 'flex', alignItems: 'center', gap: '8px',
-                                  padding: '6px 10px', borderRadius: '6px',
-                                  background: C.bgPanel, border: `1px solid ${C.borderLight}`,
-                                  fontSize: '0.78rem',
-                                }}>
-                                  <span style={{ color: C.textFaint, flexShrink: 0 }}>📄</span>
-                                  <span style={{ fontFamily: 'monospace', color: C.text }}>
-                                    {p.slug === 'home' ? '/' : `/${p.slug}`}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
 
                           {/* ── llms.txt ── */}
                           {(() => {
