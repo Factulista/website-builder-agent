@@ -1644,12 +1644,17 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-type MegaPage = { slug: string; name: string; menuLabel?: string }
+type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string }
+
+function megaLabel(p: MegaPage): string {
+  const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
+  return raw.includes('|') ? raw.split('|').pop()!.trim() : raw
+}
 
 function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
   const items = megaPages
-    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${p.menuLabel ?? p.name}</span></a>`)
+    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${megaLabel(p)}</span></a>`)
     .join('\n      ')
   return html.replace(
     /(<div class="comp-nfd-panel"[^>]*>)[\s\S]*?(<\/div>)/,
@@ -9296,7 +9301,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               setPages(synced)
               await saveState(messages, synced)
             }
-            const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu' | 'og_title' | 'megaMenu', value: string | boolean) => {
+            const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu' | 'og_title' | 'megaMenu' | 'megaMenuLabel', value: string | boolean) => {
               const next = pages.map(p => p.slug === slug ? { ...p, [field]: value } : p)
               const synced = (field === 'inMenu' || field === 'menuLabel') ? reorderNavLinks(next) : next
               setPages(synced)
@@ -9473,8 +9478,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             </button>
                           </div>
 
-                          {/* Mega menu assignment */}
-                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                          {/* Mega menu assignment + label override */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                             <select
                               value={page.megaMenu ?? ''}
                               onChange={async e => {
@@ -9488,6 +9493,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               <option value="">—</option>
                               <option value="funcionalidades">Funcionalidades</option>
                             </select>
+                            {page.megaMenu && (
+                              <input
+                                placeholder="Etichetta voce..."
+                                defaultValue={page.megaMenuLabel ?? ''}
+                                onBlur={async e => {
+                                  const val = e.target.value.trim() || undefined
+                                  if (val === (page.megaMenuLabel ?? undefined)) return
+                                  const next = pages.map(p => p.slug === page.slug ? { ...p, megaMenuLabel: val } : p)
+                                  setPages(next)
+                                  await saveState(messages, next)
+                                }}
+                                style={{ fontSize: '0.68rem', border: `1px solid ${C.border}`, borderRadius: '4px', padding: '2px 5px', color: C.text, background: C.bg, fontFamily: 'inherit', width: '100%' }}
+                              />
+                            )}
                           </div>
 
                           {/* Actions */}
@@ -9997,7 +10016,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   // For regular pages use srcDoc (inline HTML, no round-trip needed).
                   {...(previewIframePath && previewIframePath !== '/'
                     ? { src: `/preview/${projectSlug}${previewIframePath}`, key: previewIframePath }
-                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined, pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel }))) }
+                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined, pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel }))) }
                   )}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"

@@ -36,4 +36,6 @@ export type Page = {
   robots?: { noindex?: boolean; nofollow?: boolean }
   /** Mega-menu dropdown this page appears in (e.g. 'funcionalidades'). Builder-managed. */
   megaMenu?: string
+  /** Display label inside the mega menu panel (overrides name/menuLabel). */
+  megaMenuLabel?: string
 }

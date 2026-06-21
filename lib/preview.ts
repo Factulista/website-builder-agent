@@ -17,6 +17,8 @@ type Page = {
   robots?: { noindex?: boolean; nofollow?: boolean }
   /** Mega-menu dropdown this page appears in (e.g. 'funcionalidades'). */
   megaMenu?: string
+  /** Display label inside the mega menu panel (overrides name/menuLabel). */
+  megaMenuLabel?: string
 }
 type SiteConfig = {
   html?: string
@@ -142,7 +144,17 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
   return result
 }
 
-type MegaPage = { slug: string; name: string; menuLabel?: string }
+type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string }
+
+/**
+ * Returns the best display label for a mega menu item.
+ * Priority: megaMenuLabel > menuLabel > name stripped of "Site | " prefix.
+ * Strips any "Anything | " prefix that comes from SEO-formatted page titles.
+ */
+function megaLabel(p: MegaPage): string {
+  const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
+  return raw.includes('|') ? raw.split('|').pop()!.trim() : raw
+}
 
 /**
  * Replaces the content of .comp-nfd-panel with items built from megaPages.
@@ -152,7 +164,7 @@ type MegaPage = { slug: string; name: string; menuLabel?: string }
 function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
   const items = megaPages
-    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${p.menuLabel ?? p.name}</span></a>`)
+    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${megaLabel(p)}</span></a>`)
     .join('\n      ')
   return html.replace(
     /(<div class="comp-nfd-panel"[^>]*>)[\s\S]*?(<\/div>)/,
@@ -361,7 +373,7 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
   const megaPages = (config?.pages ?? [])
     .filter(p => p.megaMenu === 'funcionalidades')
-    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel }))
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel }))
   return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     headers: {
@@ -455,7 +467,7 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
   const megaPages = (config?.published_pages ?? [])
     .filter(p => p.megaMenu === 'funcionalidades')
-    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel }))
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel }))
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     // Cache published pages on CDN for 30s (s-maxage). Short enough that after
