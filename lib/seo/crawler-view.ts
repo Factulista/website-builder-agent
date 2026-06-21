@@ -41,13 +41,20 @@ export function extractFaqSchema(html: string, siteUrl: string): string | null {
   const stripTags = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
   const pairs: { q: string; a: string }[] = []
 
+  // Support faq-question/faq-answer (Factulista FAQ component) and faq-trigger/faq-content (generic)
+  const questionRe = /<[^>]+class="[^"]*faq-question[^"]*"[^>]*>([\s\S]*?)<\/span>/gi
+  const answerRe = /<[^>]+class="[^"]*faq-answer[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
   const triggerRe = /<[^>]+class="[^"]*faq-trigger[^"]*"[^>]*>([\s\S]*?)<\/button>/gi
   const contentRe = /<[^>]+class="[^"]*faq-content[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
   const triggers: string[] = []
   const contents: string[] = []
   let m: RegExpExecArray | null
-  while ((m = triggerRe.exec(html)) !== null) { const q = stripTags(m[1]); if (q) triggers.push(q) }
-  while ((m = contentRe.exec(html)) !== null) { const a = stripTags(m[1]); if (a) contents.push(a) }
+  // Prefer faq-question spans (more precise than full trigger which includes the chevron SVG)
+  while ((m = questionRe.exec(html)) !== null) { const q = stripTags(m[1]); if (q) triggers.push(q) }
+  while ((m = answerRe.exec(html)) !== null) { const a = stripTags(m[1]); if (a) contents.push(a) }
+  // Fall back to faq-trigger/faq-content if the above yielded nothing
+  if (triggers.length === 0) { while ((m = triggerRe.exec(html)) !== null) { const q = stripTags(m[1]); if (q) triggers.push(q) } }
+  if (contents.length === 0) { while ((m = contentRe.exec(html)) !== null) { const a = stripTags(m[1]); if (a) contents.push(a) } }
   if (triggers.length > 0 && contents.length > 0) {
     const count = Math.min(triggers.length, contents.length)
     for (let i = 0; i < count; i++) if (triggers[i] && contents[i]) pairs.push({ q: triggers[i], a: contents[i] })
