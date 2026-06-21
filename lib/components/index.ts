@@ -207,7 +207,7 @@ function resolveNfdIcon(icon: string): string {
 }
 
 function renderNavFeatureDropdown(data: Record<string, unknown>): string {
-  const triggerLabel = String(data.triggerLabel ?? 'Funzionalità')
+  const triggerLabel = String(data.triggerLabel ?? 'Funcionalidades')
   const items = (data.items as Array<Record<string, unknown>> | undefined) ?? []
   const id = `nfd-${Math.random().toString(36).slice(2, 8)}`
 
@@ -242,13 +242,13 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     .comp-nfd[data-open="true"] .comp-nfd-chevron{transform:rotate(180deg);}
     /* Panel: width driven by content (2 col of tags), no fixed min-width */
     .comp-nfd-panel{
-      position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
+      position:absolute;top:calc(100% + 10px);left:50%;transform:translateX(-50%);
       width:max-content;max-width:min(92vw,560px);
       background:var(--surface,var(--color-bg,#fff));
-      border:1px solid var(--border,var(--border-light,var(--border-color,#e5e7eb)));
-      border-radius:var(--radius-card,var(--radius,4px));
-      padding:6px;
-      box-shadow:0 4px 20px rgba(0,0,0,0.08),0 1px 3px rgba(0,0,0,0.04);
+      border:none;
+      border-radius:16px;
+      padding:10px;
+      box-shadow:0 12px 40px rgba(0,0,0,0.13),0 3px 10px rgba(0,0,0,0.05);
       display:none;z-index:500;
     }
     .comp-nfd[data-open="true"] .comp-nfd-panel{
