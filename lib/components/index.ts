@@ -208,6 +208,7 @@ function resolveNfdIcon(icon: string): string {
 
 function renderNavFeatureDropdown(data: Record<string, unknown>): string {
   const triggerLabel = String(data.triggerLabel ?? 'Funcionalidades')
+  const triggerHref = data.triggerHref ? String(data.triggerHref) : ''
   const items = (data.items as Array<Record<string, unknown>> | undefined) ?? []
   const id = `nfd-${Math.random().toString(36).slice(2, 8)}`
 
@@ -303,7 +304,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
       .comp-nfd[data-open="true"] .comp-nfd-panel{grid-template-columns:1fr;}
     }
   </style>
-  <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${id}" aria-haspopup="menu">
+  <button type="button" class="comp-nfd-trigger"${triggerHref ? ` data-href="${triggerHref}"` : ''} aria-expanded="false" aria-controls="${id}" aria-haspopup="menu">
     ${triggerLabel}<svg class="comp-nfd-chevron" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 3.5 5 7 8.5 3.5"/></svg>
   </button>
   <div class="comp-nfd-panel" id="${id}" role="menu">
@@ -316,7 +317,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
       var t=null;
       function open(v){li.setAttribute('data-open',v?'true':'false');btn.setAttribute('aria-expanded',String(v));}
       open(false); // always start closed — clears any stale data-open="true" baked into saved HTML
-      btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(t);open(li.getAttribute('data-open')!=='true');});
+      btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(t);var href=btn.getAttribute('data-href');if(href&&window.matchMedia('(min-width:641px)').matches){window.location.href=href;}else{open(li.getAttribute('data-open')!=='true');}});
       li.addEventListener('mouseenter',function(){if(window.matchMedia('(min-width:641px)').matches){clearTimeout(t);open(true);}});
       li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches){t=setTimeout(function(){open(false);},180);}});
       document.addEventListener('click',function(e){if(!li.contains(e.target)){clearTimeout(t);open(false);}});
