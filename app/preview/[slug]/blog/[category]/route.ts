@@ -90,7 +90,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   if (!project) return new Response('Not found', { status: 404 })
 
   const config = (project.site_config ?? {}) as Record<string, unknown>
-  const pages = (config.pages as Array<{ slug: string; html: string }> | undefined) ?? []
+  const pages = (config.pages as Array<Record<string, unknown> & { slug: string; html: string }> | undefined) ?? []
   const context = (config.context ?? {}) as Record<string, unknown>
   const homePage = pages.find(p => p.slug === 'home')
   const lang = detectLang(context, homePage?.html ?? '')
@@ -154,6 +154,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const faviconUrl = typeof config.favicon_url === 'string' ? config.favicon_url : undefined
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
-  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock)
+  const megaPages = pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
+  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock, megaPages)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }

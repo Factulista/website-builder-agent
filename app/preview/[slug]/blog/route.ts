@@ -41,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   if (!project) return new Response('Not found', { status: 404 })
 
   const config = (project.site_config ?? {}) as Record<string, unknown>
-  const pages = (config.pages as Array<{ slug: string; html: string }> | undefined) ?? []
+  const pages = (config.pages as Array<Record<string, unknown> & { slug: string; html: string }> | undefined) ?? []
   const context = (config.context ?? {}) as Record<string, unknown>
   const homePage = pages.find(p => p.slug === 'home')
   const lang = detectLang(context, homePage?.html ?? '')
@@ -66,10 +66,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     .range(offset, offset + PAGE_SIZE - 1)
 
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
-  // Use the real public domain when x-original-host is set (request from www.factulista.com)
-  // so blog article links resolve to https://www.factulista.com/blog/... not /preview/{slug}/blog/...
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
-  const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, undefined, injectPoints)
+  const megaPages = pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
+  const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, undefined, injectPoints, megaPages)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
 }
