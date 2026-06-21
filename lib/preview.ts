@@ -237,7 +237,11 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // page, even self-contained pages whose own <style> diverges (different button padding,
   // font-weight, missing line-height, etc.).
   if (/<\/head>/i.test(result)) {
-    const frameStyle = `<style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style id="nfd-frame-css">${frameCss}</style>` : ''}`
+    // Canonical mega-menu styles — hardcoded here so builder publishes can never
+    // overwrite them via shared_css → buildSharedFrameCss. These must always match
+    // the Precios/Blog nav link style (#737373, 500, nowrap).
+    const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;}.comp-nfd-label{color:#737373!important;}.comp-nfd-icon{color:#000!important;opacity:0.7!important;}`
+    const frameStyle = `<style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style id="nfd-frame-css">${frameCss}</style>` : ''}\n<style id="nfd-mega-menu-fix">${megaMenuFix}</style>`
     result = result.replace(/<\/head>/i, `${frameStyle}\n</head>`)
   }
 
