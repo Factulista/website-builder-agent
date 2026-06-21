@@ -235,7 +235,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
       background:none;border:none;cursor:pointer;
       display:inline-flex;align-items:center;gap:5px;
       font-family:inherit;font-size:inherit;font-weight:inherit;
-      color:inherit;padding:0;line-height:inherit;letter-spacing:inherit;
+      color:#737373;font-size:16px;font-weight:500;padding:0;line-height:inherit;letter-spacing:inherit;
     }
     .comp-nfd-trigger:hover{opacity:0.75;}
     .comp-nfd-chevron{width:10px;height:10px;transition:transform .2s;opacity:0.5;flex-shrink:0;margin-top:1px;}
@@ -271,8 +271,8 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     /* Icon: inline, small, accent-colored — no box, no background */
     .comp-nfd-icon{
       display:inline-flex;align-items:center;justify-content:center;
-      color:var(--accent,var(--color-accent,#2563eb));
-      opacity:0.85;flex-shrink:0;
+      color:#000;
+      opacity:0.7;flex-shrink:0;
     }
     .comp-nfd-icon svg{width:14px;height:14px;}
     .comp-nfd-label{color:var(--text,var(--color-text,inherit));}
