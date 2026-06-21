@@ -259,7 +259,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
       display:inline-flex;align-items:center;gap:7px;
       padding:7px 12px;
       border-radius:calc(var(--radius-card,var(--radius,4px)) - 2px);
-      color:var(--text,var(--color-text,inherit));
+      color:#737373;
       text-decoration:none;white-space:nowrap;
       transition:background .12s;
       font-family:var(--font,var(--font-body,inherit));
@@ -275,7 +275,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
       opacity:0.7;flex-shrink:0;
     }
     .comp-nfd-icon svg{width:14px;height:14px;}
-    .comp-nfd-label{color:var(--text,var(--color-text,inherit));}
+    .comp-nfd-label{color:#737373;}
     /* Badges */
     .comp-nfd-badge{
       font-size:0.58rem;font-weight:700;padding:1px 6px;
