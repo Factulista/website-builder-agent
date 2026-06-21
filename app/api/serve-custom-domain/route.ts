@@ -216,7 +216,8 @@ ${items}
       const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
       const faviconUrl = (siteConfig.favicon_url as string | undefined)
       const injectPoints = (siteConfig.inject_points as InjectPoints | undefined)
-      const html = buildBlogListPageFromLib(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, faviconUrl, injectPoints)
+      const megaPages = publishedPages.filter((p: Record<string, unknown>) => p.megaMenu === 'funcionalidades').map((p: Record<string, unknown>) => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
+      const html = buildBlogListPageFromLib(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, faviconUrl, injectPoints, megaPages)
       return new Response(html, {
         status: 200,
         // Blog listing: shorter CDN TTL (new posts appear here)
@@ -245,7 +246,8 @@ ${items}
       const sidebarBanner = (siteConfig.blog_sidebar_banner as BlogSidebarBanner | undefined) ?? null
       const faviconUrl = (siteConfig.favicon_url as string | undefined)
       const injectPoints = (siteConfig.inject_points as InjectPoints | undefined)
-      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsOverrideBlock)
+      const megaPagesBlogPost = publishedPages.filter((p: Record<string, unknown>) => p.megaMenu === 'funcionalidades').map((p: Record<string, unknown>) => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
+      const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsOverrideBlock, megaPagesBlogPost)
       return new Response(html, {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' },

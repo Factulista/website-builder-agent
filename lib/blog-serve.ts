@@ -1,4 +1,27 @@
 import { FRAME_GLOBAL_FIX } from './shared-frame'
+import { resolveNfdIcon } from './components/index'
+
+export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string }
+
+const MEGA_MENU_CSS = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:repeat(2,1fr)!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}`
+
+function megaLabel(p: MegaPage): string {
+  const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
+  return raw.includes('|') ? raw.split('|').pop()!.trim() : raw
+}
+
+function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
+  if (!megaPages.length) return html
+  const items = megaPages.map(p => {
+    const label = megaLabel(p)
+    const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
+    return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
+  }).join('\n      ')
+  return html.replace(
+    /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
+    `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
+  )
+}
 
 /**
  * Named injection slots — points in the rendered HTML where arbitrary content
@@ -346,7 +369,8 @@ export function buildBlogListPage(
   currentPage = 1,
   totalPages = 1,
   faviconUrl?: string,
-  injectPoints?: InjectPoints
+  injectPoints?: InjectPoints,
+  megaPages?: MegaPage[]
 ): string {
   const title = 'Blog'
   const subtitle = lang === 'es' ? 'Artículos y novedades' : lang === 'en' ? 'Articles and updates' : 'Articoli e aggiornamenti'
@@ -423,7 +447,7 @@ export function buildBlogListPage(
 
   const fixedNav = fixNavLinks(siteNav, baseUrl)
 
-  return `<!DOCTYPE html>
+  const out = `<!DOCTYPE html>
 <html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="UTF-8">
@@ -466,6 +490,7 @@ export function buildBlogListPage(
     .blog-page-link.disabled{opacity:.4;pointer-events:none}
   </style>
   <style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>
+  <style id="nfd-mega-menu-fix">${MEGA_MENU_CSS}</style>
 </head>
 <body>
   ${fixedNav}
@@ -481,6 +506,7 @@ export function buildBlogListPage(
   ${injectPoints?.body_end ?? ''}
 </body>
 </html>`
+  return megaPages?.length ? rebuildMegaMenuPanel(out, megaPages) : out
 }
 
 export function buildBlogPostPage(
@@ -493,7 +519,8 @@ export function buildBlogPostPage(
   sidebarBanner?: BlogSidebarBanner | null,
   faviconUrl?: string,
   injectPoints?: InjectPoints,
-  dsOverride = ''   // Design System CSS block — injected AFTER blog CSS so DS wins
+  dsOverride = '',   // Design System CSS block — injected AFTER blog CSS so DS wins
+  megaPages?: MegaPage[]
 ): string {
   const backLabel = '← Blog'
   const dateStr = escapeHtml(formatDate(post.published_at, lang))
@@ -584,7 +611,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 
   const fixedNav = fixNavLinks(siteNav, baseUrl)
 
-  return `<!DOCTYPE html>
+  const postOut = `<!DOCTYPE html>
 <html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="UTF-8">
@@ -609,6 +636,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   <style>${BLOG_POST_CONTENT_CSS}</style>
   ${dsOverride}
   <style id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>
+  <style id="nfd-mega-menu-fix">${MEGA_MENU_CSS}</style>
 </head>
 <body>
   ${fixedNav}
@@ -639,4 +667,5 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   ${injectPoints?.body_end ?? ''}
 </body>
 </html>`
+  return megaPages?.length ? rebuildMegaMenuPanel(postOut, megaPages) : postOut
 }
