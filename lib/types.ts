@@ -34,4 +34,6 @@ export type Page = {
   og_title?: string
   /** Per-page robots directive (Pages panel). Default: index, follow. */
   robots?: { noindex?: boolean; nofollow?: boolean }
+  /** Mega-menu dropdown this page appears in (e.g. 'funcionalidades'). Builder-managed. */
+  megaMenu?: string
 }

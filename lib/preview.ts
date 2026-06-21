@@ -15,6 +15,8 @@ type Page = {
   og_title?: string
   /** Per-page robots directive, controlled from the Pages panel. Default: index, follow. */
   robots?: { noindex?: boolean; nofollow?: boolean }
+  /** Mega-menu dropdown this page appears in (e.g. 'funcionalidades'). */
+  megaMenu?: string
 }
 type SiteConfig = {
   html?: string
@@ -140,6 +142,24 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
   return result
 }
 
+type MegaPage = { slug: string; name: string; menuLabel?: string }
+
+/**
+ * Replaces the content of .comp-nfd-panel with items built from megaPages.
+ * Called at serve-time so the panel reflects DB-managed page assignments.
+ * No-ops if megaPages is empty (keeps whatever is baked in shared_nav_html).
+ */
+function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
+  if (!megaPages.length) return html
+  const items = megaPages
+    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${p.menuLabel ?? p.name}</span></a>`)
+    .join('\n      ')
+  return html.replace(
+    /(<div class="comp-nfd-panel"[^>]*>)[\s\S]*?(<\/div>)/,
+    `$1\n      ${items}\n  $2`
+  )
+}
+
 /**
  * Prepares page HTML for serving:
  * 1. Normalises root-relative internal links (href="/blog" → href="./blog").
@@ -148,7 +168,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
  * 4. In staging mode: strips <link rel="canonical"> and og:url (staging must NOT be
  *    indexed) and injects <meta name="robots" content="noindex, follow">.
  */
-function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }, ogTitle?: string, siteName?: string, software?: import('./seo/crawler-view').SoftwareInfo): string {
+function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boolean, knownSlugs: string[] = [], faviconUrl?: string, ogImageUrl?: string, injectPoints?: InjectPoints, sharedCss?: string, sharedNav?: string, sharedFooter?: string, pageSlug: string = 'home', robots?: { noindex?: boolean; nofollow?: boolean }, ogTitle?: string, siteName?: string, software?: import('./seo/crawler-view').SoftwareInfo, megaPages?: MegaPage[]): string {
   const baseTag = `<base href="${base}">`
 
   // Canonical header/footer stylesheet — extracted from the home CSS, injected AFTER
@@ -173,6 +193,10 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
       /btn\.addEventListener\('click',function\(e\)\{e\.stopPropagation\(\);clearTimeout\(t\);open\(li\.getAttribute\('data-open'\)!=='true'\);\}\);/g,
       `btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(t);var href=btn.getAttribute('data-href');if(href&&window.matchMedia('(min-width:641px)').matches){window.location.href=href;}else{open(li.getAttribute('data-open')!=='true');}});`
     )
+
+  // Step 0d: rebuild mega-menu panel from pages assigned to a mega menu.
+  // Runs after nav injection so the panel in the live nav reflects DB assignments.
+  if (megaPages && megaPages.length > 0) html = rebuildMegaMenuPanel(html, megaPages)
 
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
@@ -335,7 +359,10 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const isStaging = !originalHost
 
   const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
-  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined), {
+  const megaPages = (config?.pages ?? [])
+    .filter(p => p.megaMenu === 'funcionalidades')
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel }))
+  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
@@ -426,7 +453,10 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   const sharedFooter = config.shared_footer_html
 
   const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined), {
+  const megaPages = (config?.published_pages ?? [])
+    .filter(p => p.megaMenu === 'funcionalidades')
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel }))
+  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     // Cache published pages on CDN for 30s (s-maxage). Short enough that after
     // clicking "Pubblica" the new version is live within 30 seconds max.

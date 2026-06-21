@@ -1644,7 +1644,20 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string, faviconUrl?: string): string {
+type MegaPage = { slug: string; name: string; menuLabel?: string }
+
+function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
+  if (!megaPages.length) return html
+  const items = megaPages
+    .map(p => `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-label">${p.menuLabel ?? p.name}</span></a>`)
+    .join('\n      ')
+  return html.replace(
+    /(<div class="comp-nfd-panel"[^>]*>)[\s\S]*?(<\/div>)/,
+    `$1\n      ${items}\n  $2`
+  )
+}
+
+function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string, faviconUrl?: string, megaPages?: MegaPage[]): string {
   let clean = stripEditorArtifacts(html)
 
   // Inject shared nav/footer so the editor preview matches the served site.
@@ -1663,6 +1676,9 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
       clean = clean.replace(/<\/body>/i, `${sharedFooter}\n</body>`)
     }
   }
+
+  // Rebuild mega menu panel from pages assigned via the Pages panel
+  if (megaPages && megaPages.length > 0) clean = rebuildMegaMenuPanel(clean, megaPages)
 
   // data-fact-editor marks these tags as editor-only so triggerSave() removes them before saving
   const baseTag = `<base data-fact-editor href="/preview/${projectSlug}/">`
@@ -1692,8 +1708,8 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
 }
 
 /** Like injectBase but for the PREVIEW panel (chat sidebar) — adds click-detection script. */
-function injectBasePreview(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string, faviconUrl?: string): string {
-  const base = injectBase(html, projectSlug, sharedNav, sharedFooter, sharedCss, faviconUrl)
+function injectBasePreview(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string, faviconUrl?: string, megaPages?: MegaPage[]): string {
+  const base = injectBase(html, projectSlug, sharedNav, sharedFooter, sharedCss, faviconUrl, megaPages)
   if (/<\/body>/i.test(base)) return base.replace(/<\/body>/i, `${PREVIEW_CLICK_SCRIPT}</body>`)
   return base + PREVIEW_CLICK_SCRIPT
 }
@@ -9280,7 +9296,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               setPages(synced)
               await saveState(messages, synced)
             }
-            const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu' | 'og_title', value: string | boolean) => {
+            const updatePageField = async (slug: string, field: 'name' | 'menuLabel' | 'inMenu' | 'og_title' | 'megaMenu', value: string | boolean) => {
               const next = pages.map(p => p.slug === slug ? { ...p, [field]: value } : p)
               const synced = (field === 'inMenu' || field === 'menuLabel') ? reorderNavLinks(next) : next
               setPages(synced)
@@ -9356,8 +9372,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 </div>
 
                 {/* Column labels */}
-                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 60px 80px 90px', gap: '0 8px', padding: '8px 20px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-                  {['', 'Pagina', 'Slug / URL', 'OG img', 'Menu', 'Azioni'].map((h, i) => (
+                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 60px 56px 100px 90px', gap: '0 8px', padding: '8px 20px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+                  {['', 'Pagina', 'Slug / URL', 'OG img', 'Menu', 'Mega menu', 'Azioni'].map((h, i) => (
                     <span key={i} style={{ fontSize: '0.67rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                   ))}
                 </div>
@@ -9384,7 +9400,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         }}
                       >
                         {/* Row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 60px 80px 90px', gap: '0 8px', alignItems: 'center', padding: '10px 12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 110px 60px 56px 100px 90px', gap: '0 8px', alignItems: 'center', padding: '10px 12px' }}>
                           {/* Drag handle — only active when row is collapsed */}
                           <div
                             draggable={!isExpanded}
@@ -9440,7 +9456,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </div>
 
                           {/* In menu toggle */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
                             <button
                               onClick={() => updatePageField(page.slug, 'inMenu', !inMenu)}
                               style={{
@@ -9455,6 +9471,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 transition: 'left 0.2s', display: 'block',
                               }} />
                             </button>
+                          </div>
+
+                          {/* Mega menu assignment */}
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <select
+                              value={page.megaMenu ?? ''}
+                              onChange={async e => {
+                                const val = e.target.value || undefined
+                                const next = pages.map(p => p.slug === page.slug ? { ...p, megaMenu: val } : p)
+                                setPages(next)
+                                await saveState(messages, next)
+                              }}
+                              style={{ fontSize: '0.7rem', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '3px 5px', color: C.text, background: C.white, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}
+                            >
+                              <option value="">—</option>
+                              <option value="funcionalidades">Funcionalidades</option>
+                            </select>
                           </div>
 
                           {/* Actions */}
@@ -9964,7 +9997,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   // For regular pages use srcDoc (inline HTML, no round-trip needed).
                   {...(previewIframePath && previewIframePath !== '/'
                     ? { src: `/preview/${projectSlug}${previewIframePath}`, key: previewIframePath }
-                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined) }
+                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined, pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel }))) }
                   )}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"
