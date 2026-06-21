@@ -9337,6 +9337,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 const html = p.html.replace(linkRe, `href="./${newSlug}$1`)
                 return { ...p, slug, html }
               })
+              // Mark old slug as deleted so the collaborative merge doesn't
+              // re-introduce it as an "extra page" from another session.
+              deletedSlugsRef.current.add(oldSlug)
               setPages(next)
               if (activeSlug === oldSlug) setActiveSlug(newSlug)
               setRenamingSlug(null)
