@@ -1675,7 +1675,8 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
   // Canonical header/footer CSS + global layout fix — injected just before </head>
   // (AFTER page styles) so the shared frame wins in cascade. Mirrors lib/preview.ts.
   const frameCss = sharedCss ? buildSharedFrameCss(sharedNav ?? '', sharedFooter ?? '', sharedCss) : ''
-  const frameTag = `<style data-fact-editor id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style data-fact-editor id="nfd-frame-css">${frameCss}</style>` : ''}`
+  const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;}.comp-nfd-label{color:#737373!important;}.comp-nfd-icon{color:#000!important;opacity:0.7!important;}`
+  const frameTag = `<style data-fact-editor id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style data-fact-editor id="nfd-frame-css">${frameCss}</style>` : ''}\n<style data-fact-editor id="nfd-mega-menu-fix">${megaMenuFix}</style>`
   if (/<\/body>/i.test(clean)) {
     return clean
       .replace(/<head[^>]*>/i, (m) => `${m}\n${inject}`)
