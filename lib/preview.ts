@@ -161,6 +161,19 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // Step 0b: inject shared nav and footer — single source of truth for header/footer
   if (sharedNav || sharedFooter) html = injectSharedComponents(html, sharedNav, sharedFooter)
 
+  // Step 0c: patch comp-nfd-trigger at serve time so it navigates to the
+  // funcionalidades page on desktop click. Stored nav HTML may lack data-href
+  // (overwritten by builder autosave), so we inject it here unconditionally.
+  html = html
+    .replace(
+      /class="comp-nfd-trigger" aria-expanded="false" aria-controls=/g,
+      'class="comp-nfd-trigger" data-href="./funcionalidades" aria-expanded="false" aria-controls='
+    )
+    .replace(
+      /btn\.addEventListener\('click',function\(e\)\{e\.stopPropagation\(\);clearTimeout\(t\);open\(li\.getAttribute\('data-open'\)!=='true'\);\}\);/g,
+      `btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(t);var href=btn.getAttribute('data-href');if(href&&window.matchMedia('(min-width:641px)').matches){window.location.href=href;}else{open(li.getAttribute('data-open')!=='true');}});`
+    )
+
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
 
