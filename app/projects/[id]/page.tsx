@@ -1395,6 +1395,23 @@ function reorderNavLinks(pages: Page[]): Page[] {
   const slugToItem = new Map<string, Element>()
   const matched = new Set<Element>()
   for (const item of items) {
+    // comp-nfd (mega menu) stores its href on the trigger's data-href, not on an <a>.
+    // If we let querySelector('a') find the panel items inside, it maps the wrong slug
+    // and the component ends up in the wrong nav position after every reorder.
+    const isCompNfd = item.classList?.contains('comp-nfd')
+    if (isCompNfd) {
+      const trigger = item.querySelector('.comp-nfd-trigger') as HTMLElement | null
+      const href = trigger?.getAttribute('data-href') ?? ''
+      for (const page of pages) {
+        const variants = [`./${page.slug}`, `/${page.slug}`, page.slug]
+        if (variants.some(v => href === v || href === `${v}/`)) {
+          slugToItem.set(page.slug, item)
+          matched.add(item)
+          break
+        }
+      }
+      continue // skip the regular <a> lookup for comp-nfd items
+    }
     const a = (item.tagName === 'A' ? item : item.querySelector('a')) as HTMLAnchorElement | null
     if (!a) continue
     const href = a.getAttribute('href') ?? ''
