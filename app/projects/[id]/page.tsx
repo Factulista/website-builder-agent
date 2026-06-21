@@ -9329,11 +9329,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   <span style={{ fontSize: '0.78rem', color: C.textFaint }}>{pages.length} {pages.length === 1 ? 'pagina' : 'pagine'}</span>
                   <div style={{ flex: 1 }} />
                   <button
-                    onClick={() => {
-                      setInput('Aggiungi una nuova pagina al sito')
-                      setViewMode('preview')
-                      setChatHidden(false)
-                      setTimeout(() => textareaRef.current?.focus(), 100)
+                    onClick={async () => {
+                      // Build a unique slug
+                      const taken = new Set(pages.map(p => p.slug))
+                      let slug = 'nuova-pagina'
+                      let n = 2
+                      while (taken.has(slug)) slug = `nuova-pagina-${n++}`
+
+                      const lang = projectContext?.language ?? 'es'
+                      const homePage = pages.find(p => p.slug === 'home')
+                      const homeNav = homePage?.html.match(/<nav[\s\S]*?<\/nav>/i)?.[0] ?? ''
+                      const homeFooter = homePage?.html.match(/<footer[\s\S]*?<\/footer>/i)?.[0] ?? ''
+
+                      const blankHtml = `<!DOCTYPE html>\n<html lang="${lang}">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title></title>\n</head>\n<body>\n${homeNav ? homeNav + '\n' : ''}<main>\n\n</main>\n${homeFooter ? homeFooter + '\n' : ''}</body>\n</html>`
+
+                      const newPage: Page = { slug, name: slug, html: blankHtml }
+                      const updatedPages = syncNavigation([...pages, newPage], 'add', slug)
+                      setPages(updatedPages)
+                      setActiveSlug(slug)
+                      setRenamingSlug(slug)
+                      await savePagesInline(updatedPages)
                     }}
                     style={{ background: C.dark, color: 'white', border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
                   >+ Nuova pagina</button>
