@@ -242,7 +242,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     .comp-nfd[data-open="true"] .comp-nfd-chevron{transform:rotate(180deg);}
     /* Panel: width driven by content (2 col of tags), no fixed min-width */
     .comp-nfd-panel{
-      position:absolute;top:calc(100% + 10px);left:50%;transform:translateX(-50%);
+      position:fixed;top:var(--header-h,68px);left:50%;transform:translateX(-50%);
       width:max-content;max-width:min(92vw,560px);
       background:var(--surface,var(--color-bg,#fff));
       border:none;
