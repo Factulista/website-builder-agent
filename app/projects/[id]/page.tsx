@@ -9567,7 +9567,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                     <span style={{ fontSize: '0.78rem', color: C.textFaint, fontFamily: 'monospace', flexShrink: 0 }}>/</span>
                                     <input value={editSlugValue} disabled={page.slug === 'home'} placeholder={page.slug}
                                       onChange={e => setEditSlugValue(e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, ''))}
-                                      onKeyDown={e => { if (e.key === 'Enter') void renamePageSlug(page.slug, editSlugValue); if (e.key === 'Escape') setRenamingSlug(null) }}
+                                      onKeyDown={e => {
+                                        // Enter / Escape both blur → the single save path is onBlur.
+                                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                                        if (e.key === 'Escape') { setEditSlugValue(page.slug); (e.target as HTMLInputElement).blur() }
+                                      }}
+                                      onBlur={() => { void renamePageSlug(page.slug, editSlugValue) }}
                                       style={{ ...inp, fontFamily: 'ui-monospace, monospace', background: page.slug === 'home' ? '#f4f4f5' : 'white', flex: 1 }} />
                                     {page.slug !== 'home' && editSlugValue !== page.slug && <span style={{ fontSize: '0.68rem', color: C.blue }}>✎</span>}
                                   </div>
