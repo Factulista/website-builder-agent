@@ -186,6 +186,8 @@ const NFD_ICONS: Record<string, string> = {
   integrations:`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5a3.54 3.54 0 0 0 5 0l2-2a3.54 3.54 0 0 0-5-5L7 4"/><path d="M9.5 6.5a3.54 3.54 0 0 0-5 0l-2 2a3.54 3.54 0 0 0 5 5L9 12"/></svg>`,
   // Security / shield
   security:    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1l6 2.5V8c0 3.5-2.5 5.8-6 7-3.5-1.2-6-3.5-6-7V3.5L8 1z"/><polyline points="5.5 8 7.5 10 10.5 6"/></svg>`,
+  // VeriFactu certification badge: circle seal + bold tick
+  verifactu:   `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5" stroke-width="1.25"/><path d="M4.5 7.5 8 1.5l3.5 6H4.5z" stroke-width="0" fill="currentColor" opacity="0"/><polyline points="4.5 8.5 7 11 11.5 5.5" stroke-width="2.2"/></svg>`,
   // Star / feature highlight
   star:        `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="8 1.5 10 6 15 6.5 11.5 10 12.5 15 8 12.5 3.5 15 4.5 10 1 6.5 6 6"/></svg>`,
   // Lightning / speed
