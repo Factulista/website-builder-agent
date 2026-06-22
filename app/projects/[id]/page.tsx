@@ -9512,34 +9512,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               <option value="">—</option>
                               <option value="funcionalidades">Funcionalidades</option>
                             </select>
-                            {page.megaMenu && (
-                              <>
-                                <input
-                                  placeholder="Etichetta voce..."
-                                  defaultValue={page.megaMenuLabel ?? ''}
-                                  onBlur={async e => {
-                                    const val = e.target.value.trim() || undefined
-                                    if (val === (page.megaMenuLabel ?? undefined)) return
-                                    const next = pages.map(p => p.slug === page.slug ? { ...p, megaMenuLabel: val } : p)
-                                    setPages(next)
-                                    await saveState(messages, next)
-                                  }}
-                                  style={{ fontSize: '0.68rem', border: `1px solid ${C.border}`, borderRadius: '4px', padding: '2px 5px', color: C.text, background: C.bg, fontFamily: 'inherit', width: '100%' }}
-                                />
-                                <input
-                                  placeholder="Icona (invoice, card, chart…)"
-                                  defaultValue={page.megaMenuIcon ?? ''}
-                                  onBlur={async e => {
-                                    const val = e.target.value.trim() || undefined
-                                    if (val === (page.megaMenuIcon ?? undefined)) return
-                                    const next = pages.map(p => p.slug === page.slug ? { ...p, megaMenuIcon: val } : p)
-                                    setPages(next)
-                                    await saveState(messages, next)
-                                  }}
-                                  style={{ fontSize: '0.68rem', border: `1px solid ${C.border}`, borderRadius: '4px', padding: '2px 5px', color: C.text, background: C.bg, fontFamily: 'inherit', width: '100%' }}
-                                />
-                              </>
-                            )}
                           </div>
 
                           {/* Actions */}
