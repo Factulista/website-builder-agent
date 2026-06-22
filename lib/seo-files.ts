@@ -1,4 +1,4 @@
-type Page = { slug: string; name: string; html?: string; inMenu?: boolean; robots?: { noindex?: boolean; nofollow?: boolean }; og_title?: string }
+type Page = { slug: string; name: string; html?: string; inMenu?: boolean; robots?: { noindex?: boolean; nofollow?: boolean }; og_title?: string; megaMenu?: string }
 type BlogPostRef = { slug: string; title?: string; published_at: string | null; seo_description?: string }
 
 function extractMetaDescription(html: string): string | undefined {
@@ -111,16 +111,34 @@ export function generateLlmsTxt(
     }
   }
 
-  // Extract key features from home H2s
+  // Extract key features from H2s — content-driven and rich:
+  // home page first, then every feature page (megaMenu='funcionalidades').
+  // FAQ and CTA sections are stripped first so only real feature headings remain.
+  // Deduplicated (case-insensitive), capped so the list stays focused.
   let featuresBlock = ''
-  if (home?.html) {
-    const h2matches = [...(home.html.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi))]
-    const h2s = h2matches
-      .map(m => m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim())
-      .filter(t => t.length > 3 && t.length < 120)
-      .slice(0, 10)
-    if (h2s.length > 0) {
-      featuresBlock = `\nKey features:\n${h2s.map(h => `- ${h}`).join('\n')}\n`
+  {
+    const featurePages: Page[] = [
+      ...(home ? [home] : []),
+      ...pages.filter(p => p.megaMenu === 'funcionalidades' && p.slug !== 'home'),
+    ]
+    const seen = new Set<string>()
+    const features: string[] = []
+    for (const fp of featurePages) {
+      const cleaned = (fp.html ?? '').replace(
+        /<section[^>]*class="[^"]*(?:faq|cta-banner)[^"]*"[^>]*>[\s\S]*?<\/section>/gi,
+        ''
+      )
+      for (const m of cleaned.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)) {
+        const t = m[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+        const key = t.toLowerCase()
+        if (t.length > 3 && t.length < 140 && !seen.has(key)) {
+          seen.add(key)
+          features.push(t)
+        }
+      }
+    }
+    if (features.length > 0) {
+      featuresBlock = `\nKey features:\n${features.slice(0, 40).map(h => `- ${h}`).join('\n')}\n`
     }
   }
 
