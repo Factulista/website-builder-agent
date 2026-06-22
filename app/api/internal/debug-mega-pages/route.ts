@@ -10,11 +10,27 @@ export async function GET(req: NextRequest) {
   const cfg = (data?.site_config ?? {}) as Record<string, unknown>
   const pub = (cfg.published_pages as Array<Record<string, unknown>>) ?? []
   if (slugParam) {
-    const page = pub.find(p => p.slug === slugParam)
-    if (!page) return NextResponse.json({ error: 'page not found' }, { status: 404 })
-    const html = page.html as string ?? ''
-    const sections = (html.match(/<section[^>]*>/g) ?? [])
-    return NextResponse.json({ slug: slugParam, htmlLen: html.length, sections, htmlStart: html.slice(0, 500), htmlEnd: html.slice(-500) })
+    const draftPages = (cfg.pages as Array<Record<string, unknown>>) ?? []
+    const inspect = (list: Array<Record<string, unknown>>) => {
+      const page = list.find(p => p.slug === slugParam)
+      if (!page) return { found: false }
+      const html = (page.html as string) ?? ''
+      return {
+        found: true,
+        htmlLen: html.length,
+        sectionCount: (html.match(/<section[^>]*>/g) ?? []).length,
+        sections: (html.match(/<section[^>]*>/g) ?? []),
+        keys: Object.keys(page),
+        htmlStart: html.slice(0, 300),
+      }
+    }
+    // Also expose top-level site_config keys so we can spot a different storage field
+    return NextResponse.json({
+      slug: slugParam,
+      configKeys: Object.keys(cfg),
+      draft: inspect(draftPages),
+      published: inspect(pub),
+    })
   }
   const mega = pub.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug, megaMenu: p.megaMenu, megaMenuIcon: p.megaMenuIcon, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel }))
   return NextResponse.json({ total: pub.length, megaCount: mega.length, megaPages: mega })
