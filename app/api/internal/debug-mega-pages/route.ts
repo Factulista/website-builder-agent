@@ -9,6 +9,31 @@ export async function GET(req: NextRequest) {
   const { data } = await sb.from('projects').select('site_config').eq('id', projectId).single()
   const cfg = (data?.site_config ?? {}) as Record<string, unknown>
   const pub = (cfg.published_pages as Array<Record<string, unknown>>) ?? []
+  // ?versions=<slug> → scan project_versions snapshots for a complete copy of that page
+  const versionsSlug = req.nextUrl.searchParams.get('versions')
+  if (versionsSlug) {
+    const { data: vrows } = await sb
+      .from('project_versions')
+      .select('id, summary, created_at, pages')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(30)
+    const scan = (vrows ?? []).map(v => {
+      const vpages = (v.pages as Array<Record<string, unknown>>) ?? []
+      const pg = vpages.find(p => p.slug === versionsSlug)
+      const html = (pg?.html as string) ?? ''
+      return {
+        id: v.id,
+        created_at: v.created_at,
+        summary: v.summary,
+        found: !!pg,
+        htmlLen: html.length,
+        sectionCount: (html.match(/<section[^>]*>/g) ?? []).length,
+      }
+    })
+    return NextResponse.json({ slug: versionsSlug, snapshots: scan })
+  }
+
   if (slugParam) {
     const draftPages = (cfg.pages as Array<Record<string, unknown>>) ?? []
     const inspect = (list: Array<Record<string, unknown>>) => {
