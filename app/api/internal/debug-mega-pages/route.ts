@@ -18,6 +18,23 @@ export async function GET(req: NextRequest) {
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(30)
+    const vid = req.nextUrl.searchParams.get('vid')
+    if (vid) {
+      const row = (vrows ?? []).find(v => String(v.id) === vid)
+      if (!row) return NextResponse.json({ error: 'version not found' }, { status: 404 })
+      const vpages = (row.pages as Array<Record<string, unknown>>) ?? []
+      const pg = vpages.find(p => p.slug === versionsSlug)
+      const html = (pg?.html as string) ?? ''
+      return NextResponse.json({
+        id: row.id,
+        created_at: row.created_at,
+        title: (html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim(),
+        sections: (html.match(/<section[^>]*class="[^"]*"[^>]*>/g) ?? []),
+        hasFaq: /class="faq"/.test(html),
+        faqQuestions: (html.match(/faq-question/g) ?? []).length,
+        htmlLen: html.length,
+      })
+    }
     const scan = (vrows ?? []).map(v => {
       const vpages = (v.pages as Array<Record<string, unknown>>) ?? []
       const pg = vpages.find(p => p.slug === versionsSlug)
