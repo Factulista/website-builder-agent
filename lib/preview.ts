@@ -332,6 +332,24 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   if (error || !data) return errorPage(404, '404', 'Sito non trovato')
 
   const config = data.site_config as SiteConfig
+
+  // ── User-managed 301 redirects (SEO Optimizer → Strumenti) ──
+  // Checked BEFORE the page lookup so old/removed slugs send a clean 301 instead
+  // of a 404. Same logic as servePublished, but resolves relative targets against
+  // the public host (originalHost) when serving the live domain.
+  if (config?.redirects?.length) {
+    const reqPath = pageSlug === 'home' ? '/' : `/${pageSlug}`
+    const norm = (s: string) => '/' + s.trim().replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+|\/+$/g, '')
+    const hit = config.redirects.find(r => r.from && norm(r.from) === norm(reqPath))
+    if (hit && hit.to) {
+      const host = originalHost ?? `myweb.${ROOT_DOMAIN}/${projectSlug}`
+      const target = /^https?:\/\//i.test(hit.to)
+        ? hit.to
+        : `https://${host}${hit.to.startsWith('/') ? '' : '/'}${hit.to}`
+      return new Response(null, { status: 301, headers: { Location: target } })
+    }
+  }
+
   let pageHtml: string | undefined
 
   if (config?.pages && config.pages.length > 0) {
