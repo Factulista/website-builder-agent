@@ -2864,17 +2864,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }
       const meta = await r.json()
       if (!meta) return
-      const newMeta = {
-        ...mediaMeta,
-        [path]: {
-          alt: meta.alt ?? '',
-          title: meta.title ?? '',
-          caption: meta.caption ?? '',
-          description: meta.description ?? '',
-        },
+      const applied = {
+        alt: meta.alt ?? '',
+        title: meta.title ?? '',
+        caption: meta.caption ?? '',
+        description: meta.description ?? '',
       }
+      const newMeta = { ...mediaMeta, [path]: applied }
       setMediaMeta(newMeta)
-      saveState(messages, latestPagesRef.current, versions, newMeta)
+      // Apply alt/title to <img> tags in pages whose src matches this image,
+      // so the AI-generated metadata actually lands in the served HTML.
+      const basePages = latestPagesRef.current
+      const updatedPages = applyMediaMetaToPages(basePages, imageUrl, applied)
+      if (updatedPages !== basePages) setPages(updatedPages)
+      saveState(messages, updatedPages, versions, newMeta)
       console.log('[image-meta] generated for', path, meta)
     } catch (err) {
       console.error('[image-meta] error:', err)
@@ -2901,17 +2904,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const meta = await r.json()
       if (!meta) return
       const existing = mediaMeta[path] ?? {}
-      const newMeta = {
-        ...mediaMeta,
-        [path]: {
-          alt:         existing.alt         || meta.alt         || '',
-          title:       existing.title       || meta.title       || '',
-          caption:     existing.caption     || meta.caption     || '',
-          description: existing.description || meta.description || '',
-        },
+      const applied = {
+        alt:         existing.alt         || meta.alt         || '',
+        title:       existing.title       || meta.title       || '',
+        caption:     existing.caption     || meta.caption     || '',
+        description: existing.description || meta.description || '',
       }
+      const newMeta = { ...mediaMeta, [path]: applied }
       setMediaMeta(newMeta)
-      saveState(messages, latestPagesRef.current, versions, newMeta)
+      // Apply alt/title to <img> tags in pages whose src matches this image,
+      // so the AI-generated metadata actually lands in the served HTML.
+      const basePages = latestPagesRef.current
+      const updatedPages = applyMediaMetaToPages(basePages, imageUrl, applied)
+      if (updatedPages !== basePages) setPages(updatedPages)
+      saveState(messages, updatedPages, versions, newMeta)
     } catch (err) {
       console.error('[image-meta wand] error:', err)
     } finally {
