@@ -2,7 +2,9 @@ import { createClient } from '@supabase/supabase-js'
 import { buildBlogListPage, type Post, type InjectPoints } from '../../../../lib/blog-serve'
 
 export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+// Dynamic by nature (route params + DB read). We intentionally do NOT set
+// 'force-dynamic' so the explicit Cache-Control (s-maxage + SWR) on the Response
+// is honored by the CDN, giving a fast edge TTFB instead of regenerating every hit.
 
 function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)

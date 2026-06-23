@@ -3,7 +3,8 @@ import { buildBlogPostPage, type Post, type InjectPoints } from '../../../../../
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../../../lib/design-system'
 
 export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+// No 'force-dynamic': route is dynamic (params + DB) but the explicit Cache-Control
+// (s-maxage + SWR) on the Response must be honored by the CDN for fast TTFB.
 
 function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
