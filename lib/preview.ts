@@ -395,13 +395,15 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      // No caching for production domain pages — content must always be fresh.
-      // Staging previews can be cached aggressively since they're only for editing.
-      // Staging: short cache fine (editor previews don't need to be real-time)
-      // Production: NO cache — user must see changes immediately after Publish
+      // Production (live domain): CDN-cache with stale-while-revalidate so visitors
+      // and crawlers get a fast edge response (~30-50ms TTFB) instead of paying for
+      // a full Supabase fetch + HTML transform on every hit. After a Publish/edit the
+      // change propagates within s-maxage (~60s); SWR serves the cached copy instantly
+      // meanwhile and revalidates in the background.
+      // Staging: short cache, fine since it's only the editor preview.
       'Cache-Control': isStaging
         ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
-        : 'no-cache, no-store, must-revalidate',
+        : 'public, s-maxage=60, stale-while-revalidate=86400',
     },
   })
 }

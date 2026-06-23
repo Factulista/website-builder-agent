@@ -72,5 +72,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const blogSeoTitle = typeof config.blog_seo_title === 'string' ? config.blog_seo_title : undefined
   const blogSeoDescription = typeof config.blog_seo_description === 'string' ? config.blog_seo_description : undefined
   const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, undefined, injectPoints, megaPages, blogSeoTitle, blogSeoDescription)
-  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=86400' } })
 }

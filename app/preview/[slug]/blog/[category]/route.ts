@@ -156,5 +156,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
   const megaPages = pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
   const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock, megaPages)
-  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=86400' } })
 }
