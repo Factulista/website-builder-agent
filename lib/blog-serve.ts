@@ -370,10 +370,15 @@ export function buildBlogListPage(
   totalPages = 1,
   faviconUrl?: string,
   injectPoints?: InjectPoints,
-  megaPages?: MegaPage[]
+  megaPages?: MegaPage[],
+  seoTitle?: string,
+  seoDescription?: string
 ): string {
-  const title = 'Blog'
   const subtitle = lang === 'es' ? 'Artículos y novedades' : lang === 'en' ? 'Articles and updates' : 'Articoli e aggiornamenti'
+  // SEO <title> / meta description: use the per-site overrides when provided,
+  // else fall back to the generic defaults (so the tag is never empty/too short).
+  const title = seoTitle?.trim() || 'Blog'
+  const metaDescription = seoDescription?.trim() || subtitle
   const readMoreLabel = lang === 'es' ? 'Leer más →' : lang === 'en' ? 'Read more →' : 'Leggi →'
 
   const cards = posts.map(post => {
@@ -454,7 +459,7 @@ export function buildBlogListPage(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <base href="${escapeHtml(baseUrl)}/">
   <title>${escapeHtml(title)}</title>
-  <meta name="description" content="${escapeHtml(subtitle)}">
+  <meta name="description" content="${escapeHtml(metaDescription)}">
   <link rel="canonical" href="${escapeHtml(baseUrl)}/blog">
   ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
   ${injectPoints?.head ?? ''}
@@ -496,7 +501,7 @@ export function buildBlogListPage(
   ${fixedNav}
   ${headerSection}
   <section class="blog-listing">
-    ${headerHtml ? '' : `<div class="blog-listing-header"><h1>${title}</h1><p>${subtitle}</p></div>`}
+    ${headerHtml ? '' : `<div class="blog-listing-header"><h1>Blog</h1><p>${subtitle}</p></div>`}
     ${emptyState}
     <div class="blog-grid">${cards}</div>
     ${paginationHtml}
