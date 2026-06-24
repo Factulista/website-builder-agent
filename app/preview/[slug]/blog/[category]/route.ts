@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildBlogPostPage, type Post, type InjectPoints } from '../../../../../lib/blog-serve'
+import { buildBlogPostPage, pickRelatedPosts, type Post, type InjectPoints } from '../../../../../lib/blog-serve'
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../../../lib/design-system'
 
 export const runtime = 'nodejs'
@@ -150,12 +150,27 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   if (!post) return new Response('Post not found', { status: 404 })
 
+  // Related posts: manual picks (post.related_post_ids) → fallback by category. Up to 6.
+  const { data: relCandidates } = await supabase
+    .from('blog_posts')
+    .select('id, title, slug, excerpt, featured_image, published_at, categories, tags')
+    .eq('project_id', project.id)
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(40)
+  const relatedPosts = pickRelatedPosts(
+    (relCandidates ?? []) as Post[],
+    { id: post.id as string, categories: post.categories as string[] | undefined },
+    (post as { related_post_ids?: string[] }).related_post_ids,
+    6,
+  )
+
   const sidebarBanner = (config.blog_sidebar_banner as { url: string; link: string } | undefined) ?? null
   const injectPoints = (config.inject_points as InjectPoints | undefined)
   const faviconUrl = typeof config.favicon_url === 'string' ? config.favicon_url : undefined
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
   const megaPages = pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
-  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock, megaPages)
+  const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock, megaPages, relatedPosts)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=86400' } })
 }

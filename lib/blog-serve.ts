@@ -303,6 +303,36 @@ export type Post = {
   author?: string
 }
 
+/**
+ * Selects related posts for an article.
+ * Priority: manual picks (in chosen order) → same-category posts → most recent.
+ * `candidates` should already be the published posts (any order); the current post
+ * is excluded automatically. Returns up to `limit` posts.
+ */
+export function pickRelatedPosts(
+  candidates: Post[],
+  current: { id: string; categories?: string[] },
+  manualIds?: string[],
+  limit = 6,
+): Post[] {
+  const pool = candidates.filter(p => p.id !== current.id)
+  const cats = new Set(current.categories ?? [])
+  const byCategory = (list: Post[]) => {
+    const same = list.filter(p => (p.categories ?? []).some(c => cats.has(c)))
+    const others = list.filter(p => !(p.categories ?? []).some(c => cats.has(c)))
+    return [...same, ...others]
+  }
+  if (manualIds && manualIds.length) {
+    const byId = new Map(pool.map(p => [p.id, p]))
+    const manual = manualIds.map(id => byId.get(id)).filter((p): p is Post => !!p)
+    if (manual.length >= limit) return manual.slice(0, limit)
+    const chosen = new Set(manual.map(p => p.id))
+    const rest = byCategory(pool.filter(p => !chosen.has(p.id)))
+    return [...manual, ...rest].slice(0, limit)
+  }
+  return byCategory(pool).slice(0, limit)
+}
+
 export type BlogSidebarBanner = {
   url: string
   link: string
@@ -525,7 +555,8 @@ export function buildBlogPostPage(
   faviconUrl?: string,
   injectPoints?: InjectPoints,
   dsOverride = '',   // Design System CSS block — injected AFTER blog CSS so DS wins
-  megaPages?: MegaPage[]
+  megaPages?: MegaPage[],
+  relatedPosts?: Post[]
 ): string {
   const backLabel = '← Blog'
   const dateStr = escapeHtml(formatDate(post.published_at, lang))
@@ -616,6 +647,42 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 
   const fixedNav = fixNavLinks(siteNav, baseUrl)
 
+  // ── Related posts section (full-width, after the article) ──
+  // Cards with image + title; dofollow internal links (anchor = post title) to
+  // strengthen internal linking. Up to 6. Hidden if there are none.
+  const relatedLabel = lang === 'es' ? 'Artículos relacionados' : lang === 'en' ? 'Related articles' : 'Articoli correlati'
+  const relatedCards = (relatedPosts ?? []).slice(0, 6).map(rp => {
+    const firstCat = (rp.categories ?? [])[0]
+    const catSlug = firstCat ? slugifySimple(firstCat) : null
+    const href = catSlug ? `${baseUrl}/blog/${catSlug}/${rp.slug}` : `${baseUrl}/blog/${rp.slug}`
+    const img = rp.featured_image
+      ? `<img class="related-card-img" src="${safeUrl(rp.featured_image)}" alt="${escapeHtml(rp.title)}" loading="lazy">`
+      : `<div class="related-card-img related-card-noimg"></div>`
+    const cat = firstCat ? `<span class="related-card-cat">${escapeHtml(firstCat)}</span>` : ''
+    return `<a class="related-card" href="${escapeHtml(href)}">
+      ${img}
+      <div class="related-card-body">${cat}<span class="related-card-title">${escapeHtml(rp.title)}</span></div>
+    </a>`
+  }).join('\n')
+  const relatedHtml = relatedCards ? `<section class="related-posts">
+    <style>
+      .related-posts{max-width:1100px;margin:3.5rem auto 0;padding:2.5rem 1.5rem 0;border-top:1px solid #e5e7eb}
+      .related-posts h2{font-size:1.5rem;font-weight:800;margin:0 0 1.5rem;color:#111}
+      .related-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem}
+      .related-card{display:flex;flex-direction:column;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;transition:box-shadow .2s,transform .2s}
+      .related-card:hover{box-shadow:0 6px 22px rgba(0,0,0,.09);transform:translateY(-2px)}
+      .related-card-img{width:100%;height:150px;object-fit:cover;display:block;background:#f3f4f6}
+      .related-card-noimg{background:linear-gradient(135deg,#eef2ff,#f8fafc)}
+      .related-card-body{padding:.9rem 1rem 1.1rem;display:flex;flex-direction:column;gap:.45rem}
+      .related-card-cat{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#6366f1}
+      .related-card-title{font-size:.98rem;font-weight:700;line-height:1.35;color:#111}
+      @media(max-width:900px){.related-grid{grid-template-columns:repeat(2,1fr)}}
+      @media(max-width:560px){.related-grid{grid-template-columns:1fr}}
+    </style>
+    <h2>${relatedLabel}</h2>
+    <div class="related-grid">${relatedCards}</div>
+  </section>` : ''
+
   const postOut = `<!DOCTYPE html>
 <html lang="${escapeHtml(lang)}">
 <head>
@@ -667,6 +734,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
     <!-- Banner destra -->
     ${bannerHtml}
   </div>
+  ${relatedHtml}
   ${siteFooter}
   ${tocScript}
   ${injectPoints?.body_end ?? ''}
