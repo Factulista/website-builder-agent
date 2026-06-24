@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ po
   if (!existing) return NextResponse.json({ error: 'Post non trovato' }, { status: 404 })
 
   const body = await req.json()
-  const allowed = ['title', 'slug', 'content_html', 'excerpt', 'featured_image', 'categories', 'tags', 'seo_title', 'seo_description', 'author', 'published_at']
+  const allowed = ['title', 'slug', 'content_html', 'excerpt', 'featured_image', 'categories', 'tags', 'seo_title', 'seo_description', 'author', 'published_at', 'related_post_ids']
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]

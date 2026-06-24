@@ -1955,7 +1955,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   // ── Blog state ──────────────────────────────────────────────────────────────
-  type BlogPost = { id: string; title: string; slug: string; excerpt: string; featured_image: string | null; status: 'draft' | 'published'; published_at: string | null; categories: string[]; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string; author: string }
+  type BlogPost = { id: string; title: string; slug: string; excerpt: string; featured_image: string | null; status: 'draft' | 'published'; published_at: string | null; categories: string[]; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string; author: string; related_post_ids?: string[] }
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
   const [blogLoading, setBlogLoading] = useState(false)
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
@@ -2093,6 +2093,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [mediaSearch, setMediaSearch] = useState('')
   const [mediaSort, setMediaSort] = useState<'recent' | 'oldest' | 'name'>('recent')
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null)
+  const [relatedSearch, setRelatedSearch] = useState('')
   const [mediaMeta, setMediaMeta] = useState<Record<string, MediaMeta>>({})
   const [faviconUrl, setFaviconUrl] = useState<string>('')
   const [ogPickerSlug, setOgPickerSlug] = useState<string | null>(null)
@@ -8736,6 +8737,52 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       })()}
                     </div>
                     <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '10px' }}>
+                      {(() => {
+                        const curPost = selectedPost?.id === post.id ? selectedPost : post
+                        const relIds = curPost.related_post_ids ?? []
+                        const selectedRel = relIds.map(id => blogPosts.find(p => p.id === id)).filter((p): p is BlogPost => !!p)
+                        const q = relatedSearch.trim().toLowerCase()
+                        const candidates = blogPosts.filter(p => p.id !== post.id && p.status === 'published' && !relIds.includes(p.id) && (!q || p.title.toLowerCase().includes(q))).slice(0, 8)
+                        const full = relIds.length >= 6
+                        const setRel = (ids: string[]) => saveMeta(post.id, { related_post_ids: ids })
+                        return (
+                          <>
+                            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>🔗 Articoli correlati</div>
+                            {selectedRel.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '7px' }}>
+                                {selectedRel.map(rp => (
+                                  <span key={rp.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#eef2ff', color: '#4338ca', fontSize: '0.7rem', fontWeight: 600, padding: '3px 6px 3px 9px', borderRadius: '12px', maxWidth: '100%' }}>
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>{rp.title}</span>
+                                    <button onClick={() => setRel(relIds.filter(x => x !== rp.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', fontSize: '0.85rem', lineHeight: 1, padding: 0 }} title="Rimuovi">×</button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {!full && (
+                              <div style={{ position: 'relative' }}>
+                                <input
+                                  value={relatedSearch}
+                                  onChange={e => setRelatedSearch(e.target.value)}
+                                  placeholder={`Cerca articoli da collegare… (${relIds.length}/6)`}
+                                  style={{ width: '100%', fontSize: '0.72rem', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 8px', color: C.text, background: C.white, fontFamily: 'inherit' }}
+                                />
+                                {relatedSearch.trim() && (
+                                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: '3px', background: C.white, border: `1px solid ${C.border}`, borderRadius: '6px', boxShadow: '0 6px 18px rgba(0,0,0,0.1)', maxHeight: '180px', overflowY: 'auto' }}>
+                                    {candidates.length === 0
+                                      ? <div style={{ fontSize: '0.72rem', color: C.textFaint, padding: '8px 10px', fontStyle: 'italic' }}>Nessun articolo</div>
+                                      : candidates.map(c => (
+                                        <button key={c.id} onClick={() => { setRel([...relIds, c.id]); setRelatedSearch('') }} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', borderBottom: `1px solid ${C.bg}`, cursor: 'pointer', fontSize: '0.72rem', color: C.text, padding: '6px 10px', fontFamily: 'inherit' }}>{c.title}</button>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div style={{ fontSize: '0.6rem', color: C.textFaint, marginTop: '5px' }}>
+                              {relIds.length === 0 ? 'Vuoto = scelti automaticamente per categoria' : `${relIds.length}/6 selezionati`}
+                            </div>
+                          </>
+                        )
+                      })()}
                     </div>
                   </div>
 
