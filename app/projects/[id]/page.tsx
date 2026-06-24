@@ -4204,6 +4204,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return `:root {\n${rootMatch[1].trim()}\n}`
   }, [pages])
 
+  // Single concatenated haystack of everything that can reference a media URL
+  // (page HTML + blog post content + featured images). Used to flag, in the media
+  // library, which images are actually in use vs sitting unused in storage.
+  const mediaUsageHaystack = useMemo(() => {
+    const fromPages = pages.map(p => p.html || '').join('\n')
+    const fromBlog = blogPosts.map(b => `${b.content_html || ''} ${b.featured_image || ''}`).join('\n')
+    return `${fromPages}\n${fromBlog}`
+  }, [pages, blogPosts])
+  const isMediaUsed = (url: string) => !!url && mediaUsageHaystack.includes(url)
+
   // Ref that will be wired to handleSend after it's defined (avoids hoisting issue)
   const handleSendRef = useRef<((e: React.FormEvent, retryOverride?: { input: string; images: string[] }) => void) | null>(null)
 
@@ -7539,6 +7549,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       })
                       .map(item => {
                         const selected = selectedMedia?.path === item.path
+                        const used = isMediaUsed(item.url)
                         return (
                           <button
                             key={item.path}
@@ -7570,6 +7581,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 padding: '1px 5px', borderRadius: '3px',
                               }}>🌐 favicon</div>
                             )}
+                            {/* Usage badge: helps spot images sitting unused in storage */}
+                            <div style={{
+                              position: 'absolute', top: '4px', right: '4px',
+                              background: used ? '#16a34a' : 'rgba(17,17,17,0.62)',
+                              color: 'white', fontSize: '0.58rem', fontWeight: 700,
+                              padding: '1px 6px', borderRadius: '10px',
+                              letterSpacing: '0.01em',
+                            }}>{used ? '✓ Usata' : 'Non usata'}</div>
                           </button>
                         )
                       })}
@@ -7602,6 +7621,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <div><strong style={{ color: C.text }}>Nome:</strong> {selectedMedia.name}</div>
                     <div><strong style={{ color: C.text }}>Peso:</strong> {formatBytes(selectedMedia.size)}</div>
                     <div><strong style={{ color: C.text }}>Caricato:</strong> {selectedMedia.createdAt ? new Date(selectedMedia.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</div>
+                    <div style={{ marginTop: '4px' }}>
+                      <strong style={{ color: C.text }}>Stato:</strong>{' '}
+                      {isMediaUsed(selectedMedia.url)
+                        ? <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Usata in una pagina</span>
+                        : <span style={{ color: C.textFaint, fontWeight: 700 }}>Non usata (solo in libreria)</span>}
+                    </div>
                   </div>
                   {/* Favicon action */}
                   <div style={{ marginBottom: '14px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
