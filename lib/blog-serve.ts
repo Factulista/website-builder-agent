@@ -651,7 +651,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   // Cards with image + title; dofollow internal links (anchor = post title) to
   // strengthen internal linking. Up to 6. Hidden if there are none.
   const relatedLabel = lang === 'es' ? 'Artículos relacionados' : lang === 'en' ? 'Related articles' : 'Articoli correlati'
-  const relatedCards = (relatedPosts ?? []).slice(0, 6).map(rp => {
+  const relatedCards = (relatedPosts ?? []).slice(0, 3).map(rp => {
     const firstCat = (rp.categories ?? [])[0]
     const catSlug = firstCat ? slugifySimple(firstCat) : null
     const href = catSlug ? `${baseUrl}/blog/${catSlug}/${rp.slug}` : `${baseUrl}/blog/${rp.slug}`
@@ -666,7 +666,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   }).join('\n')
   const relatedHtml = relatedCards ? `<section class="related-posts">
     <style>
-      .related-posts{max-width:1100px;margin:3.5rem auto 0;padding:2.5rem 1.5rem 0;border-top:1px solid #e5e7eb}
+      .related-posts{max-width:1100px;margin:3.5rem auto 0;padding:2.5rem 1.5rem 4.5rem;border-top:1px solid #e5e7eb}
       .related-posts h2{font-size:1.5rem;font-weight:800;margin:0 0 1.5rem;color:#111}
       .related-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem}
       .related-card{display:flex;flex-direction:column;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;transition:box-shadow .2s,transform .2s}

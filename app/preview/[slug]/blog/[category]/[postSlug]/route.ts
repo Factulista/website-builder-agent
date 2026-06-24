@@ -124,7 +124,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     (relCandidates ?? []) as Post[],
     { id: post.id as string, categories: post.categories as string[] | undefined },
     (post as { related_post_ids?: string[] }).related_post_ids,
-    6,
+    3,
   )
 
   const sidebarBanner = (config.blog_sidebar_banner as { url: string; link: string } | undefined) ?? null

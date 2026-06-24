@@ -8743,7 +8743,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         const selectedRel = relIds.map(id => blogPosts.find(p => p.id === id)).filter((p): p is BlogPost => !!p)
                         const q = relatedSearch.trim().toLowerCase()
                         const candidates = blogPosts.filter(p => p.id !== post.id && p.status === 'published' && !relIds.includes(p.id) && (!q || p.title.toLowerCase().includes(q))).slice(0, 8)
-                        const full = relIds.length >= 6
+                        const full = relIds.length >= 3
                         const setRel = (ids: string[]) => saveMeta(post.id, { related_post_ids: ids })
                         return (
                           <>
@@ -8763,7 +8763,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 <input
                                   value={relatedSearch}
                                   onChange={e => setRelatedSearch(e.target.value)}
-                                  placeholder={`Cerca articoli da collegare… (${relIds.length}/6)`}
+                                  placeholder={`Cerca articoli da collegare… (${relIds.length}/3)`}
                                   style={{ width: '100%', fontSize: '0.72rem', border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 8px', color: C.text, background: C.white, fontFamily: 'inherit' }}
                                 />
                                 {relatedSearch.trim() && (
@@ -8778,7 +8778,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               </div>
                             )}
                             <div style={{ fontSize: '0.6rem', color: C.textFaint, marginTop: '5px' }}>
-                              {relIds.length === 0 ? 'Vuoto = scelti automaticamente per categoria' : `${relIds.length}/6 selezionati`}
+                              {relIds.length === 0 ? 'Vuoto = scelti automaticamente per categoria' : `${relIds.length}/3 selezionati`}
                             </div>
                           </>
                         )
