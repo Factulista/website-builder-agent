@@ -250,35 +250,45 @@ Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro
         let fullText = ''
         let currentJson = ''
         let jsonStarted = false
+        // SSE lines can be split across network chunks, and multi-byte UTF-8 chars
+        // (á, ñ, é…) can straddle two chunks. We therefore:
+        //  - keep a single TextDecoder in streaming mode (handles split code points)
+        //  - buffer partial lines and only parse complete ones (\n-terminated),
+        //    carrying the last (possibly incomplete) line into the next read.
+        // Without this, a split line fails JSON.parse and its text is dropped → "broken sentences".
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        const handleLine = (line: string) => {
+          if (!line.startsWith('data: ')) return
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
+              const text = data.delta.text
+              fullText += text
+              if (text.includes('{')) jsonStarted = true
+              if (jsonStarted) currentJson += text
+              controller.enqueue(encoder.encode(`event: text\ndata: ${JSON.stringify({ text })}\n\n`))
+            }
+          } catch {
+            // Non-JSON 'data:' line (e.g. keep-alive) — safe to ignore. Real deltas
+            // are never dropped now because partial lines stay buffered.
+          }
+        }
 
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
 
-          const chunk = new TextDecoder().decode(value)
-          const lines = chunk.split('\n')
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''   // keep the last, possibly-incomplete line
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                if (data.type === 'content_block_delta' && data.delta.type === 'text_delta') {
-                  const text = data.delta.text
-                  fullText += text
-
-                  // Try to detect if we're in the JSON part
-                  if (text.includes('{')) jsonStarted = true
-                  if (jsonStarted) currentJson += text
-
-                  // Send streaming event with latest text chunk
-                  controller.enqueue(encoder.encode(`event: text\ndata: ${JSON.stringify({ text })}\n\n`))
-                }
-              } catch (e) {
-                // Silently ignore parse errors on stream lines
-              }
-            }
-          }
+          for (const line of lines) handleLine(line)
         }
+        // Flush any remaining buffered line + decoder tail so the final delta isn't lost.
+        buffer += decoder.decode()
+        if (buffer) handleLine(buffer)
 
         // Parse final JSON + sanitize: strip any inline style/font attrs the AI smuggled in
         try {
