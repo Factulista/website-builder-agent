@@ -444,14 +444,14 @@ ${pageCtx}
 REQUISITI OBBLIGATORI:
 - Esattamente tra 50 e 60 caratteri (conta ogni lettera, spazio e simbolo)
 - Contiene la keyword primaria della pagina (desumila da H1 e H2)
-- Formato: "${brand} | [descrizione keyword della pagina]" — il brand appare UNA SOLA VOLTA
-- Esempio con brand "Fatturify": "Fatturify | Fatturazione elettronica per PMI" (45 chars)
+- Formato: "[keyword descrittiva della pagina] | ${brand}" — keyword prima, brand alla fine, UNA SOLA VOLTA
+- Esempio con brand "Fatturify": "Fatturazione elettronica per PMI | Fatturify" (45 chars)
 - Lingua: ${lang}
 
-REGOLA CRITICA: il nome "${brand}" deve comparire ESATTAMENTE UNA VOLTA nel title.
+REGOLA CRITICA: il nome "${brand}" deve comparire ESATTAMENTE UNA VOLTA nel title, SEMPRE alla fine dopo |.
 CONTA I CARATTERI prima di rispondere. Rispondi SOLO con il testo del title, nient'altro.`
       : `Il title che hai scritto non rispetta i requisiti (range 50–60 caratteri e brand una sola volta).
-Riscrivilo: formato "${brand} | [keyword descrittiva]", tra 50 e 60 caratteri, lingua ${lang}.
+Riscrivilo: formato "[keyword descrittiva] | ${brand}", tra 50 e 60 caratteri, lingua ${lang}.
 ${pageCtx}
 Contali uno per uno. Rispondi SOLO con il testo del title.`
 
@@ -462,8 +462,8 @@ Contali uno per uno. Rispondi SOLO con il testo del title.`
     // Last attempt: force-fit
     if (attempt === 3) {
       if (clean.length > 60) return clean.slice(0, 57) + '...'
-      // Too short — pad with keyword hint
-      const padded = `${brand} | ${clean}`.slice(0, 60)
+      // Too short — pad with brand at end
+      const padded = `${clean} | ${brand}`.slice(0, 60)
       return padded.length >= 50 ? padded : clean
     }
   }

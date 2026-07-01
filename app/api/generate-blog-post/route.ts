@@ -204,7 +204,7 @@ Restituisci SOLO questo JSON (nessun testo fuori dal JSON):
 {
   "title": "H1 con keyword primaria, max 70 caratteri",
   "slug": "slug-kebab-case-con-keyword",
-  "seo_title": "SEO title max 60 caratteri con keyword primaria — SOLO testo, NO emoji",
+  "seo_title": "SEO title max 60 caratteri — formato: keyword primaria | Brand, SOLO testo, NO emoji",
   "seo_description": "meta description 150-160 caratteri con keyword e CTA",
   "excerpt": "riassunto 1-2 frasi max 200 caratteri",
   "content_html": "HTML COMPLETO seguendo la struttura sopra — ${wordCount} parole"
