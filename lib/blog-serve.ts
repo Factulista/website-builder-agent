@@ -491,6 +491,10 @@ export function buildBlogListPage(
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(metaDescription)}">
   <link rel="canonical" href="${escapeHtml(baseUrl)}/blog">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(metaDescription)}">
+  <meta property="og:url" content="${escapeHtml(baseUrl)}/blog">
+  <meta property="og:type" content="website">
   ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
   ${injectPoints?.head ?? ''}
   ${siteStyle}

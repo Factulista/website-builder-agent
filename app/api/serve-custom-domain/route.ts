@@ -217,7 +217,9 @@ ${items}
       const faviconUrl = (siteConfig.favicon_url as string | undefined)
       const injectPoints = (siteConfig.inject_points as InjectPoints | undefined)
       const megaPages = publishedPages.filter((p: Record<string, unknown>) => p.megaMenu === 'funcionalidades').map((p: Record<string, unknown>) => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
-      const html = buildBlogListPageFromLib(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, faviconUrl, injectPoints, megaPages)
+      const blogSeoTitle = typeof siteConfig.blog_seo_title === 'string' ? siteConfig.blog_seo_title : undefined
+      const blogSeoDescription = typeof siteConfig.blog_seo_description === 'string' ? siteConfig.blog_seo_description : undefined
+      const html = buildBlogListPageFromLib(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, faviconUrl, injectPoints, megaPages, blogSeoTitle, blogSeoDescription)
       return new Response(html, {
         status: 200,
         // Blog listing: shorter CDN TTL (new posts appear here)
