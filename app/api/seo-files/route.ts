@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   // passes ?host=www.factulista.com so we can build the correct canonical base URL.
   const hostOverride = req.nextUrl.searchParams.get('host')
 
-  if (!slug || (file !== 'sitemap.xml' && file !== 'robots.txt' && file !== 'llms.txt')) {
+  if (!slug || (file !== 'sitemap.xml' && file !== 'robots.txt' && file !== 'llms.txt' && file !== 'favicon.ico')) {
     return new Response('Not found', { status: 404 })
   }
 
@@ -40,6 +40,21 @@ export async function GET(req: NextRequest) {
   if (!project) return new Response('Not found', { status: 404 })
 
   const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
+
+  // Root-domain /favicon.ico: give Google (and browsers) a same-domain favicon location.
+  // We 302-redirect to the project's configured favicon so it stays per-tenant and always current.
+  if (file === 'favicon.ico') {
+    const faviconUrl = typeof siteConfig.favicon_url === 'string' ? siteConfig.favicon_url : ''
+    if (!faviconUrl) return new Response('Not found', { status: 404 })
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: faviconUrl,
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400',
+      },
+    })
+  }
+
   const pages = (siteConfig.pages as { slug: string; name: string; html?: string }[]) ?? []
   // Support both full {keyword} and compact {k} format
   const seoKeywords = ((siteConfig.keywords as Array<any>) ?? []).map((k: any) => k.keyword ?? k.k ?? '').filter(Boolean)

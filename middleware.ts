@@ -7,6 +7,24 @@ export function middleware(req: NextRequest) {
   const host = (req.headers.get('host') || '').toLowerCase()
   const url = req.nextUrl.clone()
 
+  // Root-domain /favicon.ico → serve the root project's favicon from the same domain (Google looks
+  // here first; a same-domain location is more reliable than only the <link rel="icon"> tag).
+  // Only the marketing root domain is handled dynamically; every other host falls through unchanged.
+  if (url.pathname === '/favicon.ico') {
+    if (host === `www.${ROOT_DOMAIN}` || host === ROOT_DOMAIN) {
+      const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? ''
+      if (rootProject) {
+        const fav = url.clone()
+        fav.pathname = '/api/seo-files'
+        fav.searchParams.set('slug', rootProject)
+        fav.searchParams.set('file', 'favicon.ico')
+        fav.searchParams.set('host', `www.${ROOT_DOMAIN}`)
+        return NextResponse.rewrite(fav)
+      }
+    }
+    return NextResponse.next()
+  }
+
   // Strip GA4 cross-domain tracking params (_gl, _ga_*) from public URLs.
   // These are added by GTM/GA4 linker when navigating between subdomains.
   // We redirect to the clean URL so analytics still fires (JS picks up _gl before redirect)
@@ -128,5 +146,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|_next/static|_next/image).*)'],
 }
