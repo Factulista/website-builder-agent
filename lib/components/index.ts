@@ -921,7 +921,7 @@ export const COMPONENT_REGISTRY: Component[] = [
     name: 'Griglia Testimonianze',
     description: '3 card testimonianze in griglia responsive (3 col desktop, 1 mobile) con stelle, citazione, avatar con iniziali, nome e ruolo.',
     category: 'social-proof',
-    tags: ['testimonianze', 'testimonial', 'recensioni', 'reviews', 'social proof', 'clienti', 'feedback', 'stelle'],
+    tags: ['testimonianze', 'testimonial', 'recensioni', 'reviews', 'social proof', 'feedback'],
     html: `<section class="tg-section">
   <style>
     .tg-section{padding:4rem 1.5rem;font-family:var(--font-body,system-ui,sans-serif);background:var(--color-bg,#ffffff);}

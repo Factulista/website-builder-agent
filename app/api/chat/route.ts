@@ -360,7 +360,11 @@ export async function POST(req: NextRequest) {
     const isAddPageMsg = /\b(add_page|nuova pagina|nueva página|new page|aggiungi pagina|añade página)\b/i.test(lastUserMessage)
     const hasImageInMsg = /Immagine allegata:\s*https?:\/\//i.test(lastUserMessage)
     const isTranslateMsgForLog = /\b(traduci|translate|traduzione|in italiano|in inglese|in spagnolo|in español|in english|in tedesco|in francese|in portoghese)\b/i.test(lastUserMessage)
-    const matchedComponentForLog = (isDeleteMsg || isTranslateMsgForLog) ? null : findComponentByKeywords(lastUserMessage)
+    // Component injection is only meaningful when editing existing pages. On a brand-new
+    // site (no pages yet) the agent must design the whole thing via create_site — injecting
+    // a single library component would derail generation (e.g. "5 stelle" → testimonial grid).
+    const hasExistingPages = (pages?.length ?? 0) > 0
+    const matchedComponentForLog = (isDeleteMsg || isTranslateMsgForLog || !hasExistingPages) ? null : findComponentByKeywords(lastUserMessage)
 
     const activePage = (pages ?? []).find(p => p.slug === activePageSlug) ?? (pages ?? [])[0] ?? null
     const pagesContextLog = (pages ?? []).map(p => {
@@ -412,7 +416,8 @@ export async function POST(req: NextRequest) {
       const isDeleteMsg = /\b(elimina|rimuovi|cancella|togli|delete|remove|quita|borra|supprime|lösche)\b/i.test(lastUserMessage)
       const isTranslateMsg = /\b(traduci|translate|traduzione|in italiano|in inglese|in spagnolo|in español|in english|in tedesco|in francese|in portoghese|in francese)\b/i.test(lastUserMessage)
       const isDuplicateMsg = /\b(duplica|duplic|copia|clona|clone|crea.*copiando|duplicar|copiar|cloner|kopier)\b/i.test(lastUserMessage)
-      const matchedComponent = (isDeleteMsg || isTranslateMsg || isDuplicateMsg) ? null : findComponentByKeywords(lastUserMessage)
+      // Skip component injection on brand-new sites (no pages) — see hasExistingPages above.
+      const matchedComponent = (isDeleteMsg || isTranslateMsg || isDuplicateMsg || !hasExistingPages) ? null : findComponentByKeywords(lastUserMessage)
       const agentMessages = matchedComponent
         ? messages.map((m, i) => i === messages.length - 1
             ? {
