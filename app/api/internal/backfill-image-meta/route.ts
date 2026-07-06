@@ -18,49 +18,61 @@ type MediaMeta = { alt?: string; title?: string; caption?: string; description?:
 function applyMetaToHtml(html: string, mediaByUrl: Map<string, MediaMeta>): { html: string; changed: boolean } {
   let changed = false
   const result = html.replace(/<img([^>]*)>/gi, (tag, attrs) => {
+    let newAttrs: string = attrs
+
     const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/)
-    if (!srcMatch) return tag
-    const src = srcMatch[1]
+    if (srcMatch) {
+      const src = srcMatch[1]
 
-    // Find matching meta — try exact URL, or by Supabase path suffix
-    let meta: MediaMeta | undefined
-    for (const [key, val] of mediaByUrl) {
-      if (src === key || src.endsWith(key) || key.endsWith(src.split('/').pop()!)) {
-        meta = val
-        break
-      }
-    }
-    if (!meta) return tag
-
-    let newAttrs = attrs
-
-    // Update or add alt
-    if (meta.alt) {
-      if (/\balt=["'][^"']*["']/.test(newAttrs)) {
-        const current = newAttrs.match(/\balt=["']([^"']*)["']/)?.[1] ?? ''
-        if (current !== meta.alt) {
-          newAttrs = newAttrs.replace(/\balt=["'][^"']*["']/, `alt="${meta.alt.replace(/"/g, '&quot;')}"`)
-          changed = true
+      // Find matching meta — try exact URL, or by Supabase path suffix
+      let meta: MediaMeta | undefined
+      for (const [key, val] of mediaByUrl) {
+        if (src === key || src.endsWith(key) || key.endsWith(src.split('/').pop()!)) {
+          meta = val
+          break
         }
-      } else {
-        newAttrs += ` alt="${meta.alt.replace(/"/g, '&quot;')}"`
-        changed = true
+      }
+
+      if (meta) {
+        // Update or add alt
+        if (meta.alt) {
+          if (/\balt=["'][^"']*["']/.test(newAttrs)) {
+            const current = newAttrs.match(/\balt=["']([^"']*)["']/)?.[1] ?? ''
+            if (current !== meta.alt) {
+              newAttrs = newAttrs.replace(/\balt=["'][^"']*["']/, `alt="${meta.alt.replace(/"/g, '&quot;')}"`)
+              changed = true
+            }
+          } else {
+            newAttrs += ` alt="${meta.alt.replace(/"/g, '&quot;')}"`
+            changed = true
+          }
+        }
+
+        // Update or add title
+        if (meta.title) {
+          if (/\btitle=["'][^"']*["']/.test(newAttrs)) {
+            const current = newAttrs.match(/\btitle=["']([^"']*)["']/)?.[1] ?? ''
+            if (current !== meta.title) {
+              newAttrs = newAttrs.replace(/\btitle=["'][^"']*["']/, `title="${meta.title.replace(/"/g, '&quot;')}"`)
+              changed = true
+            }
+          } else {
+            newAttrs += ` title="${meta.title.replace(/"/g, '&quot;')}"`
+            changed = true
+          }
+        }
       }
     }
 
-    // Update or add title
-    if (meta.title) {
-      if (/\btitle=["'][^"']*["']/.test(newAttrs)) {
-        const current = newAttrs.match(/\btitle=["']([^"']*)["']/)?.[1] ?? ''
-        if (current !== meta.title) {
-          newAttrs = newAttrs.replace(/\btitle=["'][^"']*["']/, `title="${meta.title.replace(/"/g, '&quot;')}"`)
-          changed = true
-        }
-      } else {
-        newAttrs += ` title="${meta.title.replace(/"/g, '&quot;')}"`
-        changed = true
-      }
-    }
+    // Collapse a bare `alt`/`title` (no value) sitting directly before its valued twin,
+    // e.g. `alt alt="..."`. Per the HTML spec duplicate attributes keep the FIRST, so the
+    // bare (empty) one wins and the image renders alt-less → Ahrefs "missing alt text".
+    // This targets the exact `name name=` sequence (safe: won't touch words inside a value),
+    // covering both pre-existing breakage and the case where we just appended above.
+    const collapsed = newAttrs
+      .replace(/\balt\s+(?=alt=)/gi, '')
+      .replace(/\btitle\s+(?=title=)/gi, '')
+    if (collapsed !== newAttrs) { newAttrs = collapsed; changed = true }
 
     if (newAttrs === attrs) return tag
     return `<img${newAttrs}>`
