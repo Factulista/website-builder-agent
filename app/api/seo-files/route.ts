@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { generateSitemap, generateRobots, generateLlmsTxt } from '../../../lib/seo-files'
+import { generateSitemap, generateRobots, generateLlmsTxt, generateLlmsFullTxt } from '../../../lib/seo-files'
 
 export const runtime = 'nodejs'
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   // passes ?host=www.factulista.com so we can build the correct canonical base URL.
   const hostOverride = req.nextUrl.searchParams.get('host')
 
-  if (!slug || (file !== 'sitemap.xml' && file !== 'robots.txt' && file !== 'llms.txt' && file !== 'favicon.ico')) {
+  if (!slug || (file !== 'sitemap.xml' && file !== 'robots.txt' && file !== 'llms.txt' && file !== 'llms-full.txt' && file !== 'favicon.ico')) {
     return new Response('Not found', { status: 404 })
   }
 
@@ -79,18 +79,21 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  if (file === 'llms.txt') {
+  if (file === 'llms.txt' || file === 'llms-full.txt') {
+    const isFull = file === 'llms-full.txt'
     const { data: blogPosts } = await supabase
       .from('blog_posts')
-      .select('slug, title, published_at, seo_description')
+      .select(isFull ? 'slug, title, published_at, seo_description, content_html' : 'slug, title, published_at, seo_description')
       .eq('project_id', project.id)
       .eq('status', 'published')
       .order('published_at', { ascending: false })
-      .limit(20)
+      .limit(isFull ? 30 : 20)
     const siteName = (siteConfig.siteName as string) || slug
     const siteDesc = (siteConfig.siteDescription as string) || undefined
     const llmsIntro = (siteConfig.llmsIntroduction as string) || undefined
-    const llms = generateLlmsTxt(pages, baseUrl, siteName, siteDesc, blogPosts ?? [], llmsIntro)
+    const llms = isFull
+      ? generateLlmsFullTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro)
+      : generateLlmsTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro)
     return new Response(llms, {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })

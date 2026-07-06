@@ -72,7 +72,7 @@ export function middleware(req: NextRequest) {
 
       // Intercept sitemap.xml and robots.txt — route them to /api/seo-files with the
       // correct slug and a host param so the API builds the right canonical base URL.
-      if (url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt' || url.pathname === '/llms.txt') {
+      if (url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt' || url.pathname === '/llms.txt' || url.pathname === '/llms-full.txt') {
         const fileParam = url.pathname.slice(1)
         url.pathname = '/api/seo-files'
         url.searchParams.set('slug', rootProject)
@@ -124,7 +124,7 @@ export function middleware(req: NextRequest) {
     const [slug, ...rest] = segments
     const page = rest[0]
     // Serve SEO files directly via API (not as preview pages)
-    if (page === 'sitemap.xml' || page === 'robots.txt' || page === 'llms.txt') {
+    if (page === 'sitemap.xml' || page === 'robots.txt' || page === 'llms.txt' || page === 'llms-full.txt') {
       url.pathname = '/api/seo-files'
       url.searchParams.set('slug', slug)
       url.searchParams.set('file', page)

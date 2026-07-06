@@ -66,16 +66,22 @@ ${allUrls.join('\n')}
 </urlset>`
 }
 
+// Legal/boilerplate pages carry no value for AI assistants — moved to the
+// "Optional" section (llmstxt.org: URLs that can be skipped for short context).
+const LEGAL_SLUG_RE = /(aviso-legal|politica|privacidad|cookies|condiciones|terminos|dpa|rgpd|legal|privacy|terms)/i
+
 /**
  * Generate /llms.txt — a content-driven markdown summary for AI assistants.
  * Schema: https://llmstxt.org (inspired by framer.com/llms.txt)
  * Dynamically generated from live page HTML + blog posts on every request.
  *
- * Content-driven, NOT keyword-driven:
- * - Uses custom llmsIntroduction if provided, else extracts from home page HTML
- * - Shows all visible pages with their descriptions
- * - Shows blog posts with their descriptions
- * - NO artificial keyword lists — only what's on the pages
+ * Structure (facts first — LLM parsers weight the top of the file):
+ * 1. Title + description + introduction (llmsIntroduction = the per-project
+ *    hook for hard citable facts: pricing, compliance, company info)
+ * 2. Pages (content pages with descriptions)
+ * 3. Blog posts
+ * 4. Key features (capped, de-noised — marketing headlines add little)
+ * 5. Optional (legal pages) + Resources (incl. llms-full.txt)
  */
 export function generateLlmsTxt(
   pages: Page[],
@@ -96,9 +102,7 @@ export function generateLlmsTxt(
     return { ...p, description, h1 }
   })
 
-  // Home page: extract intro paragraph + features
   const home = richPages.find(p => p.slug === 'home')
-  const otherPages = richPages.filter(p => p.slug !== 'home')
 
   // Use custom introduction if provided, otherwise extract from home
   let introBlock = ''
@@ -111,10 +115,8 @@ export function generateLlmsTxt(
     }
   }
 
-  // Extract key features from H2s — content-driven and rich:
-  // home page first, then every feature page (megaMenu='funcionalidades').
-  // FAQ and CTA sections are stripped first so only real feature headings remain.
-  // Deduplicated (case-insensitive), capped so the list stays focused.
+  // Extract key features from H2s (home + feature pages), FAQ/CTA stripped,
+  // deduplicated and capped low: they are headlines, not facts.
   let featuresBlock = ''
   {
     const featurePages: Page[] = [
@@ -138,17 +140,24 @@ export function generateLlmsTxt(
       }
     }
     if (features.length > 0) {
-      featuresBlock = `\nKey features:\n${features.slice(0, 40).map(h => `- ${h}`).join('\n')}\n`
+      featuresBlock = `\n## Key features\n\n${features.slice(0, 12).map(h => `- ${h}`).join('\n')}\n`
     }
   }
 
-  // All pages with descriptions
-  const pageLines = richPages.map(p => {
+  // Content pages vs legal boilerplate
+  const contentPages = richPages.filter(p => !LEGAL_SLUG_RE.test(p.slug))
+  const legalPages = richPages.filter(p => LEGAL_SLUG_RE.test(p.slug))
+
+  const pageLine = (p: (typeof richPages)[number]) => {
     const url = p.slug === 'home' ? `${baseUrl}/` : `${baseUrl}/${p.slug}`
-    const label = p.og_title || p.h1 || p.name
+    // Prefer the H1 (what the page actually says) over og_title, which can be
+    // stale or truncated; cap length so one long heading doesn't bloat the line.
+    const label = (p.h1 || p.og_title || p.name).slice(0, 90)
     const desc = p.description ? `: ${p.description.slice(0, 160)}` : ''
     return `- [${label}](${url})${desc}`
-  }).join('\n')
+  }
+  const pageLines = contentPages.map(pageLine).join('\n')
+  const legalLines = legalPages.map(pageLine).join('\n')
 
   // Blog posts with descriptions
   const blogLines = blogPosts.length > 0
@@ -163,17 +172,80 @@ export function generateLlmsTxt(
   const descBlock = siteDescription ? `\n> ${siteDescription}` : ''
 
   return `# ${siteName}
-${descBlock}${introBlock}${featuresBlock}
+${descBlock}${introBlock}
 ## Pages
 
 ${pageLines}
-${blogPosts.length > 0 ? `\n## Blog\n\n${blogLines}` : ''}
-
+${blogPosts.length > 0 ? `\n## Blog\n\n${blogLines}` : ''}${featuresBlock}
+${legalPages.length > 0 ? `\n## Optional\n\n${legalLines}\n` : ''}
 ## Resources
 
+- [Full content](${baseUrl}/llms-full.txt): Complete page text for AI assistants
 - [Sitemap](${baseUrl}/sitemap.xml): Full page list
 - [Robots.txt](${baseUrl}/robots.txt): Crawler directives
 - Updated: ${new Date().toISOString().slice(0, 10)}
+`
+}
+
+/** Strip HTML to readable plain text: drop scripts/styles/nav/footer, keep headings as markdown. */
+function htmlToText(html: string, maxChars = 4000): string {
+  let s = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, t) => `\n# ${t}\n`)
+    .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, t) => `\n## ${t}\n`)
+    .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, t) => `\n### ${t}\n`)
+    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_, t) => `- ${t}\n`)
+    .replace(/<\/(p|div|section|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+  // Decode the handful of entities that matter for readability
+  s = s.replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  // Collapse whitespace but keep line structure
+  s = s.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+  return s.length > maxChars ? s.slice(0, maxChars) + '…' : s
+}
+
+/**
+ * Generate /llms-full.txt — extended version with the full text content of
+ * every visible page (llmstxt.org convention). Blog posts included with their
+ * full text when available, else description + link.
+ */
+export function generateLlmsFullTxt(
+  pages: Page[],
+  baseUrl: string,
+  siteName: string,
+  siteDescription?: string,
+  blogPosts: Array<BlogPostRef & { content_html?: string | null }> = [],
+  llmsIntroduction?: string
+): string {
+  const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
+  const visiblePages = pages.filter(isVisible).filter(p => !LEGAL_SLUG_RE.test(p.slug))
+
+  const intro = llmsIntroduction ? `\n${llmsIntroduction}\n` : (siteDescription ? `\n> ${siteDescription}\n` : '')
+
+  const pageSections = visiblePages.map(p => {
+    const url = p.slug === 'home' ? `${baseUrl}/` : `${baseUrl}/${p.slug}`
+    const title = extractH1(p.html ?? '') || p.name
+    return `---\n\n# ${title}\nURL: ${url}\n\n${htmlToText(p.html ?? '')}`
+  }).join('\n\n')
+
+  const blogSections = blogPosts.slice(0, 30).map(post => {
+    const url = `${baseUrl}/blog/${post.slug}`
+    const body = post.content_html
+      ? htmlToText(post.content_html, 6000)
+      : (post.seo_description ?? '')
+    return `---\n\n# ${post.title || post.slug}\nURL: ${url}\n\n${body}`
+  }).join('\n\n')
+
+  return `# ${siteName} — full content
+${intro}
+${pageSections}
+${blogSections ? `\n${blogSections}\n` : ''}
+---
+Updated: ${new Date().toISOString().slice(0, 10)}
 `
 }
 
