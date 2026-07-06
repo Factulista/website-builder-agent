@@ -215,6 +215,31 @@ export function applySeoMeta(html: string, ctx: SeoMetaContext): string {
     result = result.replace(/<\/head>/i, `${faqSchema}\n</head>`)
   }
 
+  // ── BreadcrumbList JSON-LD ──
+  // Flat trail: Home → current page. Skipped on the home page (a single-item
+  // breadcrumb is noise). Google can show the trail in the snippet instead of
+  // the raw URL. Last item carries no "item" (current page, per Google spec).
+  result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?"@type"\s*:\s*"BreadcrumbList"[\s\S]*?<\/script>\s*/gi, '')
+  if (pageSlug && pageSlug !== 'home' && /<\/head>/i.test(result)) {
+    const langForCrumb = (result.match(/<html[^>]+lang=["']([^"']+)["']/i)?.[1] ?? 'es').slice(0, 2).toLowerCase()
+    const homeLabels: Record<string, string> = { es: 'Inicio', it: 'Home', en: 'Home', fr: 'Accueil', de: 'Startseite', pt: 'Início', ca: 'Inici' }
+    const homeLabel = homeLabels[langForCrumb] ?? 'Inicio'
+    const h1FromHtml = (result.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '')
+      .replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+    const crumbName = esc((h1FromHtml || titleFromHtml || pageSlug).slice(0, 110))
+    const breadcrumbSchema = `<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "${esc(homeLabel)}", "item": "${siteUrl}/" },
+    { "@type": "ListItem", "position": 2, "name": "${crumbName}" }
+  ]
+}
+</script>`
+    result = result.replace(/<\/head>/i, `${breadcrumbSchema}\n</head>`)
+  }
+
   // ── Robots meta ──
   result = result.replace(/<meta[^>]+name=["']robots["'][^>]*\/?>\s*/gi, '')
   if (robots?.noindex || robots?.nofollow) {

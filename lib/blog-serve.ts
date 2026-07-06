@@ -63,6 +63,13 @@ export function safeUrl(s: unknown): string {
 
 /** CSS for individual blog post content — shared between server render and editor preview */
 export const BLOG_POST_CONTENT_CSS = `
+  /* ── Breadcrumb (above post header) ── */
+  .blog-breadcrumb{font-size:.8rem;color:#9ca3af;margin:0 0 1.1rem;display:flex;align-items:center;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
+  .blog-breadcrumb a{color:#6b7280;text-decoration:none;flex-shrink:0}
+  .blog-breadcrumb a:hover{text-decoration:underline}
+  .blog-breadcrumb .bc-sep{margin:0 .45rem;color:#d1d5db;flex-shrink:0}
+  .blog-breadcrumb [aria-current]{overflow:hidden;text-overflow:ellipsis;min-width:0}
+
   /* ── Layout 3 colonne ─────────────────────────────────────────────────
      Heavy !important defenses below — the site's own CSS (extracted from
      home page <style>) gets injected BEFORE this block and often has
@@ -495,6 +502,14 @@ export function buildBlogListPage(
   <meta property="og:description" content="${escapeHtml(metaDescription)}">
   <meta property="og:url" content="${escapeHtml(baseUrl)}/blog">
   <meta property="og:type" content="website">
+  <script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    'itemListElement': [
+      { '@type': 'ListItem', 'position': 1, 'name': ({ es: 'Inicio', it: 'Home', en: 'Home', fr: 'Accueil', de: 'Startseite', pt: 'Início', ca: 'Inici' } as Record<string, string>)[lang] ?? 'Inicio', 'item': `${baseUrl}/` },
+      { '@type': 'ListItem', 'position': 2, 'name': 'Blog' },
+    ],
+  })}</script>
   ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
   ${injectPoints?.head ?? ''}
   ${siteStyle}
@@ -573,6 +588,23 @@ export function buildBlogPostPage(
   const seoTitle = post.seo_title || post.title
   const seoDesc = post.seo_description || post.excerpt || ''
   const canonicalUrl = `${baseUrl}/blog/${post.slug}`
+
+  // Breadcrumb: Home → Blog → current post. JSON-LD for snippets + visible trail
+  // above the article header (standard blog UX). Labels follow the site language.
+  const homeLabels: Record<string, string> = { es: 'Inicio', it: 'Home', en: 'Home', fr: 'Accueil', de: 'Startseite', pt: 'Início', ca: 'Inici' }
+  const homeLabel = homeLabels[lang] ?? 'Inicio'
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    'itemListElement': [
+      { '@type': 'ListItem', 'position': 1, 'name': homeLabel, 'item': `${baseUrl}/` },
+      { '@type': 'ListItem', 'position': 2, 'name': 'Blog', 'item': `${baseUrl}/blog` },
+      { '@type': 'ListItem', 'position': 3, 'name': post.title },
+    ],
+  }
+  const breadcrumbHtml = `<nav class="blog-breadcrumb" aria-label="breadcrumb">
+        <a href="${escapeHtml(baseUrl)}/">${escapeHtml(homeLabel)}</a><span class="bc-sep">›</span><a href="${escapeHtml(baseUrl)}/blog">Blog</a><span class="bc-sep">›</span><span aria-current="page">${escapeHtml(post.title)}</span>
+      </nav>`
 
   // Schema.org BlogPosting structured data
   const schemaOrg = {
@@ -707,6 +739,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   <meta property="og:type" content="article">
   ${post.published_at ? `<meta property="article:published_time" content="${escapeHtml(post.published_at)}">` : ''}
   <script type="application/ld+json">${JSON.stringify(schemaOrg)}</script>
+  <script type="application/ld+json">${JSON.stringify(breadcrumbSchema)}</script>
   ${injectPoints?.head ?? ''}
   ${siteStyle}
   <style>${BLOG_POST_CONTENT_CSS}</style>
@@ -725,6 +758,7 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 
     <!-- Contenuto centrale -->
     <article class="blog-post-wrapper">
+      ${breadcrumbHtml}
       <header class="blog-post-header">
         <div class="blog-post-meta">${dateStr}${tags ? ` &nbsp;${tags}` : ''}${authorLine ? ` &nbsp;${authorLine}` : ''}</div>
         <h1>${escapeHtml(post.title)}</h1>
