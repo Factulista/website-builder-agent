@@ -63,12 +63,14 @@ export function safeUrl(s: unknown): string {
 
 /** CSS for individual blog post content — shared between server render and editor preview */
 export const BLOG_POST_CONTENT_CSS = `
-  /* ── Breadcrumb (above post header) ── */
-  .blog-breadcrumb{font-size:.8rem;color:#9ca3af;margin:0 0 1.1rem;display:flex;align-items:center;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
-  .blog-breadcrumb a{color:#6b7280;text-decoration:none;flex-shrink:0}
-  .blog-breadcrumb a:hover{text-decoration:underline}
-  .blog-breadcrumb .bc-sep{margin:0 .45rem;color:#d1d5db;flex-shrink:0}
-  .blog-breadcrumb [aria-current]{overflow:hidden;text-overflow:ellipsis;min-width:0}
+  /* ── Breadcrumb (above post header) ──
+     !important hardening: tenant CSS may have aggressive generic selectors
+     (div/nav resets, fixed headers) injected before this block. */
+  .blog-breadcrumb{position:static !important;width:auto !important;max-width:100% !important;height:auto !important;background:transparent !important;box-shadow:none !important;border:none !important;padding:0 !important;font-size:.8rem !important;color:#9ca3af !important;margin:0 0 1.1rem !important;display:flex !important;align-items:center !important;justify-content:flex-start !important;flex-wrap:nowrap !important;overflow:hidden !important;white-space:nowrap !important;z-index:auto !important}
+  .blog-breadcrumb a{color:#6b7280 !important;text-decoration:none !important;flex-shrink:0 !important;padding:0 !important;margin:0 !important;background:transparent !important;font-size:.8rem !important;font-weight:400 !important}
+  .blog-breadcrumb a:hover{text-decoration:underline !important}
+  .blog-breadcrumb .bc-sep{margin:0 .45rem !important;color:#d1d5db !important;flex-shrink:0 !important}
+  .blog-breadcrumb [aria-current]{overflow:hidden !important;text-overflow:ellipsis !important;min-width:0 !important;color:#9ca3af !important;font-size:.8rem !important}
 
   /* ── Layout 3 colonne ─────────────────────────────────────────────────
      Heavy !important defenses below — the site's own CSS (extracted from
@@ -602,9 +604,12 @@ export function buildBlogPostPage(
       { '@type': 'ListItem', 'position': 3, 'name': post.title },
     ],
   }
-  const breadcrumbHtml = `<nav class="blog-breadcrumb" aria-label="breadcrumb">
+  // NOTE: deliberately a <div role="navigation">, NOT <nav> — tenant site CSS is injected
+  // before the blog CSS and often has aggressive `nav { position:fixed; ... }` selectors
+  // that would hijack the breadcrumb (full-width fixed bar over the real header).
+  const breadcrumbHtml = `<div class="blog-breadcrumb" role="navigation" aria-label="breadcrumb">
         <a href="${escapeHtml(baseUrl)}/">${escapeHtml(homeLabel)}</a><span class="bc-sep">›</span><a href="${escapeHtml(baseUrl)}/blog">Blog</a><span class="bc-sep">›</span><span aria-current="page">${escapeHtml(post.title)}</span>
-      </nav>`
+      </div>`
 
   // Schema.org BlogPosting structured data
   const schemaOrg = {
