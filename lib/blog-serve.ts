@@ -84,7 +84,9 @@ export const BLOG_POST_CONTENT_CSS = `
     max-width:1320px !important;
     width:100% !important;
     margin:0 auto !important;
-    padding:3rem 1.5rem 5rem !important;
+    /* 4.5rem top: tenant navs are commonly position:fixed (~56-70px tall) and would
+       otherwise cover the first in-flow elements (breadcrumb, TOC back link). */
+    padding:4.5rem 1.5rem 5rem !important;
     align-items:start !important;
     box-sizing:border-box !important;
     background:transparent !important;
@@ -290,7 +292,7 @@ export const BLOG_POST_CONTENT_CSS = `
     .blog-sidebar-right{display:none !important}
   }
   @media(max-width:820px){
-    .blog-post-layout{grid-template-columns:1fr !important;padding:1.75rem 1.1rem 3rem !important;gap:1.25rem !important}
+    .blog-post-layout{grid-template-columns:1fr !important;padding:4.25rem 1.1rem 3rem !important;gap:1.25rem !important}
     .blog-toc{position:static !important;border:1px solid #e8e4de !important;border-radius:12px !important;padding:1rem 1.1rem !important;background:#fafaf9 !important}
     .blog-post-header h1{font-size:1.85rem !important}
     .blog-post-content{font-size:1rem}
