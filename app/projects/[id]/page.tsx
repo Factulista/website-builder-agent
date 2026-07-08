@@ -9545,12 +9545,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                                 src={(page as any).og_image}
                                 alt="OG"
                                 title="Immagine OG — clicca per cambiare"
-                                onClick={() => setOgPickerSlug(ogPickerSlug === page.slug ? null : page.slug)}
+                                onClick={() => { const next = ogPickerSlug === page.slug ? null : page.slug; setOgPickerSlug(next); if (next && mediaItems.length === 0) void loadMedia() }}
                                 style={{ width: '36px', height: '24px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer', border: '1px solid #e5e7eb' }}
                               />
                             ) : (
                               <button
-                                onClick={() => setOgPickerSlug(ogPickerSlug === page.slug ? null : page.slug)}
+                                onClick={() => { const next = ogPickerSlug === page.slug ? null : page.slug; setOgPickerSlug(next); if (next && mediaItems.length === 0) void loadMedia() }}
                                 title="Imposta immagine OG"
                                 style={{ background: 'transparent', border: '1px dashed #d1d5db', borderRadius: '4px', width: '36px', height: '24px', cursor: 'pointer', fontSize: '0.8rem', color: '#9b9896', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >+</button>
@@ -9615,6 +9615,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             <div style={{ fontSize: '0.7rem', color: '#9b9896', marginBottom: '2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Scegli immagine OG per questa pagina</div>
                             <div style={{ fontSize: '0.66rem', color: '#9b9896', marginBottom: '8px' }}>Auto-ridimensionata a 1200×630px</div>
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', overflowX: 'auto', flexWrap: 'nowrap', padding: '22px 2px' }}>
+                              {mediaLoading && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>Caricamento…</span>}
+                              {!mediaLoading && mediaItems.length === 0 && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>Nessuna immagine in libreria. Caricane una dal tab Media.</span>}
                               {mediaItems.map(item => (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
