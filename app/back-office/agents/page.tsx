@@ -162,7 +162,7 @@ export default function AgentsPage() {
   const CATEGORY_LABELS = CATEGORY_LABEL_KEYS
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: '1200px' }}>
+    <div style={{ padding: '32px 40px', maxWidth: '1500px' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: C.text }}>{t('agents.title' as const, language as any)}</h1>
         <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: C.textMuted }}>
@@ -360,13 +360,10 @@ export default function AgentsPage() {
 
                 {/* Description */}
                 <p
-                  title={agent.description}
                   style={{
-                    margin: 0, fontSize: '0.78rem', color: C.textMuted, lineHeight: 1.4,
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
+                    margin: 0, fontSize: '0.78rem', color: C.textMuted, lineHeight: 1.45,
+                    whiteSpace: 'normal', overflowWrap: 'break-word',
+                    alignSelf: 'center',
                   }}
                 >
                   {agent.description}
