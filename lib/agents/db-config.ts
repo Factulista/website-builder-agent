@@ -81,7 +81,28 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
     return manifestFallback()
   }
 
-  const existingNames = new Set((existing ?? []).map((r: DbAgentConfig) => r.name))
+  const manifestNames = new Set(AGENTS_MANIFEST.map(a => a.name))
+
+  // Prune stale agents: rows in the DB whose name is no longer in the manifest
+  // (leftovers from old architectures — e.g. orchestrator, clarifier, planner).
+  // The manifest is the source of truth for which agents exist; the seed step
+  // below adds missing ones, this step removes ones that no longer exist.
+  // Safe: callClaude falls back to the static AGENT_CONFIGS, never the DB row.
+  let live = (existing ?? []) as DbAgentConfig[]
+  const staleNames = live.filter(r => !manifestNames.has(r.name)).map(r => r.name)
+  if (staleNames.length > 0) {
+    const { error: pruneError } = await supabase
+      .from('agent_configs')
+      .delete()
+      .in('name', staleNames)
+    if (pruneError) {
+      console.warn('[db-config] prune stale agents failed:', pruneError.message)
+    } else {
+      live = live.filter(r => manifestNames.has(r.name))
+    }
+  }
+
+  const existingNames = new Set(live.map((r: DbAgentConfig) => r.name))
 
   // Seed any missing agents from manifest
   const toInsert = AGENTS_MANIFEST
@@ -121,7 +142,7 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
       if (basicError) {
         console.warn('[db-config] basic seed also failed:', basicError.message)
         // Restituisci comunque quelli già presenti + manifest come fallback per i nuovi
-        return mergeWithManifest(existing ?? [])
+        return mergeWithManifest(live)
       }
     }
 
@@ -131,12 +152,12 @@ export async function getAgentConfigs(): Promise<DbAgentConfig[]> {
       .select('*')
     if (freshError) {
       console.warn('[db-config] re-fetch failed:', freshError.message)
-      return mergeWithManifest(existing ?? [])
+      return mergeWithManifest(live)
     }
     return (fresh ?? []) as DbAgentConfig[]
   }
 
-  return (existing ?? []) as DbAgentConfig[]
+  return live
 }
 
 /** Converte il manifest in DbAgentConfig per usarlo come fallback quando il DB non è disponibile */
