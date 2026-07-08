@@ -9614,18 +9614,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e7eb', background: '#f8fafc' }}>
                             <div style={{ fontSize: '0.7rem', color: '#9b9896', marginBottom: '2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Scegli immagine OG per questa pagina</div>
                             <div style={{ fontSize: '0.66rem', color: '#9b9896', marginBottom: '8px' }}>Auto-ridimensionata a 1200×630px</div>
-                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                              {mediaItems.slice(0, 16).map(item => (
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', overflowX: 'auto', flexWrap: 'nowrap', padding: '22px 2px' }}>
+                              {mediaItems.map(item => (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                   key={item.path}
                                   src={item.url}
                                   alt=""
                                   onClick={() => { void savePageOgImage(page.slug, item.url); setOgPickerSlug(null) }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.8)'; (e.currentTarget as HTMLElement).style.zIndex = '5' }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLElement).style.zIndex = '0' }}
                                   style={{
-                                    width: '48px', height: '32px', objectFit: 'cover',
-                                    borderRadius: '4px', cursor: 'pointer',
+                                    width: '48px', height: '32px', objectFit: 'cover', flexShrink: 0,
+                                    borderRadius: '4px', cursor: 'pointer', position: 'relative',
                                     border: (page as any).og_image === item.url ? '2px solid #2563eb' : '1px solid #e5e7eb',
+                                    transition: 'transform 0.12s ease',
                                   }}
                                 />
                               ))}
