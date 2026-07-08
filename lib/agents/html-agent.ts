@@ -1777,28 +1777,6 @@ ${previewContextHint}`
     return { tool: toolUse.name, input: inp, usage: data.usage }
   }
 
-  if (toolUse.name === 'update_seo_meta') {
-    const instruction = inp.instruction as string
-    const pageSlugs = inp.pageSlugs as string[] | undefined
-    const summary = inp.summary as string ?? 'SEO ottimizzato'
-    const targetPages = pageSlugs?.length
-      ? pages.filter(p => pageSlugs.includes(p.slug))
-      : pages
-    try {
-      const { runSeoAgent } = await import('./seo-agent')
-      const seoResult = await runSeoAgent(
-        [{ role: 'user', content: instruction }],
-        targetPages, null, apiKey, context
-      )
-      if (seoResult) {
-        return { tool: seoResult.tool, input: { ...seoResult.input, summary }, usage: data.usage }
-      }
-    } catch (err) {
-      console.error('[master] update_seo_meta skill failed:', err)
-    }
-    return { tool: toolUse.name, input: inp, usage: data.usage }
-  }
-
   return { tool: toolUse.name, input: inp, usage: data.usage }
 }
 

@@ -68,24 +68,6 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
     temperature: 0.2,
     description: 'Genera e modifica HTML delle pagine',
   },
-  seo: {
-    model: 'claude-haiku-4-5-20251001',
-    maxTokens: 8192,
-    temperature: 0.1,
-    description: 'Ottimizza meta tag, sitemap e robots.txt',
-  },
-  images: {
-    model: 'claude-haiku-4-5-20251001',
-    maxTokens: 4096,
-    temperature: 0.1,
-    description: 'Ottimizza alt text, srcset e lazy loading',
-  },
-  accessibility: {
-    model: 'claude-haiku-4-5-20251001',
-    maxTokens: 4096,
-    temperature: 0,
-    description: 'Valida e corregge WCAG 2.1 AA',
-  },
   memory: {
     model: 'claude-haiku-4-5-20251001',
     // Increased from 1024 → 2048: with 1024 tokens the memory agent was

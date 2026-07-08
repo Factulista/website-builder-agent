@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server'
 type AgentType = 'html'
 import { runHtmlAgent } from '../../../lib/agents/html-agent'
-import { runBlogSeoAgent, type BlogPostSeoInput } from '../../../lib/agents/seo-agent'
 import { runMemoryAgent, runSessionMemoryAgent, compactSessionMemory, shouldCompactMemory, type ProjectContext } from '../../../lib/agents/memory-agent'
 import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-config'
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
