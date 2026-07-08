@@ -21,7 +21,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'memory',
     displayName: 'Memory Agent',
-    description: 'Due agenti paralleli in background: (1) Context Agent — estrae businessName, tono, settore. (2) Session Memory — diario markdown decisioni di design, correzioni, vincoli. Compaction automatica su sessioni >40 messaggi.',
+    description: '[Background, sempre attivo] Due agenti paralleli: (1) Context Agent — estrae businessName, tono, settore. (2) Session Memory — diario markdown decisioni di design, correzioni, vincoli. Compaction automatica su sessioni >40 messaggi.',
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 2048,
     category: 'background',
@@ -41,7 +41,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'html',
     displayName: 'Master HTML Agent',
-    description: 'Unico agente attivo — gestisce TUTTO via tool use. Crea siti, modifica blocchi, aggiorna design, fa audit SEO, aggiunge pagine. Routing adattivo: Haiku su edit_block (blocco già isolato, ~6k tok), Sonnet su create_site/replace_block/vision.',
+    description: '[Sempre attivo — pipeline principale] Unico agente che risponde in chat, gestisce TUTTO via tool use. Crea siti, modifica blocchi, aggiorna design, fa audit SEO, aggiunge pagine. Routing adattivo: Haiku su edit_block (blocco già isolato, ~6k tok), Sonnet su create_site/replace_block/vision.',
     model: 'claude-sonnet-4-6',
     maxTokens: 16384,
     category: 'orchestration',
@@ -82,7 +82,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'seo',
     displayName: 'SEO Agent (legacy)',
-    description: '⚠️ NON USATO DIRETTAMENTE. Sostituito dal tool run_seo_audit dentro Master HTML Agent (Fase 4). Rimasto per: (1) blog post SEO via runBlogSeoAgent, (2) riferimento storico.',
+    description: '[On-demand — solo SEO blog] Non riceve più chiamate per SEO pagine (sostituito da run_seo_audit nel Master Agent). Resta attivo solo per aggiornare seo_title/description/tags dei post del blog.',
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 4096,
     category: 'utility',
@@ -102,7 +102,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'design-update',
     displayName: 'Design Agent (tool)',
-    description: '⚠️ NON USATO DIRETTAMENTE come agente separato. Chiamato internamente dal tool update_design dentro Master HTML Agent (Fase 4). Aggiorna CSS globale/design system.',
+    description: '[On-demand — chiamato dal tool update_design] Non è mai routato direttamente: il Master Agent lo invoca solo quando l\'utente chiede di cambiare colori/font/tema globale. Aggiorna il CSS condiviso del sito.',
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 8192,
     category: 'utility',
@@ -121,7 +121,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'site-analyzer',
     displayName: 'Site Analyzer',
-    description: 'Analizza siti di ispirazione: estrae HTML/CSS da un URL (Round 1) e analizza gli screenshot caricati dall\'utente con Claude Vision (Round 2) per produrre un DesignBrief completo.',
+    description: '[Feature separata — import da URL] Non fa parte della chat/build principale. Analizza siti di ispirazione: estrae HTML/CSS da un URL (Round 1) e screenshot via Claude Vision (Round 2) per produrre un DesignBrief.',
     model: 'claude-sonnet-4-5-20250929',
     maxTokens: 2048,
     category: 'utility',
@@ -141,7 +141,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'template-generator',
     displayName: 'Template Generator',
-    description: 'Genera un template HTML completo (con placeholder {{key}}) a partire dal DesignBrief estratto dal Site Analyzer. Usato nel flusso "ispirazione URL + screenshot".',
+    description: '[Feature separata — import da URL] Non fa parte della chat/build principale. Genera un template HTML completo (con placeholder {{key}}) a partire dal DesignBrief estratto dal Site Analyzer.',
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 16384,
     category: 'utility',
@@ -162,7 +162,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'images',
     displayName: 'Images Agent',
-    description: 'Ottimizza il markup delle immagini: alt text descrittivi, loading=lazy, srcset.',
+    description: '[On-demand — chiamato dal Master Agent] Interviene quando servono alt text descrittivi, loading=lazy o srcset sulle immagini di una pagina.',
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 4096,
     category: 'utility',
@@ -181,7 +181,7 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
   {
     name: 'accessibility',
     displayName: 'Accessibility Agent',
-    description: 'Audit e correzioni accessibilità (WCAG): aria-labels, contrasto, struttura semantica.',
+    description: '[On-demand — chiamato dal Master Agent] Interviene quando serve un audit di accessibilità (WCAG): aria-labels, contrasto, struttura semantica.',
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 4096,
     category: 'utility',

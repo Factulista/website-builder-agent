@@ -156,8 +156,8 @@ export default function AgentsPage() {
   const enabledCount = agents.filter(a => a.enabled).length
   const allNames = agents.map(a => a.name)
 
-  // gridTemplateColumns: dot | name | category | model | maxTokens | stato | workflow | arrow
-  const GRID = '16px 1fr 140px 160px 100px 80px 110px 32px'
+  // gridTemplateColumns: dot | name | description | category | model | maxTokens | stato | workflow | arrow
+  const GRID = '16px 170px 1.4fr 130px 140px 90px 70px 100px 28px'
 
   const CATEGORY_LABELS = CATEGORY_LABEL_KEYS
 
@@ -216,6 +216,11 @@ export default function AgentsPage() {
             {/* Nome header */}
             <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {t('agents.name' as const, language as any)}
+            </span>
+
+            {/* Descrizione header */}
+            <span style={{ fontSize: '0.65rem', fontWeight: 600, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {t('agents.descriptionHeader' as const, language as any)}
             </span>
 
             {/* Categoria header with filter icon */}
@@ -346,15 +351,26 @@ export default function AgentsPage() {
                   flexShrink: 0,
                 }} />
 
-                {/* Name + description */}
+                {/* Name */}
                 <div style={{ minWidth: 0 }}>
                   <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {agent.displayName}
                   </p>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: C.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {agent.description}
-                  </p>
                 </div>
+
+                {/* Description */}
+                <p
+                  title={agent.description}
+                  style={{
+                    margin: 0, fontSize: '0.78rem', color: C.textMuted, lineHeight: 1.4,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {agent.description}
+                </p>
 
                 {/* Category */}
                 <span style={{

@@ -40,6 +40,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'agents.orphan': 'orfano',
     'agents.entry': 'entry',
     'agents.name': 'Nome',
+    'agents.descriptionHeader': 'Descrizione',
     'agents.workflowHeader': 'Workflow',
 
     // Back Office - Pipeline
@@ -234,6 +235,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'agents.orphan': 'orphan',
     'agents.entry': 'entry',
     'agents.name': 'Name',
+    'agents.descriptionHeader': 'Description',
     'agents.workflowHeader': 'Workflow',
 
     'pipeline.title': 'Workflow',
@@ -421,6 +423,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'agents.orphan': 'huérfano',
     'agents.entry': 'entrada',
     'agents.name': 'Nombre',
+    'agents.descriptionHeader': 'Descripción',
     'agents.workflowHeader': 'Flujo de trabajo',
 
     'pipeline.title': 'Flujo de trabajo',
@@ -608,6 +611,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'agents.orphan': 'orphelin',
     'agents.entry': 'entrée',
     'agents.name': 'Nom',
+    'agents.descriptionHeader': 'Description',
     'agents.workflowHeader': 'Flux de travail',
 
     'pipeline.title': 'Flux de travail',
@@ -795,6 +799,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'agents.orphan': 'verwaist',
     'agents.entry': 'eintrag',
     'agents.name': 'Name',
+    'agents.descriptionHeader': 'Beschreibung',
     'agents.workflowHeader': 'Arbeitsablauf',
 
     'pipeline.title': 'Arbeitsablauf',
@@ -982,6 +987,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'agents.orphan': 'wees',
     'agents.entry': 'invoer',
     'agents.name': 'Naam',
+    'agents.descriptionHeader': 'Beschrijving',
     'agents.workflowHeader': 'Workflow',
 
     'pipeline.title': 'Workflow',
@@ -1169,6 +1175,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'agents.orphan': 'órfão',
     'agents.entry': 'entrada',
     'agents.name': 'Nome',
+    'agents.descriptionHeader': 'Descrição',
     'agents.workflowHeader': 'Fluxo de trabalho',
 
     'pipeline.title': 'Fluxo de trabalho',
