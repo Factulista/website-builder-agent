@@ -150,7 +150,7 @@ Contesto del sito:
   const system = `Sei un esperto copywriter, SEO specialist e GEO (Generative Engine Optimization) specialist.
 Scrivi articoli di blog professionali, ottimizzati per Google e per i motori AI (ChatGPT, Perplexity, Google AI Overview).
 Rispondi SEMPRE in ${langLabel}.
-Rispondi SOLO con JSON valido, senza markdown o testo extra.
+Rispondi SOLO nel formato a due blocchi descritto sotto (metadati JSON + delimitatore + HTML grezzo), senza markdown o testo extra fuori da questi due blocchi.
 
 REGOLA ASSOLUTA — HTML SEMANTICO PURO:
 - ZERO attributi style="" in qualsiasi tag. Mai. Nemmeno uno.
@@ -200,18 +200,19 @@ REGOLE GEO (AI Search Optimization):
 ${f.faq ? '- FAQ: risposte complete e autonome, leggibili da AI senza contesto' : ''}
 ${f.stats ? '- Includi almeno 2-3 dati numerici concreti' : ''}
 
-Restituisci SOLO questo JSON (nessun testo fuori dal JSON):
-{
-  "title": "H1 con keyword primaria, max 70 caratteri",
-  "slug": "slug-kebab-case-con-keyword",
-  "seo_title": "SEO title max 60 caratteri — formato: keyword primaria | Brand, SOLO testo, NO emoji",
-  "seo_description": "meta description 150-160 caratteri con keyword e CTA",
-  "excerpt": "riassunto 1-2 frasi max 200 caratteri",
-  "content_html": "HTML COMPLETO seguendo la struttura sopra — ${wordCount} parole"
-}
+FORMATO OUTPUT — DUE BLOCCHI SEPARATI (NON un unico JSON con l'HTML dentro):
 
-IMPORTANTE: NON includere campi "categories", "tags" nel JSON. Solo i campi elencati sopra.
-Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro.`
+BLOCCO 1 — metadati, SOLO questo JSON su una riga (nessun'altra chiave):
+{"title": "H1 con keyword primaria, max 70 caratteri", "slug": "slug-kebab-case-con-keyword", "seo_title": "SEO title max 60 caratteri — formato: keyword primaria | Brand, SOLO testo, NO emoji", "seo_description": "meta description 150-160 caratteri con keyword e CTA", "excerpt": "riassunto 1-2 frasi max 200 caratteri"}
+
+Poi, su una riga a parte, scrivi ESATTAMENTE questo delimitatore (nient'altro sulla riga):
+===CONTENT_HTML===
+
+Poi l'HTML COMPLETO dell'articolo (${wordCount} parole), seguendo la struttura sopra — HTML GREZZO, non dentro nessuna stringa JSON, non fare escape delle virgolette.
+
+IMPORTANTE: NON includere campi "categories", "tags" nel JSON dei metadati. Solo i campi elencati sopra.
+Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro.
+NON scrivere nient'altro prima del JSON metadati o dopo l'HTML.`
 
   // Streaming response
   const encoder = new TextEncoder()
@@ -248,8 +249,6 @@ Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro
         }
 
         let fullText = ''
-        let currentJson = ''
-        let jsonStarted = false
         // SSE lines can be split across network chunks, and multi-byte UTF-8 chars
         // (á, ñ, é…) can straddle two chunks. We therefore:
         //  - keep a single TextDecoder in streaming mode (handles split code points)
@@ -266,8 +265,6 @@ Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro
             if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
               const text = data.delta.text
               fullText += text
-              if (text.includes('{')) jsonStarted = true
-              if (jsonStarted) currentJson += text
               controller.enqueue(encoder.encode(`event: text\ndata: ${JSON.stringify({ text })}\n\n`))
             }
           } catch {
@@ -290,24 +287,36 @@ Il campo "title" NON deve contenere emoji o simboli speciali — solo testo puro
         buffer += decoder.decode()
         if (buffer) handleLine(buffer)
 
-        // Parse final JSON + sanitize: strip any inline style/font attrs the AI smuggled in
+        // Parse the two-block response: metadata JSON, delimiter, raw HTML.
+        // The HTML is never embedded inside a JSON string — this avoids the fragile
+        // "model must perfectly escape every quote inside content_html" failure mode
+        // that caused frequent "JSON parse failed" errors on longer articles.
         try {
-          const jsonMatch = currentJson.match(/\{[\s\S]*\}/)
-          if (!jsonMatch) throw new Error('No JSON found')
-          const post = JSON.parse(jsonMatch[0])
-          if (typeof post.content_html === 'string') {
-            post.content_html = post.content_html
-              // Remove ALL style="" attributes
-              .replace(/\s*style="[^"]*"/gi, '')
-              // Remove font face/size/color HTML4 attrs
-              .replace(/\s*(?:face|color|size)="[^"]*"/gi, '')
-              // Unwrap <font> tags
-              .replace(/<font[^>]*>([\s\S]*?)<\/font>/gi, '$1')
-              // Remove empty class attributes
-              .replace(/\s*class=""/gi, '')
-              // Fix &quot; inside remaining attrs
-              .replace(/&quot;/g, '"')
-          }
+          const delimiterMatch = fullText.match(/===\s*CONTENT_HTML\s*===/)
+          if (!delimiterMatch) throw new Error('Delimiter ===CONTENT_HTML=== not found')
+
+          const metaPart = fullText.slice(0, delimiterMatch.index)
+          const htmlPart = fullText.slice((delimiterMatch.index ?? 0) + delimiterMatch[0].length)
+
+          const jsonMatch = metaPart.match(/\{[\s\S]*\}/)
+          if (!jsonMatch) throw new Error('No metadata JSON found')
+          const post = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+
+          let contentHtml = htmlPart.trim()
+            // Model sometimes wraps the HTML in a ```html code fence despite instructions
+            .replace(/^```html\s*/i, '').replace(/```\s*$/, '')
+            // Remove ALL style="" attributes
+            .replace(/\s*style="[^"]*"/gi, '')
+            // Remove font face/size/color HTML4 attrs
+            .replace(/\s*(?:face|color|size)="[^"]*"/gi, '')
+            // Unwrap <font> tags
+            .replace(/<font[^>]*>([\s\S]*?)<\/font>/gi, '$1')
+            // Remove empty class attributes
+            .replace(/\s*class=""/gi, '')
+            // Fix &quot; inside remaining attrs
+            .replace(/&quot;/g, '"')
+          post.content_html = contentHtml
+
           controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({ post })}\n\n`))
         } catch (e) {
           controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'JSON parse failed' })}\n\n`))
