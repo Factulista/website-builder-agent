@@ -1,5 +1,6 @@
 import { FRAME_GLOBAL_FIX } from './shared-frame'
 import { resolveNfdIcon } from './components/index'
+import { injectSocialShareLinks } from './social-share'
 
 export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string }
 
@@ -564,7 +565,8 @@ export function buildBlogListPage(
   ${injectPoints?.body_end ?? ''}
 </body>
 </html>`
-  return megaPages?.length ? rebuildMegaMenuPanel(out, megaPages) : out
+  const outShared = injectSocialShareLinks(out, `${baseUrl}/blog`, title)
+  return megaPages?.length ? rebuildMegaMenuPanel(outShared, megaPages) : outShared
 }
 
 export function buildBlogPostPage(
@@ -785,5 +787,6 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
   ${injectPoints?.body_end ?? ''}
 </body>
 </html>`
-  return megaPages?.length ? rebuildMegaMenuPanel(postOut, megaPages) : postOut
+  const postOutShared = injectSocialShareLinks(postOut, canonicalUrl, post.title)
+  return megaPages?.length ? rebuildMegaMenuPanel(postOutShared, megaPages) : postOutShared
 }

@@ -4,6 +4,7 @@ import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
 import { mergeRootVars } from './design-system'
 import { applySeoMeta } from './seo/crawler-view'
 import { resolveNfdIcon } from './components/index'
+import { injectSocialShareLinks } from './social-share'
 
 type Page = {
   slug: string
@@ -289,6 +290,12 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   if (injectPoints?.body_end && /<\/body>/i.test(result)) {
     result = result.replace(/<\/body>/i, `${injectPoints.body_end}\n</body>`)
   }
+
+  // Inject "share this page" links (X, Facebook, LinkedIn) at the bottom of the
+  // footer — every page shares itself via its own canonical URL, not the homepage.
+  const pageUrlForShare = pageSlug === 'home' ? `${siteUrl}/` : `${siteUrl}/${pageSlug}`
+  const titleForShare = ogTitle || (result.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim() || siteName || ''
+  result = injectSocialShareLinks(result, pageUrlForShare, titleForShare)
 
   // Always inject the correct <base href> — replace any stale one that may have
   // been baked into the stored HTML by the editor (e.g. /preview/{slug}/ or
