@@ -491,7 +491,10 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
     status: 200,
     // Cache published pages on CDN for 30s (s-maxage). Short enough that after
     // clicking "Pubblica" the new version is live within 30 seconds max.
-    // stale-while-revalidate=10 so CDN revalidates in background (no visible delay).
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=10' },
+    // stale-while-revalidate=86400 (1 day, matches the blog route): once stale,
+    // the CDN serves the cached copy instantly and revalidates in the background —
+    // crawlers/visitors that hit the page more than 30s apart (the common case)
+    // never pay a cold server-render, instead of only a 10s grace window.
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=86400' },
   })
 }
