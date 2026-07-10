@@ -37,18 +37,27 @@ export function buildSocialShareBlock(pageUrl: string, pageTitle: string, conten
   </div>
 </div>
 <style>
-.fact-share-links-wrap{max-width:${contentMaxWidth} !important;width:auto !important;margin:0 auto !important;padding:0 !important;position:static !important;float:none !important}
-.fact-share-links{display:flex !important;gap:14px !important;align-items:center !important;justify-content:flex-start !important;margin:20px 0 0 !important;padding:0 !important;width:auto !important;position:static !important;float:none !important}
+.fact-share-links-wrap{max-width:${contentMaxWidth} !important;width:auto !important;margin:16px auto !important;padding:0 !important;position:static !important;float:none !important}
+.fact-share-links{display:flex !important;gap:14px !important;align-items:center !important;justify-content:flex-start !important;margin:0 !important;padding:0 !important;width:auto !important;position:static !important;float:none !important}
 .fact-share-links a{display:inline-flex !important;align-items:center !important;justify-content:center !important;width:32px !important;height:32px !important;color:inherit !important;opacity:0.75 !important;transition:opacity .15s ease !important;text-decoration:none !important;background:none !important;border:none !important}
 .fact-share-links a:hover{opacity:1 !important}
 .fact-share-links svg{width:18px !important;height:18px !important;display:block !important}
 </style>`
 }
 
-/** Inserts the share-links block as the last child of <footer>. No-op if no footer exists. */
+/**
+ * Inserts the share-links block into <footer>, right above the copyright/
+ * bottom row when the platform's own convention (.footer-bottom) is present —
+ * falls back to the very end of <footer> for custom footers without it.
+ * No-op if no footer exists at all.
+ */
 export function injectSocialShareLinks(html: string, pageUrl: string, pageTitle: string): string {
   if (!/<\/footer>/i.test(html)) return html
   const contentMaxWidth = detectFooterContentWidth(html)
   const block = buildSocialShareBlock(pageUrl, pageTitle, contentMaxWidth)
+  const bottomRowMatch = html.match(/<div[^>]*class="[^"]*\bfooter-bottom\b[^"]*"[^>]*>/i)
+  if (bottomRowMatch?.index !== undefined) {
+    return html.slice(0, bottomRowMatch.index) + block + '\n' + html.slice(bottomRowMatch.index)
+  }
   return html.replace(/<\/footer>/i, `${block}\n</footer>`)
 }
