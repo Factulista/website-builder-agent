@@ -220,7 +220,7 @@ ${items}
       const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
       const faviconUrl = (siteConfig.favicon_url as string | undefined)
       const injectPoints = (siteConfig.inject_points as InjectPoints | undefined)
-      const megaPages = publishedPages.filter((p: Record<string, unknown>) => p.megaMenu === 'funcionalidades').map((p: Record<string, unknown>) => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
+      const megaPages = publishedPages.filter((p: Record<string, unknown>) => !!p.megaMenu).map((p: Record<string, unknown>) => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined, megaMenu: p.megaMenu as string | undefined }))
       const blogSeoTitle = typeof siteConfig.blog_seo_title === 'string' ? siteConfig.blog_seo_title : undefined
       const blogSeoDescription = typeof siteConfig.blog_seo_description === 'string' ? siteConfig.blog_seo_description : undefined
       const html = buildBlogListPageFromLib(posts ?? [], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, faviconUrl, injectPoints, megaPages, blogSeoTitle, blogSeoDescription)
@@ -252,7 +252,7 @@ ${items}
       const sidebarBanner = (siteConfig.blog_sidebar_banner as BlogSidebarBanner | undefined) ?? null
       const faviconUrl = (siteConfig.favicon_url as string | undefined)
       const injectPoints = (siteConfig.inject_points as InjectPoints | undefined)
-      const megaPagesBlogPost = publishedPages.filter((p: Record<string, unknown>) => p.megaMenu === 'funcionalidades').map((p: Record<string, unknown>) => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
+      const megaPagesBlogPost = publishedPages.filter((p: Record<string, unknown>) => !!p.megaMenu).map((p: Record<string, unknown>) => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined, megaMenu: p.megaMenu as string | undefined }))
       const html = buildBlogPostPageFromLib(post as LibPost, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsOverrideBlock, megaPagesBlogPost)
       return new Response(html, {
         status: 200,

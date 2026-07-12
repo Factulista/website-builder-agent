@@ -456,10 +456,10 @@ const HTML_TOOLS = [
         },
         placement: {
           type: 'string',
-          enum: ['replace-nav-link', 'before-footer', 'end-of-body', 'replace-selector'],
-          description: 'Dove inserire il componente:\n- replace-nav-link: sostituisce un <a> della nav identificato per testo (richiede targetText)\n- before-footer: appena prima del <footer>\n- end-of-body: prima di </body>\n- replace-selector: sostituisce il primo elemento che matcha (richiede selector — es. "#features-grid")',
+          enum: ['replace-nav-link', 'insert-before-nav-link', 'insert-after-nav-link', 'before-footer', 'end-of-body', 'replace-selector'],
+          description: 'Dove inserire il componente:\n- replace-nav-link: SOSTITUISCE un <a>/<li> della nav identificato per testo (richiede targetText) — usalo SOLO per AGGIORNARE una voce di nav già esistente (es. cambiare i link dentro un mega-menu "Funcionalidades" già presente). NON usarlo per aggiungere una voce NUOVA: distrugge quella target.\n- insert-before-nav-link / insert-after-nav-link: AGGIUNGE il componente come nuovo elemento della nav, prima o dopo un link/voce esistente identificato per testo (richiede targetText) — SENZA toccare quella voce. Usa QUESTO quando l\'utente chiede di aggiungere una nuova voce di menu "prima di X" / "dopo X" / "accanto a X".\n- before-footer: appena prima del <footer>\n- end-of-body: prima di </body>\n- replace-selector: sostituisce il primo elemento che matcha (richiede selector — es. "#features-grid")',
         },
-        targetText: { type: 'string', description: 'Solo per placement=replace-nav-link: testo del link nav da sostituire (es. "Funcionalidades").' },
+        targetText: { type: 'string', description: 'Per placement=replace-nav-link / insert-before-nav-link / insert-after-nav-link: testo del link nav da sostituire o usare come punto di ancoraggio (es. "Funcionalidades", "Blog").' },
         selector: { type: 'string', description: 'Solo per placement=replace-selector: selettore CSS dell\'elemento da sostituire.' },
         summary: { type: 'string' },
       },
@@ -1274,10 +1274,17 @@ Questi componenti sono pre-costruiti e ricevono solo i dati. Risparmiano TANTI t
 
 ▸ nav-feature-dropdown — Mega-menu nella nav (trigger + griglia di funzionalità).
   Caso d'uso tipico: "voglio una dropdown nella nav con le voci Facturación, Contabilidad, …"
-  placement: replace-nav-link, targetText="Funcionalidades" (testo del link nav esistente)
-  NOTA: replace-nav-link funziona anche per AGGIORNARE un mega menu già presente — usa lo stesso targetText del triggerLabel del menu esistente (es. "Funcionalidades").
+  🚫 REGOLA CRITICA — placement per nav:
+    - L'utente vuole AGGIORNARE un mega-menu già esistente (stesse voci, nuovo contenuto)?
+      → placement: "replace-nav-link", targetText = triggerLabel del menu esistente (es. "Funcionalidades")
+    - L'utente vuole una voce NUOVA in aggiunta a quelle esistenti (es. "prima di Blog", "dopo Precios")?
+      → placement: "insert-before-nav-link" o "insert-after-nav-link", targetText = testo della voce usata come ancora (es. "Blog")
+      → MAI usare replace-nav-link per questo: sostituirebbe/distruggerebbe la voce target invece di affiancarla.
+  data.triggerLabel è OBBLIGATORIO e DEVE essere il testo della NUOVA voce (es. "Alternativas") — se dimenticato il componente lancia un errore visibile invece di usare un default silenzioso.
+  Se il sito ha già un altro nav-feature-dropdown, imposta data.megaGroup a un valore UNICO e diverso da quello del menu esistente (es. "alternativas" se l'altro è "funcionalidades") — permette al sistema di gestire correttamente più dropdown sulla stessa nav quando le pagine vengono assegnate/rimosse in futuro.
   data: {
-    triggerLabel: string         // testo che resta visibile nella nav
+    triggerLabel: string         // testo che resta visibile nella nav — OBBLIGATORIO
+    megaGroup?: string           // chiave univoca del gruppo — obbligatorio se è il 2°+ dropdown del sito
     columns?: 1|2|3|4            // colonne nel pannello (default 2)
     items: Array<{ label, href, icon?, badge? }>
   }
@@ -1317,6 +1324,25 @@ insert_component({
     ]
   },
   summary: "Aggiunto mega-menu Funcionalidades su tutte le pagine"
+})
+
+ESEMPIO completo (NUOVA voce di menu, non aggiornamento): se l'utente dice «prima di Blog crea una voce di menu "Alternativas" con Holded, Quipu, Contasimple»:
+insert_component({
+  pageSlugs: [/* tutte le pagine del sito */],
+  componentId: "nav-feature-dropdown",
+  placement: "insert-before-nav-link",
+  targetText: "Blog",
+  data: {
+    triggerLabel: "Alternativas",
+    megaGroup: "alternativas",
+    columns: 2,
+    items: [
+      {label:"Holded", href:"./programa-de-facturacion-alternativo-a-holded"},
+      {label:"Quipu", href:"./programa-de-facturacion-alternativo-a-quipu"},
+      {label:"Contasimple", href:"./programa-de-facturacion-alternativo-a-contasimple"}
+    ]
+  },
+  summary: "Aggiunta voce di menu Alternativas prima di Blog"
 })
 
 MEDIA LIBRARY DEL PROGETTO:

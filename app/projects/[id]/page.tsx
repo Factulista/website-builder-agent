@@ -1661,24 +1661,52 @@ const EDITOR_GOOGLE_FONTS_URL =
 // We tag them with data-fact-editor so triggerSave() and stripEditorArtifacts() can remove them.
 const EDITOR_FONTS_INJECT = `<link data-fact-editor rel="preconnect" href="https://fonts.googleapis.com"><link data-fact-editor rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link data-fact-editor id="fact-editor-fonts" href="${EDITOR_GOOGLE_FONTS_URL}" rel="stylesheet">`
 
-type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string }
+type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string; megaMenu?: string }
 
 function megaLabel(p: MegaPage): string {
   const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
   return raw.includes('|') ? raw.split('|').pop()!.trim() : raw
 }
 
-function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
+/** See the identical function in lib/preview.ts for the multi-dropdown rationale. */
+function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
   const items = megaPages.map(p => {
     const label = megaLabel(p)
     const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
     return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
   }).join('\n      ')
-  return html.replace(
-    /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
-    `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
-  )
+
+  const taggedMatch = html.match(new RegExp(`<div class="comp-nfd-panel"[^>]*data-mega-group="${groupKey}"[^>]*>`))
+  if (taggedMatch?.index !== undefined) {
+    const openTagEnd = taggedMatch.index + taggedMatch[0].length
+    const closeIdx = html.indexOf('</div>', openTagEnd)
+    if (closeIdx === -1) return html
+    const newOpenTag = taggedMatch[0].replace(/>$/, ` data-count="${megaPages.length}">`)
+    return html.slice(0, taggedMatch.index) + newOpenTag + `\n      ${items}\n  ` + html.slice(closeIdx)
+  }
+
+  if (groupKey === 'funcionalidades') {
+    return html.replace(
+      /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
+      `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
+    )
+  }
+  return html
+}
+
+/** Groups megaPages by their own megaMenu value and rebuilds each dropdown. */
+function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string {
+  if (!megaPages || megaPages.length === 0) return html
+  const groups = new Map<string, MegaPage[]>()
+  for (const p of megaPages) {
+    const key = p.megaMenu || 'funcionalidades'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(p)
+  }
+  let out = html
+  for (const [key, groupPages] of groups) out = rebuildMegaMenuPanel(out, key, groupPages)
+  return out
 }
 
 function injectBase(html: string, projectSlug: string, sharedNav?: string, sharedFooter?: string, sharedCss?: string, faviconUrl?: string, megaPages?: MegaPage[]): string {
@@ -1701,8 +1729,8 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
     }
   }
 
-  // Rebuild mega menu panel from pages assigned via the Pages panel
-  if (megaPages && megaPages.length > 0) clean = rebuildMegaMenuPanel(clean, megaPages)
+  // Rebuild mega menu panel(s) from pages assigned via the Pages panel
+  clean = rebuildAllMegaMenuPanels(clean, megaPages)
 
   // data-fact-editor marks these tags as editor-only so triggerSave() removes them before saving
   const baseTag = `<base data-fact-editor href="/preview/${projectSlug}/">`
@@ -4666,7 +4694,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         pageSlug?: string  // backward compat with single-page calls
         componentId: string
         data: Record<string, unknown>
-        placement: 'replace-nav-link' | 'before-footer' | 'end-of-body' | 'replace-selector'
+        placement: 'replace-nav-link' | 'insert-before-nav-link' | 'insert-after-nav-link' | 'before-footer' | 'end-of-body' | 'replace-selector'
         targetText?: string
         selector?: string
       }
@@ -4735,6 +4763,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             else if (liRe.test(navHtml)) newNav = navHtml.replace(liRe, componentHtml)
             else if (aRe.test(navHtml)) newNav = navHtml.replace(aRe, componentHtml)
             if (newNav) {
+              html = html.replace(navHtml, newNav)
+              didInject = true
+            }
+          }
+        } else if ((placement === 'insert-before-nav-link' || placement === 'insert-after-nav-link') && targetText) {
+          // Same anchor-matching as replace-nav-link, but SPLICES componentHtml next to
+          // the matched element instead of replacing it — for adding a genuinely NEW nav
+          // item (e.g. a second mega-menu) without destroying the anchor link.
+          const navMatch = html.match(/<nav[\s\S]*?<\/nav>/i)
+          if (navMatch) {
+            const navHtml = navMatch[0]
+            const escaped = targetText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const compNfdRe = new RegExp(
+              `<li[^>]*class=["'][^"']*\\bcomp-nfd\\b[^"']*["'][\\s\\S]*?<button[^>]*class=["'][^"']*\\bcomp-nfd-trigger\\b[^"']*["'][^>]*>\\s*${escaped}[\\s\\S]*?<\\/li>`,
+              'i'
+            )
+            const liRe = new RegExp(`<li[^>]*>\\s*<a[^>]*>\\s*${escaped}\\s*<\\/a>\\s*<\\/li>`, 'i')
+            const aRe = new RegExp(`<a[^>]*>\\s*${escaped}\\s*<\\/a>`, 'i')
+            const anchorMatch = navHtml.match(compNfdRe) ?? navHtml.match(liRe) ?? navHtml.match(aRe)
+            if (anchorMatch?.index !== undefined) {
+              const before = placement === 'insert-before-nav-link' ? componentHtml : ''
+              const after = placement === 'insert-after-nav-link' ? componentHtml : ''
+              const newNav = navHtml.slice(0, anchorMatch.index) + before + anchorMatch[0] + after + navHtml.slice(anchorMatch.index + anchorMatch[0].length)
               html = html.replace(navHtml, newNav)
               didInject = true
             }
@@ -9598,6 +9649,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             >
                               <option value="">—</option>
                               <option value="funcionalidades">Funcionalidades</option>
+                              <option value="alternativas">Alternativas</option>
                             </select>
                           </div>
 
@@ -10113,7 +10165,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   // For regular pages use srcDoc (inline HTML, no round-trip needed).
                   {...(previewIframePath && previewIframePath !== '/'
                     ? { src: `/preview/${projectSlug}${previewIframePath}`, key: previewIframePath }
-                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined, pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon }))) }
+                    : { srcDoc: injectBasePreview(activePage.html, projectSlug, sharedNavHtmlRef.current || undefined, sharedFooterHtmlRef.current || undefined, sharedCssRef.current || undefined, faviconUrlRef.current || undefined, pages.filter(p => !!p.megaMenu).map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon, megaMenu: p.megaMenu }))) }
                   )}
                   style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
                   title="Preview"

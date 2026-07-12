@@ -209,10 +209,22 @@ export function resolveNfdIcon(icon: string): string {
 }
 
 function renderNavFeatureDropdown(data: Record<string, unknown>): string {
-  const triggerLabel = String(data.triggerLabel ?? 'Funcionalidades')
+  // No fallback here on purpose: a silent default of 'Funcionalidades' previously
+  // masked a missing triggerLabel by rendering a second dropdown mislabeled as an
+  // exact duplicate of the first one instead of surfacing the mistake — throwing
+  // turns that into a visible, actionable error in chat instead of a silently
+  // broken nav that ships to production.
+  if (!data.triggerLabel) throw new Error('triggerLabel è richiesto per nav-feature-dropdown')
+  const triggerLabel = String(data.triggerLabel)
   const triggerHref = data.triggerHref ? String(data.triggerHref) : ''
   const items = (data.items as Array<Record<string, unknown>> | undefined) ?? []
   const id = `nfd-${Math.random().toString(36).slice(2, 8)}`
+  // Tags this instance so serve-time rebuildMegaMenuPanel() knows which pages
+  // (page.megaMenu === megaGroup) belong to THIS dropdown when a site has more
+  // than one (e.g. "Funcionalidades" + "Alternativas"). Untagged for backward
+  // compatibility with sites that only ever had a single, implicit dropdown.
+  const megaGroup = data.megaGroup ? String(data.megaGroup) : ''
+  const groupAttr = megaGroup ? ` data-mega-group="${megaGroup}"` : ''
 
   // Items rendered as compact tags: [icon] Label [badge]
   // No big icon box — icon is inline at 14px, same line as label text
@@ -230,7 +242,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
     </a>`
   }).join('\n      ')
 
-  return `<li class="comp-nfd" data-comp="nav-feature-dropdown">
+  return `<li class="comp-nfd" data-comp="nav-feature-dropdown"${groupAttr}>
   <style>
     .comp-nfd{position:relative;list-style:none;}
     /* Trigger: inherits everything from parent nav — font, size, weight, color */
@@ -309,7 +321,7 @@ function renderNavFeatureDropdown(data: Record<string, unknown>): string {
   <button type="button" class="comp-nfd-trigger"${triggerHref ? ` data-href="${triggerHref}"` : ''} aria-expanded="false" aria-controls="${id}" aria-haspopup="menu">
     ${triggerLabel}<svg class="comp-nfd-chevron" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 3.5 5 7 8.5 3.5"/></svg>
   </button>
-  <div class="comp-nfd-panel" id="${id}" role="menu">
+  <div class="comp-nfd-panel" id="${id}" role="menu"${groupAttr}>
       ${itemsHtml}
   </div>
   <script>

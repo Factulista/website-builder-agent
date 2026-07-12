@@ -2,7 +2,7 @@ import { FRAME_GLOBAL_FIX } from './shared-frame'
 import { resolveNfdIcon } from './components/index'
 import { injectSocialShareLinks } from './social-share'
 
-export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string }
+export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string; megaMenu?: string }
 
 const MEGA_MENU_CSS = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:repeat(2,1fr)!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}`
 
@@ -11,17 +11,45 @@ function megaLabel(p: MegaPage): string {
   return raw.includes('|') ? raw.split('|').pop()!.trim() : raw
 }
 
-function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
+/** See the identical function in lib/preview.ts for the multi-dropdown rationale. */
+function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
   const items = megaPages.map(p => {
     const label = megaLabel(p)
     const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
     return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
   }).join('\n      ')
-  return html.replace(
-    /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
-    `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
-  )
+
+  const taggedMatch = html.match(new RegExp(`<div class="comp-nfd-panel"[^>]*data-mega-group="${groupKey}"[^>]*>`))
+  if (taggedMatch?.index !== undefined) {
+    const openTagEnd = taggedMatch.index + taggedMatch[0].length
+    const closeIdx = html.indexOf('</div>', openTagEnd)
+    if (closeIdx === -1) return html
+    const newOpenTag = taggedMatch[0].replace(/>$/, ` data-count="${megaPages.length}">`)
+    return html.slice(0, taggedMatch.index) + newOpenTag + `\n      ${items}\n  ` + html.slice(closeIdx)
+  }
+
+  if (groupKey === 'funcionalidades') {
+    return html.replace(
+      /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
+      `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
+    )
+  }
+  return html
+}
+
+/** Groups megaPages by their own megaMenu value and rebuilds each dropdown. */
+function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string {
+  if (!megaPages || megaPages.length === 0) return html
+  const groups = new Map<string, MegaPage[]>()
+  for (const p of megaPages) {
+    const key = p.megaMenu || 'funcionalidades'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(p)
+  }
+  let out = html
+  for (const [key, groupPages] of groups) out = rebuildMegaMenuPanel(out, key, groupPages)
+  return out
 }
 
 /**
@@ -566,7 +594,7 @@ export function buildBlogListPage(
 </body>
 </html>`
   const outShared = injectSocialShareLinks(out, `${baseUrl}/blog`, title)
-  return megaPages?.length ? rebuildMegaMenuPanel(outShared, megaPages) : outShared
+  return rebuildAllMegaMenuPanels(outShared, megaPages)
 }
 
 export function buildBlogPostPage(
@@ -788,5 +816,5 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 </body>
 </html>`
   const postOutShared = injectSocialShareLinks(postOut, canonicalUrl, post.title)
-  return megaPages?.length ? rebuildMegaMenuPanel(postOutShared, megaPages) : postOutShared
+  return rebuildAllMegaMenuPanels(postOutShared, megaPages)
 }

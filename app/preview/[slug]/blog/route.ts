@@ -70,7 +70,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
-  const megaPages = pages.filter(p => p.megaMenu === 'funcionalidades').map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined }))
+  const megaPages = pages.filter(p => !!p.megaMenu).map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined, megaMenu: p.megaMenu as string | undefined }))
   const blogSeoTitle = typeof config.blog_seo_title === 'string' ? config.blog_seo_title : undefined
   const blogSeoDescription = typeof config.blog_seo_description === 'string' ? config.blog_seo_description : undefined
   const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, undefined, injectPoints, megaPages, blogSeoTitle, blogSeoDescription)

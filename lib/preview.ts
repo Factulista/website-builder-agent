@@ -148,7 +148,7 @@ function injectSharedComponents(html: string, sharedNav?: string, sharedFooter?:
   return result
 }
 
-type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string }
+type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string; megaMenu?: string }
 
 function megaLabel(p: MegaPage): string {
   const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
@@ -158,18 +158,38 @@ function megaLabel(p: MegaPage): string {
 /**
  * Replaces the content of .comp-nfd-panel with items (with icons) built from megaPages.
  * Panel gets data-count attribute so CSS can switch column count per item count.
+ *
+ * A site can have more than one dropdown of this type (e.g. "Funcionalidades"
+ * + "Alternativas") — groupKey picks the panel tagged with the matching
+ * data-mega-group attribute (see renderNavFeatureDropdown in
+ * lib/components/index.ts). Falls back to the first UNTAGGED panel for the
+ * legacy 'funcionalidades' group, so sites that predate this attribute (only
+ * ever had one dropdown) keep working exactly as before.
  */
-function rebuildMegaMenuPanel(html: string, megaPages: MegaPage[]): string {
+function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
   const items = megaPages.map(p => {
     const label = megaLabel(p)
     const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
     return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
   }).join('\n      ')
-  return html.replace(
-    /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
-    `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
-  )
+
+  const taggedMatch = html.match(new RegExp(`<div class="comp-nfd-panel"[^>]*data-mega-group="${groupKey}"[^>]*>`))
+  if (taggedMatch?.index !== undefined) {
+    const openTagEnd = taggedMatch.index + taggedMatch[0].length
+    const closeIdx = html.indexOf('</div>', openTagEnd)
+    if (closeIdx === -1) return html
+    const newOpenTag = taggedMatch[0].replace(/>$/, ` data-count="${megaPages.length}">`)
+    return html.slice(0, taggedMatch.index) + newOpenTag + `\n      ${items}\n  ` + html.slice(closeIdx)
+  }
+
+  if (groupKey === 'funcionalidades') {
+    return html.replace(
+      /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
+      `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
+    )
+  }
+  return html
 }
 
 /**
@@ -208,7 +228,20 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
 
   // Step 0d: rebuild mega-menu panel from pages assigned to a mega menu.
   // Runs after nav injection so the panel in the live nav reflects DB assignments.
-  if (megaPages && megaPages.length > 0) html = rebuildMegaMenuPanel(html, megaPages)
+  // Rebuild every mega-menu dropdown a site has, not just one: group the pages
+  // by their own megaMenu value (e.g. 'funcionalidades', 'alternativas', or any
+  // future group) and rebuild each dropdown from its own assigned pages.
+  if (megaPages && megaPages.length > 0) {
+    const megaGroups = new Map<string, MegaPage[]>()
+    for (const p of megaPages) {
+      const key = p.megaMenu || 'funcionalidades'
+      if (!megaGroups.has(key)) megaGroups.set(key, [])
+      megaGroups.get(key)!.push(p)
+    }
+    for (const [key, groupPages] of megaGroups) {
+      html = rebuildMegaMenuPanel(html, key, groupPages)
+    }
+  }
 
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
@@ -396,8 +429,8 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
 
   const siteName = (config?.context?.businessName as string | undefined) ?? data.name ?? ''
   const megaPages = (config?.pages ?? [])
-    .filter(p => p.megaMenu === 'funcionalidades')
-    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon }))
+    .filter(p => !!p.megaMenu)
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon, megaMenu: p.megaMenu }))
   return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     headers: {
@@ -492,8 +525,8 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
 
   const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
   const megaPages = (config?.published_pages ?? [])
-    .filter(p => p.megaMenu === 'funcionalidades')
-    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon }))
+    .filter(p => !!p.megaMenu)
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon, megaMenu: p.megaMenu }))
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
     // Cache published pages on CDN for 30s (s-maxage). Short enough that after
