@@ -9418,7 +9418,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             const renamePageSlug = async (oldSlug: string, rawValue: string) => {
               // Sanitize: lowercase, spaces→hyphens, strip anything that's not a-z 0-9 - _ /
               const newSlug = rawValue.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_/]/g, '')
-              if (!newSlug || newSlug === oldSlug) { setRenamingSlug(null); return }
+              // No-op (unchanged or emptied back out): just leave the field as-is.
+              // Do NOT touch renamingSlug here — this fires on every blur of the URL
+              // field, including when the user is just tabbing to another field in
+              // the same settings panel, and renamingSlug also gates whether that
+              // whole panel is expanded (see isExpanded above). Resetting it here
+              // was closing the panel out from under the user mid-edit.
+              if (!newSlug || newSlug === oldSlug) { return }
               if (pages.some(p => p.slug === newSlug)) {
                 await alertDialog({ title: 'URL già in uso', message: `Esiste già una pagina con slug "${newSlug}". Scegli un URL diverso.`, variant: 'danger' })
                 return
@@ -9437,7 +9443,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               deletedSlugsRef.current.add(oldSlug)
               setPages(next)
               if (activeSlug === oldSlug) setActiveSlug(newSlug)
-              setRenamingSlug(null)
+              // Keep the settings panel open on this page under its new slug —
+              // isExpanded is `renamingSlug === page.slug`, so without this the
+              // panel would appear to close the instant the slug changes identity.
+              if (renamingSlug === oldSlug) setRenamingSlug(newSlug)
               await saveState(messages, next)
             }
             return (
