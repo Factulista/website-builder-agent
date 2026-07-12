@@ -168,26 +168,83 @@ function megaLabel(p: MegaPage): string {
  */
 function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
+  const groupLabel = groupKey.charAt(0).toUpperCase() + groupKey.slice(1)
+  const groupSlugs = new Set(megaPages.map(p => p.slug))
   const items = megaPages.map(p => {
     const label = megaLabel(p)
     const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
     return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
   }).join('\n      ')
 
-  const taggedMatch = html.match(new RegExp(`<div class="comp-nfd-panel"[^>]*data-mega-group="${groupKey}"[^>]*>`))
-  if (taggedMatch?.index !== undefined) {
-    const openTagEnd = taggedMatch.index + taggedMatch[0].length
-    const closeIdx = html.indexOf('</div>', openTagEnd)
-    if (closeIdx === -1) return html
-    const newOpenTag = taggedMatch[0].replace(/>$/, ` data-count="${megaPages.length}">`)
-    return html.slice(0, taggedMatch.index) + newOpenTag + `\n      ${items}\n  ` + html.slice(closeIdx)
+  // Collect every dropdown panel with its opening tag, id, group tag and item hrefs.
+  // We map panel→group by matching EXISTING item hrefs against this group's page
+  // slugs, NOT by the data-mega-group tag alone — the builder's autosave routinely
+  // wipes that tag AND resets the trigger label in stored shared_nav_html, so serve
+  // time must re-derive the mapping and self-heal on every request.
+  const panelOpenRe = /<div class="comp-nfd-panel"[^>]*>/g
+  type Panel = { tag: string; index: number; id: string | null; taggedGroup: string | null; hrefSlugs: string[] }
+  const panels: Panel[] = []
+  let pm: RegExpExecArray | null
+  while ((pm = panelOpenRe.exec(html)) !== null) {
+    const openTag = pm[0]
+    const bodyStart = pm.index + openTag.length
+    const closeIdx = html.indexOf('</div>', bodyStart)
+    if (closeIdx === -1) continue
+    const body = html.slice(bodyStart, closeIdx)
+    const idM = openTag.match(/\sid="([^"]+)"/)
+    const tagM = openTag.match(/data-mega-group="([^"]+)"/)
+    const hrefSlugs = [...body.matchAll(/href="\.\/([^"#?]+)/g)].map(m => m[1])
+    panels.push({ tag: openTag, index: pm.index, id: idM ? idM[1] : null, taggedGroup: tagM ? tagM[1] : null, hrefSlugs })
   }
+  if (!panels.length) return html
 
-  if (groupKey === 'funcionalidades') {
-    return html.replace(
-      /(<div class="comp-nfd-panel"[^>]*)(>)[\s\S]*?(<\/div>)/,
-      `$1 data-count="${megaPages.length}"$2\n      ${items}\n  $3`
-    )
+  // Pick the target panel: (1) explicit tag, (2) best href-slug overlap,
+  // (3) first untagged panel for the legacy single-dropdown 'funcionalidades'.
+  let target = panels.find(p => p.taggedGroup === groupKey) ?? null
+  if (!target) {
+    let bestCount = 0
+    for (const p of panels) {
+      if (p.taggedGroup && p.taggedGroup !== groupKey) continue
+      const count = p.hrefSlugs.filter(s => groupSlugs.has(s)).length
+      if (count > bestCount) { bestCount = count; target = p }
+    }
+  }
+  if (!target && groupKey === 'funcionalidades') {
+    target = panels.find(p => !p.taggedGroup) ?? panels[0]
+  }
+  if (!target) return html
+
+  // Rewrite the panel opening tag: ensure data-mega-group + data-count.
+  let newOpen = target.tag
+  newOpen = /data-mega-group=/.test(newOpen)
+    ? newOpen.replace(/data-mega-group="[^"]*"/, `data-mega-group="${groupKey}"`)
+    : newOpen.replace(/>$/, ` data-mega-group="${groupKey}">`)
+  newOpen = /data-count=/.test(newOpen)
+    ? newOpen.replace(/data-count="[^"]*"/, `data-count="${megaPages.length}"`)
+    : newOpen.replace(/>$/, ` data-count="${megaPages.length}">`)
+
+  const bodyStart = target.index + target.tag.length
+  const closeIdx = html.indexOf('</div>', bodyStart)
+  if (closeIdx === -1) return html
+  html = html.slice(0, target.index) + newOpen + `\n      ${items}\n  ` + html.slice(closeIdx)
+
+  // Fix the trigger label and tag the parent <li>, keyed by the panel id
+  // (aria-controls). Capitalised group key = the human label ('Alternativas').
+  if (target.id) {
+    const labelRe = new RegExp(`(<button[^>]*aria-controls="${target.id}"[^>]*>)[\\s\\S]*?(<svg class="comp-nfd-chevron")`)
+    html = html.replace(labelRe, `$1\n    ${groupLabel}$2`)
+    const panelIdx = html.indexOf(`id="${target.id}"`)
+    const liOpenRe = /<li[^>]*class="[^"]*\bcomp-nfd\b[^"]*"[^>]*>/g
+    let lm: RegExpExecArray | null
+    let liStart = -1
+    let liTag = ''
+    while ((lm = liOpenRe.exec(html)) !== null) {
+      if (lm.index < panelIdx) { liStart = lm.index; liTag = lm[0] } else break
+    }
+    if (liStart !== -1 && !/data-mega-group=/.test(liTag)) {
+      const newLi = liTag.replace(/>$/, ` data-mega-group="${groupKey}">`)
+      html = html.slice(0, liStart) + newLi + html.slice(liStart + liTag.length)
+    }
   }
   return html
 }
