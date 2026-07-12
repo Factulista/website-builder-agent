@@ -23,9 +23,14 @@ export async function GET(req: NextRequest) {
   if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
 
   const config = (data.site_config ?? {}) as Record<string, unknown>
-  const pages = (config.pages as Array<{ slug: string; html: string; blocks?: Array<{ html?: string }> }>) ?? []
+  const pages = (config.pages as Array<{ slug: string; html: string; blocks?: Array<{ html?: string }>; megaMenu?: string }>) ?? []
+  const publishedPages = (config.published_pages as Array<{ slug: string; megaMenu?: string }>) ?? []
   const p = pages.find(x => x.slug === slug)
   if (!p) return NextResponse.json({ error: `page "${slug}" not found` }, { status: 404 })
+  if (req.nextUrl.searchParams.get('meta') === '1') {
+    const pub = publishedPages.find(x => x.slug === slug)
+    return NextResponse.json({ slug, draft_megaMenu: p.megaMenu ?? null, published_megaMenu: pub?.megaMenu ?? null, foundInPublished: !!pub })
+  }
 
   const html = p.html ?? ''
   const blocks = p.blocks
