@@ -1,7 +1,7 @@
 /**
  * POST /api/internal/set-mega-pages
- * Assigns megaMenu, megaMenuIcon fields to pages (both draft + published) in bulk.
- * Body: { projectId, assignments: [{ slug, megaMenu, megaMenuIcon? }] }
+ * Assigns megaMenu, megaMenuIcon, megaMenuLabel fields to pages (both draft + published) in bulk.
+ * Body: { projectId, assignments: [{ slug, megaMenu, megaMenuIcon?, megaMenuLabel? }] }
  * Pass megaMenu: "" to remove a page from all mega menus.
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -15,7 +15,7 @@ function getSupabase() {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const projectId = body?.projectId as string | undefined
-  const assignments = (body?.assignments as Array<{ slug: string; megaMenu: string; megaMenuIcon?: string }>) ?? []
+  const assignments = (body?.assignments as Array<{ slug: string; megaMenu: string; megaMenuIcon?: string; megaMenuLabel?: string }>) ?? []
   if (!projectId || !assignments.length) {
     return NextResponse.json({ error: 'projectId and assignments required' }, { status: 400 })
   }
@@ -39,6 +39,9 @@ export async function POST(req: NextRequest) {
       }
       if (a.megaMenuIcon) {
         updated.megaMenuIcon = a.megaMenuIcon
+      }
+      if (a.megaMenuLabel) {
+        updated.megaMenuLabel = a.megaMenuLabel
       }
       return updated
     })
