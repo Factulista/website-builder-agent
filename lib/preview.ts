@@ -209,8 +209,13 @@ function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPag
       if (count > bestCount) { bestCount = count; target = p }
     }
   }
-  if (!target && groupKey === 'funcionalidades') {
-    target = panels.find(p => !p.taggedGroup) ?? panels[0]
+  // Fallback for a group whose stored hrefs no longer match (e.g. the pages were
+  // renamed after publish, so the panel still points at the old slugs): take the
+  // first panel not yet claimed by another group. The caller orders groups by href
+  // overlap so well-anchored groups claim their panels first, keeping this leftover
+  // assignment deterministic.
+  if (!target) {
+    target = panels.find(p => !p.taggedGroup) ?? null
   }
   if (!target) return html
 
@@ -295,7 +300,16 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
       if (!megaGroups.has(key)) megaGroups.set(key, [])
       megaGroups.get(key)!.push(p)
     }
-    for (const [key, groupPages] of megaGroups) {
+    // Order groups by href overlap with existing panels so well-anchored groups
+    // claim their panel first and ambiguous groups (stale hrefs after a slug
+    // rename) take the leftover panels — deterministic regardless of Map order.
+    const panelHrefSets = [...html.matchAll(/<div class="comp-nfd-panel"[\s\S]*?<\/div>/g)]
+      .map(m => new Set([...m[0].matchAll(/href="\.\/([^"#?]+)/g)].map(x => x[1])))
+    const overlap = (pages: MegaPage[]): number => {
+      const slugs = pages.map(p => p.slug)
+      return panelHrefSets.reduce((best, set) => Math.max(best, slugs.filter(s => set.has(s)).length), 0)
+    }
+    for (const [key, groupPages] of [...megaGroups.entries()].sort((a, b) => overlap(b[1]) - overlap(a[1]))) {
       html = rebuildMegaMenuPanel(html, key, groupPages)
     }
   }
