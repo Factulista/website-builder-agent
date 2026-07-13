@@ -258,7 +258,6 @@ export function generateRobots(baseUrl: string, pages: Page[] = []): string {
 
   return `User-agent: *
 Allow: /
-Content-Signal: ai-train=no, search=yes, ai-input=yes
 
 # App routes — not public content
 Disallow: /api/
