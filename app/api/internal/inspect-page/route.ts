@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       html_b64: Buffer.from(html).toString('base64'),
       shared_nav_b64: Buffer.from((config.shared_nav_html as string) ?? '').toString('base64'),
       shared_footer_b64: Buffer.from((config.shared_footer_html as string) ?? '').toString('base64'),
+      shared_css_b64: Buffer.from((config.shared_css as string) ?? '').toString('base64'),
     })
   }
 
