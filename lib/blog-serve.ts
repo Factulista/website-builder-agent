@@ -100,6 +100,40 @@ function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPag
   return html
 }
 
+/** See the identical function in lib/preview.ts for details. */
+function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
+  if (!megaPages.length) return html
+  const mobileRe = /(<div[^>]*id="mobileMenu"[^>]*>)([\s\S]*?)(<\/div>)/
+  const match = mobileRe.exec(html)
+  if (!match) return html
+  const [full, openTag, inner, closeTag] = match
+  const groups = new Map<string, MegaPage[]>()
+  for (const p of megaPages) {
+    const key = p.megaMenu || 'funcionalidades'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(p)
+  }
+  const orderKeys = ['funcionalidades', 'alternativas']
+  const sortedGroups = [...groups.entries()].sort(
+    (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
+  )
+  const detailsBlocks = sortedGroups.map(([group, pages]) => {
+    const label = group.charAt(0).toUpperCase() + group.slice(1)
+    const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
+    return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
+  }).join('\n')
+  const ctaRe = /<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g
+  const ctas = [...inner.matchAll(ctaRe)].map(m => '  ' + m[0].trim()).join('\n')
+  const preciosM = inner.match(/<a[^>]*href=["']\.\/precios["'][^>]*>[^<]*<\/a>/)
+  const contactM = inner.match(/<a[^>]*href=["']#contact["'][^>]*>[^<]*<\/a>/)
+  const preciosLine = '  ' + (preciosM ? preciosM[0] : '<a href="./precios">Precios</a>')
+  const contactLine = contactM ? '  ' + contactM[0] : ''
+  const blogLine = /href=["']\.\/blog["']/.test(inner) ? '' : '  <a href="./blog">Blog</a>'
+  const newInner = [detailsBlocks, preciosLine, blogLine, contactLine, ctas].filter(Boolean).join('\n')
+  const start = match.index
+  return html.slice(0, start) + openTag + '\n' + newInner + '\n' + closeTag + html.slice(start + full.length)
+}
+
 /** Groups megaPages by their own megaMenu value and rebuilds each dropdown. */
 function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string {
   if (!megaPages || megaPages.length === 0) return html
@@ -666,7 +700,8 @@ export function buildBlogListPage(
 </body>
 </html>`
   const outShared = injectSocialShareLinks(out, `${baseUrl}/blog`, title)
-  return rebuildAllMegaMenuPanels(outShared, megaPages)
+  const withDesktopNav = rebuildAllMegaMenuPanels(outShared, megaPages)
+  return megaPages && megaPages.length > 0 ? rebuildMobileMenu(withDesktopNav, megaPages) : withDesktopNav
 }
 
 export function buildBlogPostPage(
@@ -888,5 +923,6 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 </body>
 </html>`
   const postOutShared = injectSocialShareLinks(postOut, canonicalUrl, post.title)
-  return rebuildAllMegaMenuPanels(postOutShared, megaPages)
+  const withDesktopNavPost = rebuildAllMegaMenuPanels(postOutShared, megaPages)
+  return megaPages && megaPages.length > 0 ? rebuildMobileMenu(withDesktopNavPost, megaPages) : withDesktopNavPost
 }

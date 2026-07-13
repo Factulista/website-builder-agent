@@ -156,6 +156,59 @@ function megaLabel(p: MegaPage): string {
 }
 
 /**
+ * Rebuilds the <div id="mobileMenu"> from megaPages at serve time.
+ * Mirrors rebuildMegaMenuPanel for the desktop nav: immune to builder stale-saves.
+ * Groups pages into <details class="mobile-fn"> blocks (one per mega-group),
+ * preserves static links (Precios, Contacto) and CTA buttons from the existing
+ * div, and injects a Blog link if it's missing.
+ */
+function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
+  if (!megaPages.length) return html
+  const mobileRe = /(<div[^>]*id="mobileMenu"[^>]*>)([\s\S]*?)(<\/div>)/
+  const match = mobileRe.exec(html)
+  if (!match) return html
+
+  const [full, openTag, inner, closeTag] = match
+
+  // Group pages by mega-menu key, funcionalidades first
+  const groups = new Map<string, MegaPage[]>()
+  for (const p of megaPages) {
+    const key = p.megaMenu || 'funcionalidades'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(p)
+  }
+  const orderKeys = ['funcionalidades', 'alternativas']
+  const sortedGroups = [...groups.entries()].sort(
+    (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
+  )
+
+  const detailsBlocks = sortedGroups.map(([group, pages]) => {
+    const label = group.charAt(0).toUpperCase() + group.slice(1)
+    const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
+    return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
+  }).join('\n')
+
+  // Extract CTAs (btn-ghost-nav / btn-accent-nav) from existing inner HTML
+  const ctaRe = /<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g
+  const ctas = [...inner.matchAll(ctaRe)].map(m => '  ' + m[0].trim()).join('\n')
+
+  // Preserve Precios and Contacto links
+  const preciosM = inner.match(/<a[^>]*href=["']\.\/precios["'][^>]*>[^<]*<\/a>/)
+  const contactM = inner.match(/<a[^>]*href=["']#contact["'][^>]*>[^<]*<\/a>/)
+  const preciosLine = '  ' + (preciosM ? preciosM[0] : '<a href="./precios">Precios</a>')
+  const contactLine = contactM ? '  ' + contactM[0] : ''
+
+  // Add Blog link if not already present
+  const blogLine = /href=["']\.\/blog["']/.test(inner) ? '' : '  <a href="./blog">Blog</a>'
+
+  const newInner = [detailsBlocks, preciosLine, blogLine, contactLine, ctas]
+    .filter(Boolean).join('\n')
+
+  const start = match.index
+  return html.slice(0, start) + openTag + '\n' + newInner + '\n' + closeTag + html.slice(start + full.length)
+}
+
+/**
  * Replaces the content of .comp-nfd-panel with items (with icons) built from megaPages.
  * Panel gets data-count attribute so CSS can switch column count per item count.
  *
@@ -312,6 +365,13 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
     for (const [key, groupPages] of [...megaGroups.entries()].sort((a, b) => overlap(b[1]) - overlap(a[1]))) {
       html = rebuildMegaMenuPanel(html, key, groupPages)
     }
+  }
+
+  // Step 0e: rebuild mobile-menu drawer from megaPages (mirrors Step 0d for mobile).
+  // The <div id="mobileMenu"> is embedded in every page's own HTML and is NOT part of
+  // shared_nav_html, so it can't be fixed by patching the nav — must be done here.
+  if (megaPages && megaPages.length > 0) {
+    html = rebuildMobileMenu(html, megaPages)
   }
 
   // Step 1: fix root-relative internal links before base href takes effect
