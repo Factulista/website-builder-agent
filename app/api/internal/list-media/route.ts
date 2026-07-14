@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireInternalSecret } from '../../../../lib/api-auth'
 
 export const runtime = 'nodejs'
 
@@ -13,6 +14,9 @@ function getSupabase() {
 }
 
 export async function GET(req: NextRequest) {
+  const authErr = requireInternalSecret(req)
+  if (authErr) return authErr
+
   const projectId = req.nextUrl.searchParams.get('projectId')
   const limit = Number(req.nextUrl.searchParams.get('limit') ?? '20')
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })

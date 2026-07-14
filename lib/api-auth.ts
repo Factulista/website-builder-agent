@@ -46,6 +46,22 @@ export async function requireUserAndProject(req: NextRequest, projectId: string)
   return { user, supabase, project }
 }
 
+/**
+ * Guard for /api/internal/* maintenance endpoints: requires the
+ * x-internal-secret header to match INTERNAL_API_SECRET. Fails closed
+ * if the env var is missing. Returns a Response to send, or null if OK.
+ */
+export function requireInternalSecret(req: NextRequest): Response | null {
+  const secret = process.env.INTERNAL_API_SECRET
+  if (!secret || req.headers.get('x-internal-secret') !== secret) {
+    return new Response(JSON.stringify({ error: 'Non autorizzato' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  return null
+}
+
 /** Wrap a handler so ApiError becomes a proper JSON response. */
 export function jsonError(err: unknown) {
   if (err instanceof ApiError) {

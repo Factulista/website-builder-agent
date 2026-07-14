@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireInternalSecret } from '../../../../lib/api-auth'
 export const runtime = 'nodejs'
 
 function getSupabase() {
@@ -14,6 +15,9 @@ function getSupabase() {
 const norm = (s: string) => s.trim().replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+|\/+$/g, '')
 
 export async function POST(req: NextRequest) {
+  const authErr = requireInternalSecret(req)
+  if (authErr) return authErr
+
   const body = await req.json().catch(() => null)
   const projectId = body?.projectId as string | undefined
   const from = (body?.from as string[] | undefined) ?? []

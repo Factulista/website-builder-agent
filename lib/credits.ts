@@ -29,7 +29,7 @@ export class AnthropicBillingError extends Error {
   }
 }
 
-export type CreditReason = 'chat' | 'seo-fix' | 'image-meta' | 'stripe-topup' | 'signup-bonus'
+export type CreditReason = 'chat' | 'seo-fix' | 'image-meta' | 'blog-post' | 'stripe-topup' | 'signup-bonus'
 
 /** Read current balance (creates wallet with 0 if missing). */
 export async function getBalance(userId: string, supabase?: SupabaseClient): Promise<number> {

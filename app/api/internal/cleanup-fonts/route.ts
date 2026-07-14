@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireInternalSecret } from '../../../../lib/api-auth'
 
 export const runtime = 'nodejs'
 
@@ -39,6 +40,9 @@ function restoreFonts(html: string): { html: string; changed: boolean } {
 }
 
 export async function PUT(req: NextRequest) {
+  const authErr = requireInternalSecret(req)
+  if (authErr) return authErr
+
   const projectId = req.nextUrl.searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 
@@ -73,6 +77,9 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const authErr = requireInternalSecret(req)
+  if (authErr) return authErr
+
   const projectId = req.nextUrl.searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 

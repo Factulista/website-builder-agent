@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireInternalSecret } from '../../../../lib/api-auth'
 
 export const runtime = 'nodejs'
 
@@ -62,6 +63,9 @@ function injectSyncStyle(pageHtml: string, homeCss: string): { html: string; cha
 }
 
 export async function POST(req: NextRequest) {
+  const authErr = requireInternalSecret(req)
+  if (authErr) return authErr
+
   try {
     const body = await req.json()
     const { token, projectId, slugs, dryRun = false } = body

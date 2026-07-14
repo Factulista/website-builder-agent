@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildSourcesBlock } from '../../../lib/fetch-source'
+import { requireUser, requireUserAndProject, jsonError } from '../../../lib/api-auth'
+import { precheckCredits, consumeCredits } from '../../../lib/credits'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -10,13 +12,6 @@ function getSupabase() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-}
-
-async function getUser(req: NextRequest) {
-  const auth = req.headers.get('authorization')
-  if (!auth?.startsWith('Bearer ')) return null
-  const { data: { user } } = await getSupabase().auth.getUser(auth.slice(7))
-  return user
 }
 
 function stripHtml(html: string): string {
@@ -48,9 +43,6 @@ async function getToneOfVoiceSample(projectId: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await getUser(req)
-  if (!user) return NextResponse.json({ error: 'Non autorizzato' }, { status: 401 })
-
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'API key mancante' }, { status: 500 })
 
@@ -88,6 +80,18 @@ export async function POST(req: NextRequest) {
   }
 
   if (!topic) return NextResponse.json({ error: 'topic richiesto' }, { status: 400 })
+
+  // Auth: con projectId verifica anche l'ownership del progetto; poi pre-check crediti.
+  let userId: string
+  try {
+    const authCtx = projectId
+      ? await requireUserAndProject(req, projectId)
+      : await requireUser(req)
+    await precheckCredits(authCtx.user.id, authCtx.supabase)
+    userId = authCtx.user.id
+  } catch (err) {
+    return jsonError(err) as NextResponse
+  }
 
   const f = {
     summary:   flags.summary   ?? true,
@@ -249,6 +253,8 @@ NON scrivere nient'altro prima del JSON metadati o dopo l'HTML.`
         }
 
         let fullText = ''
+        let inputTokens = 0
+        let outputTokens = 0
         // SSE lines can be split across network chunks, and multi-byte UTF-8 chars
         // (á, ñ, é…) can straddle two chunks. We therefore:
         //  - keep a single TextDecoder in streaming mode (handles split code points)
@@ -266,6 +272,10 @@ NON scrivere nient'altro prima del JSON metadati o dopo l'HTML.`
               const text = data.delta.text
               fullText += text
               controller.enqueue(encoder.encode(`event: text\ndata: ${JSON.stringify({ text })}\n\n`))
+            } else if (data.type === 'message_start') {
+              inputTokens = data.message?.usage?.input_tokens ?? 0
+            } else if (data.type === 'message_delta') {
+              outputTokens = data.usage?.output_tokens ?? outputTokens
             }
           } catch {
             // Non-JSON 'data:' line (e.g. keep-alive) — safe to ignore. Real deltas
@@ -286,6 +296,15 @@ NON scrivere nient'altro prima del JSON metadati o dopo l'HTML.`
         // Flush any remaining buffered line + decoder tail so the final delta isn't lost.
         buffer += decoder.decode()
         if (buffer) handleLine(buffer)
+
+        // Consume credits with the actual usage (fire-and-forget, come in chat).
+        const totalTokens = inputTokens + outputTokens
+        if (totalTokens > 0) {
+          consumeCredits(userId, totalTokens, 'blog-post', projectId ?? null, {
+            input: inputTokens,
+            output: outputTokens,
+          }).catch((e: unknown) => console.error('[credits] consume failed (blog-post):', e))
+        }
 
         // Parse the two-block response: metadata JSON, delimiter, raw HTML.
         // The HTML is never embedded inside a JSON string — this avoids the fragile
