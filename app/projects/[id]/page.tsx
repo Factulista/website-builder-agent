@@ -2202,6 +2202,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [linkCheckTotals, setLinkCheckTotals] = useState<{ checked: number; broken: number } | null>(null)
   const [gtmId, setGtmId] = useState('')
   const [gtmSaving, setGtmSaving] = useState<'idle'|'saving'|'saved'>('idle')
+  const [metaPixelId, setMetaPixelId] = useState('')
+  const [metaPixelSaving, setMetaPixelSaving] = useState<'idle'|'saving'|'saved'>('idle')
   const [seoSubTab, setSeoSubTab] = useState<'checks'|'tools'|'sitemap'|'keywords'>('checks')
   const [seoKeywords, setSeoKeywords] = useState<Array<{keyword:string;volume:number;difficulty:number;intent?:string;parentKeyword?:string}>>([])
   const [keywordsUploading, setKeywordsUploading] = useState(false)
@@ -2319,6 +2321,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     const m = (injectPoints.head ?? '').match(/GTM-[A-Z0-9]+/)
     if (m) setGtmId(m[0])
+  }, [injectPoints.head])
+  // Sync Meta Pixel ID from inject_points when they load
+  useEffect(() => {
+    const m = (injectPoints.head ?? '').match(/fbq\('init',\s*'(\d+)'\)/)
+    if (m) setMetaPixelId(m[1])
   }, [injectPoints.head])
   useEffect(() => { blogSidebarBannerUrlRef.current = blogSidebarBannerUrl }, [blogSidebarBannerUrl])
   useEffect(() => { blogSidebarBannerLinkRef.current = blogSidebarBannerLink }, [blogSidebarBannerLink])
@@ -6566,6 +6573,80 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </div>
                           <div style={{ fontSize: '0.68rem', color: C.textFaint }}>
                             Inserisci il tuo Container ID (es. GTM-ABC1234). Lo snippet verrà iniettato automaticamente in {'<head>'} e dopo {'<body>'} su tutte le pagine.
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* ── Meta Pixel card ──────────────────────────── */}
+                    {(() => {
+                      const isActive = !!(injectPoints.head?.includes('fbq('))
+
+                      const saveMetaPixel = async () => {
+                        const id = metaPixelId.trim()
+                        if (!id || !id.match(/^\d{10,20}$/)) return
+                        setMetaPixelSaving('saving')
+                        const headSnippet = `<!-- Meta Pixel Code -->\n<script>\n!function(f,b,e,v,n,t,s)\n{if(f.fbq)return;n=f.fbq=function(){n.callMethod?\nn.callMethod.apply(n,arguments):n.queue.push(arguments)};\nif(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';\nn.queue=[];t=b.createElement(e);t.async=!0;\nt.src=v;s=b.getElementsByTagName(e)[0];\ns.parentNode.insertBefore(t,s)}(window, document,'script',\n'https://connect.facebook.net/en_US/fbevents.js');\nfbq('init', '${id}');\nfbq('track', 'PageView');\n</script>\n<noscript><img height="1" width="1" style="display:none"\nsrc="https://www.facebook.com/tr?id=${id}&ev=PageView&noscript=1"\n/></noscript>\n<!-- End Meta Pixel Code -->`
+                        // Prepend to existing head content (non-pixel parts preserved)
+                        const stripOldPixel = (s: string) => s.replace(/<!-- Meta Pixel Code[\s\S]*?<!-- End Meta Pixel Code[^\n]*-->\n?/g, '').trim()
+                        const newHead = headSnippet + (stripOldPixel(injectPoints.head ?? '') ? '\n' + stripOldPixel(injectPoints.head ?? '') : '')
+                        const updated = { ...injectPoints, head: newHead }
+                        setInjectPoints(updated)
+                        injectPointsRef.current = updated
+                        await saveInjectPoints(updated)
+                        setMetaPixelSaving('saved')
+                        setTimeout(() => setMetaPixelSaving('idle'), 2000)
+                      }
+
+                      const removeMetaPixel = async () => {
+                        const stripOldPixel = (s: string) => s.replace(/<!-- Meta Pixel Code[\s\S]*?<!-- End Meta Pixel Code[^\n]*-->\n?/g, '').trim()
+                        const updated = { ...injectPoints }
+                        const newHead = stripOldPixel(injectPoints.head ?? '')
+                        if (newHead) updated.head = newHead; else delete updated.head
+                        setInjectPoints(updated)
+                        injectPointsRef.current = updated
+                        setMetaPixelId('')
+                        await saveInjectPoints(updated)
+                      }
+
+                      return (
+                        <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {/* Meta logo */}
+                            <svg width="28" height="28" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="8" fill="#0866FF"/><path d="M20 44V27c0-4.5 2.8-7 6.4-7 2.6 0 4.4 1.3 6 4 1.6-2.7 3.4-4 6-4 3.6 0 6.4 2.5 6.4 7v17h-5V27.6c0-2-.9-3.1-2.4-3.1-1.7 0-2.9 1.5-2.9 4.3V44h-5V28.8c0-2.8-1.2-4.3-2.9-4.3-1.5 0-2.4 1.1-2.4 3.1V44z" fill="white"/></svg>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: C.text }}>Meta Pixel</div>
+                              <div style={{ fontSize: '0.72rem', color: C.textMuted }}>Retargeting e conversioni Facebook/Instagram — senza toccare il codice</div>
+                            </div>
+                            {isActive && (
+                              <span style={{ marginLeft: 'auto', background: '#dcfce7', color: '#15803d', fontSize: '0.68rem', fontWeight: 700, padding: '2px 9px', borderRadius: 20 }}>● Attivo</span>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={metaPixelId}
+                              onChange={e => setMetaPixelId(e.target.value.replace(/\D/g, ''))}
+                              placeholder="123456789012345"
+                              style={{ flex: 1, height: 32, padding: '0 10px', border: `1px solid ${C.border}`, borderRadius: 7, fontSize: '0.85rem', fontFamily: 'monospace', color: C.text, background: C.white, outline: 'none', letterSpacing: '0.04em' }}
+                            />
+                            <button
+                              onClick={saveMetaPixel}
+                              disabled={!metaPixelId.match(/^\d{10,20}$/) || metaPixelSaving === 'saving'}
+                              style={{ height: 32, padding: '0 16px', background: (!metaPixelId.match(/^\d{10,20}$/) || metaPixelSaving === 'saving') ? C.border : C.blue, color: 'white', border: 'none', borderRadius: 7, fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                            >
+                              {metaPixelSaving === 'saving' ? '💾…' : metaPixelSaving === 'saved' ? '✓ Salvato' : 'Attiva'}
+                            </button>
+                            {isActive && (
+                              <button
+                                onClick={removeMetaPixel}
+                                style={{ height: 32, padding: '0 12px', background: 'none', color: '#ef4444', border: `1px solid #fecaca`, borderRadius: 7, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                              >Rimuovi</button>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: C.textFaint }}>
+                            Inserisci il tuo Pixel ID (solo numeri, lo trovi in Meta Events Manager). Lo snippet verrà iniettato automaticamente in {'<head>'} su tutte le pagine e traccia il PageView.
                           </div>
                         </div>
                       )
