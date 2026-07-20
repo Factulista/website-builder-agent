@@ -1770,7 +1770,7 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(p)
   }
-  const orderKeys = ['funcionalidades', 'alternativas']
+  const orderKeys = ['funcionalidades', 'comparativas']
   const sortedGroups = [...groups.entries()].sort(
     (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
   )
@@ -9838,7 +9838,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             >
                               <option value="">—</option>
                               <option value="funcionalidades">Funcionalidades</option>
-                              <option value="alternativas">Alternativas</option>
+                              <option value="comparativas">Comparativas</option>
                             </select>
                           </div>
 
