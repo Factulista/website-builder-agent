@@ -139,6 +139,26 @@ export const AGENTS_MANIFEST: AgentMeta[] = [
       'Nessuna dipendenza esterna eccetto Google Fonts e SVG inline',
     ],
   },
+  {
+    name: 'blog-post',
+    displayName: 'Blog Post Generator',
+    description: '[Feature separata — pannello Blog] Non fa parte della chat/build principale. Genera articoli di blog completi (SEO + GEO) in streaming a partire da topic/keyword, con tono di voce preso dagli ultimi articoli pubblicati.',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 16000,
+    category: 'utility',
+    inputs: ['topic', 'keyword primaria/secondarie', 'parametri struttura (parole, H2/H3/H4, flags)', 'tono di voce (ultimi 3 articoli pubblicati)', 'fonti URL opzionali', 'design system tipografico'],
+    outputs: ['metadati JSON (title, slug, seo_title, seo_description, excerpt)', 'HTML articolo completo (streaming)'],
+    systemPromptPreview: 'Copywriter/SEO/GEO specialist. Scrive HTML semantico puro (zero style inline), struttura in due blocchi (metadati JSON + delimitatore + HTML grezzo).',
+    filePath: 'app/api/generate-blog-post/route.ts',
+    enabled: true,
+    rules: [
+      'Streaming SSE diretto via fetch a api.anthropic.com — non passa dal Master HTML Agent',
+      'Output in due blocchi: JSON metadati poi ===CONTENT_HTML=== poi HTML grezzo (evita fragilità escape-quote su articoli lunghi)',
+      'HTML semantico puro: zero style="", zero attributi color/font/size — il Design System della piattaforma gestisce lo stile',
+      'Consuma crediti in base ai token reali (input+output) a fine generazione',
+      'Tono di voce: legge gli ultimi 3 articoli pubblicati del progetto per replicare stile/registro',
+    ],
+  },
 ]
 
 // Fase 4: single-agent architecture — no orchestrator, no classifier

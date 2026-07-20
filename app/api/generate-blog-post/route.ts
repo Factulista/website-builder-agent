@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { buildSourcesBlock } from '../../../lib/fetch-source'
 import { requireUser, requireUserAndProject, jsonError } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits } from '../../../lib/credits'
+import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -91,6 +92,20 @@ export async function POST(req: NextRequest) {
     userId = authCtx.user.id
   } catch (err) {
     return jsonError(err) as NextResponse
+  }
+
+  const runStartTime = Date.now()
+  let runId = ''
+  try {
+    runId = await startRun({
+      project_id: projectId,
+      user_id: userId,
+      agent_type: 'blog-post',
+      input_summary: topic.slice(0, 300),
+      model: 'claude-sonnet-4-6',
+    })
+  } catch (runErr) {
+    console.error('[run-logger] startRun failed:', String(runErr))
   }
 
   const f = {
@@ -240,6 +255,7 @@ NON scrivere nient'altro prima del JSON metadati o dopo l'HTML.`
         })
 
         if (!response.ok) {
+          if (runId) failRun(runId, { error_message: `API error: ${response.status}`, duration_ms: Date.now() - runStartTime }).catch(() => null)
           controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: `API error: ${response.status}` })}\n\n`))
           controller.close()
           return
@@ -247,6 +263,7 @@ NON scrivere nient'altro prima del JSON metadati o dopo l'HTML.`
 
         const reader = response.body?.getReader()
         if (!reader) {
+          if (runId) failRun(runId, { error_message: 'No reader', duration_ms: Date.now() - runStartTime }).catch(() => null)
           controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'No reader' })}\n\n`))
           controller.close()
           return
@@ -336,13 +353,24 @@ NON scrivere nient'altro prima del JSON metadati o dopo l'HTML.`
             .replace(/&quot;/g, '"')
           post.content_html = contentHtml
 
+          if (runId) {
+            completeRun(runId, {
+              output_summary: (post.title as string) ?? topic,
+              input_tokens: inputTokens,
+              output_tokens: outputTokens,
+              duration_ms: Date.now() - runStartTime,
+              output_data: { tool: 'generate-blog-post', summary: (post.title as string) ?? undefined },
+            }).catch(() => null)
+          }
           controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({ post })}\n\n`))
         } catch (e) {
+          if (runId) failRun(runId, { error_message: 'JSON parse failed', duration_ms: Date.now() - runStartTime }).catch(() => null)
           controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: 'JSON parse failed' })}\n\n`))
         }
 
         controller.close()
       } catch (err) {
+        if (runId) failRun(runId, { error_message: String(err).slice(0, 500), duration_ms: Date.now() - runStartTime }).catch(() => null)
         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`))
         controller.close()
       }
