@@ -237,7 +237,11 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
       const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
       return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
     }).join('\n')
-    const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n</div>`
+    // Carry over the nav CTAs (Iniciar sesión / Prueba gratis) — they live in the desktop
+    // nav (hidden on mobile) and must be repeated inside the drawer or they vanish on mobile.
+    const ctas = [...html.matchAll(/<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g)]
+      .map(m => '  ' + m[0].trim()).join('\n')
+    const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
     if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
     else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
     else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
