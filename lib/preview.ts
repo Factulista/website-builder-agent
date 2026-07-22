@@ -209,6 +209,52 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
 }
 
 /**
+ * Makes the mobile hamburger actually work at serve time — immune to builder autosave,
+ * which routinely strips BOTH the <div id="mobileMenu"> panel AND its toggle script,
+ * leaving a .hamburger button that does nothing (recurring bug). Two heals:
+ *   1. If the button exists but no panel does, build a panel from megaPages + static links.
+ *   2. Always inject a small idempotent toggle script (guarded by data-mm-toggle).
+ * Self-guards on the presence of a hamburger button, so pages without one are untouched.
+ */
+function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
+  const hasHamburger = /id="hamburgerBtn"/.test(html) || /class="[^"]*\bhamburger\b/.test(html)
+  if (!hasHamburger) return html
+
+  const hasPanel = /id="mobileMenu"/.test(html) || /<div[^>]*class="[^"]*\bmobile-menu\b/.test(html)
+  if (!hasPanel) {
+    const groups = new Map<string, MegaPage[]>()
+    for (const p of megaPages) {
+      const key = p.megaMenu || 'funcionalidades'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(p)
+    }
+    const orderKeys = ['funcionalidades', 'comparativas']
+    const sorted = [...groups.entries()].sort(
+      (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
+    )
+    const details = sorted.map(([group, pages]) => {
+      const label = group.charAt(0).toUpperCase() + group.slice(1)
+      const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
+      return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
+    }).join('\n')
+    const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n</div>`
+    if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
+    else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
+    else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
+  } else if (!/id="mobileMenu"/.test(html)) {
+    // Panel exists as .mobile-menu but lacks the id the toggle looks up first — add it.
+    html = html.replace(/(<div[^>]*class="[^"]*\bmobile-menu\b[^"]*")/, '$1 id="mobileMenu"')
+  }
+
+  if (!/data-mm-toggle/.test(html)) {
+    const script = `<script data-mm-toggle="1">(function(){var b=document.getElementById('hamburgerBtn')||document.querySelector('.hamburger');var m=document.getElementById('mobileMenu')||document.querySelector('.mobile-menu');if(!b||!m)return;function set(o){m.classList.toggle('open',o);b.classList.toggle('open',o);b.setAttribute('aria-expanded',o?'true':'false');}b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();set(!m.classList.contains('open'));});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false);});})();</script>`
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${script}\n</body>`)
+    else html += script
+  }
+  return html
+}
+
+/**
  * Replaces the content of .comp-nfd-panel with items (with icons) built from megaPages.
  * Panel gets data-count attribute so CSS can switch column count per item count.
  *
@@ -373,6 +419,11 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   if (megaPages && megaPages.length > 0) {
     html = rebuildMobileMenu(html, megaPages)
   }
+
+  // Step 0f: ensure the mobile hamburger works. Autosave can strip the panel AND the
+  // toggle script, leaving a dead button — rebuild the panel if missing and always
+  // inject the (idempotent) toggle script. Self-guards on hamburger presence.
+  html = ensureMobileNav(html, megaPages ?? [])
 
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
