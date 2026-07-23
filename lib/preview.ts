@@ -251,9 +251,13 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   }
 
   if (!/data-mm-toggle/.test(html)) {
+    // Accent CTA (black bg) inherits the drawer's black link color → black-on-black.
+    // Re-assert readable text for both CTAs inside the drawer.
+    const css = `<style data-mm-css="1">.mobile-menu .btn-accent-nav{color:#fff !important;}.mobile-menu .btn-ghost-nav{color:#111 !important;}</style>`
     const script = `<script data-mm-toggle="1">(function(){var b=document.getElementById('hamburgerBtn')||document.querySelector('.hamburger');var m=document.getElementById('mobileMenu')||document.querySelector('.mobile-menu');if(!b||!m)return;function set(o){m.classList.toggle('open',o);b.classList.toggle('open',o);b.setAttribute('aria-expanded',o?'true':'false');}b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();set(!m.classList.contains('open'));});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false);});})();</script>`
-    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${script}\n</body>`)
-    else html += script
+    const inject = css + '\n' + script
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${inject}\n</body>`)
+    else html += inject
   }
   return html
 }
