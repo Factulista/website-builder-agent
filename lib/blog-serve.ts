@@ -134,6 +134,52 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
   return html.slice(0, start) + openTag + '\n' + newInner + '\n' + closeTag + html.slice(start + full.length)
 }
 
+/**
+ * Makes the mobile hamburger actually work — immune to builder autosave, which strips
+ * both the <div id="mobileMenu"> panel AND its toggle script, leaving a dead button.
+ * Mirrors ensureMobileNav in preview.ts (blog pages use this separate serve path).
+ * Builds the panel from megaPages + static links + nav CTAs when missing, then always
+ * injects the idempotent toggle script. Self-guards on hamburger presence.
+ */
+function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
+  const hasHamburger = /id="hamburgerBtn"/.test(html) || /class="[^"]*\bhamburger\b/.test(html)
+  if (!hasHamburger) return html
+
+  const hasPanel = /id="mobileMenu"/.test(html) || /<div[^>]*class="[^"]*\bmobile-menu\b/.test(html)
+  if (!hasPanel) {
+    const groups = new Map<string, MegaPage[]>()
+    for (const p of megaPages) {
+      const key = p.megaMenu || 'funcionalidades'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(p)
+    }
+    const orderKeys = ['funcionalidades', 'comparativas']
+    const sorted = [...groups.entries()].sort(
+      (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
+    )
+    const details = sorted.map(([group, pages]) => {
+      const label = group.charAt(0).toUpperCase() + group.slice(1)
+      const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
+      return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
+    }).join('\n')
+    const ctas = [...html.matchAll(/<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g)]
+      .map(m => '  ' + m[0].trim()).join('\n')
+    const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
+    if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
+    else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
+    else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
+  } else if (!/id="mobileMenu"/.test(html)) {
+    html = html.replace(/(<div[^>]*class="[^"]*\bmobile-menu\b[^"]*")/, '$1 id="mobileMenu"')
+  }
+
+  if (!/data-mm-toggle/.test(html)) {
+    const script = `<script data-mm-toggle="1">(function(){var b=document.getElementById('hamburgerBtn')||document.querySelector('.hamburger');var m=document.getElementById('mobileMenu')||document.querySelector('.mobile-menu');if(!b||!m)return;function set(o){m.classList.toggle('open',o);b.classList.toggle('open',o);b.setAttribute('aria-expanded',o?'true':'false');}b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();set(!m.classList.contains('open'));});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false);});})();</script>`
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${script}\n</body>`)
+    else html += script
+  }
+  return html
+}
+
 /** Groups megaPages by their own megaMenu value and rebuilds each dropdown. */
 function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string {
   if (!megaPages || megaPages.length === 0) return html
@@ -701,7 +747,8 @@ export function buildBlogListPage(
 </html>`
   const outShared = injectSocialShareLinks(out, `${baseUrl}/blog`, title)
   const withDesktopNav = rebuildAllMegaMenuPanels(outShared, megaPages)
-  return megaPages && megaPages.length > 0 ? rebuildMobileMenu(withDesktopNav, megaPages) : withDesktopNav
+  const withMobile = megaPages && megaPages.length > 0 ? rebuildMobileMenu(withDesktopNav, megaPages) : withDesktopNav
+  return ensureMobileNav(withMobile, megaPages ?? [])
 }
 
 export function buildBlogPostPage(
@@ -924,5 +971,6 @@ ${tocItems.map(item => `  <li><a href="#${escapeHtml(item.id)}">${escapeHtml(ite
 </html>`
   const postOutShared = injectSocialShareLinks(postOut, canonicalUrl, post.title)
   const withDesktopNavPost = rebuildAllMegaMenuPanels(postOutShared, megaPages)
-  return megaPages && megaPages.length > 0 ? rebuildMobileMenu(withDesktopNavPost, megaPages) : withDesktopNavPost
+  const withMobilePost = megaPages && megaPages.length > 0 ? rebuildMobileMenu(withDesktopNavPost, megaPages) : withDesktopNavPost
+  return ensureMobileNav(withMobilePost, megaPages ?? [])
 }
