@@ -135,42 +135,41 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
 }
 
 /**
- * Makes the mobile hamburger actually work — immune to builder autosave, which strips
- * both the <div id="mobileMenu"> panel AND its toggle script, leaving a dead button.
- * Mirrors ensureMobileNav in preview.ts (blog pages use this separate serve path).
- * Builds the panel from megaPages + static links + nav CTAs when missing, then always
- * injects the idempotent toggle script. Self-guards on hamburger presence.
+ * Canonical mobile-drawer rebuild — identical on every page, immune to builder autosave
+ * (which strips or DUPLICATES the drawer; some stored pages had 3 panels / duplicate CTAs).
+ * Mirrors ensureMobileNav in preview.ts (blog uses this separate serve path). Removes EVERY
+ * existing panel, rebuilds ONE from megaPages + fixed static links + a single nav CTA pair,
+ * then injects the idempotent toggle script + CSS. Self-guards on hamburger presence.
  */
 function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   const hasHamburger = /id="hamburgerBtn"/.test(html) || /class="[^"]*\bhamburger\b/.test(html)
   if (!hasHamburger) return html
 
-  const hasPanel = /id="mobileMenu"/.test(html) || /<div[^>]*class="[^"]*\bmobile-menu\b/.test(html)
-  if (!hasPanel) {
-    const groups = new Map<string, MegaPage[]>()
-    for (const p of megaPages) {
-      const key = p.megaMenu || 'funcionalidades'
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(p)
-    }
-    const orderKeys = ['funcionalidades', 'comparativas']
-    const sorted = [...groups.entries()].sort(
-      (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
-    )
-    const details = sorted.map(([group, pages]) => {
-      const label = group.charAt(0).toUpperCase() + group.slice(1)
-      const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
-      return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
-    }).join('\n')
-    const ctas = [...html.matchAll(/<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g)]
-      .map(m => '  ' + m[0].trim()).join('\n')
-    const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
-    if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
-    else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
-    else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
-  } else if (!/id="mobileMenu"/.test(html)) {
-    html = html.replace(/(<div[^>]*class="[^"]*\bmobile-menu\b[^"]*")/, '$1 id="mobileMenu"')
+  html = html.replace(/<div\b[^>]*(?:id="mobileMenu"|class="[^"]*\bmobile-menu\b[^"]*")[^>]*>[\s\S]*?<\/div>/gi, '')
+
+  const groups = new Map<string, MegaPage[]>()
+  for (const p of megaPages) {
+    const key = p.megaMenu || 'funcionalidades'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(p)
   }
+  const orderKeys = ['funcionalidades', 'comparativas']
+  const sorted = [...groups.entries()].sort(
+    (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
+  )
+  const details = sorted.map(([group, pages]) => {
+    const label = group.charAt(0).toUpperCase() + group.slice(1)
+    const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
+    return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
+  }).join('\n')
+  const ctaAll = [...html.matchAll(/<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g)].map(m => m[0].trim())
+  const ghost = ctaAll.find(c => /btn-ghost-nav/.test(c))
+  const accent = ctaAll.find(c => /btn-accent-nav/.test(c))
+  const ctas = [ghost, accent].filter(Boolean).map(c => '  ' + c).join('\n')
+  const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
+  if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
+  else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
+  else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
 
   if (!/data-mm-toggle/.test(html)) {
     // Accent CTA (black bg) inherits the drawer's black link color → black-on-black.

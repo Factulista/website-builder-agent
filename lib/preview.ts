@@ -209,46 +209,46 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
 }
 
 /**
- * Makes the mobile hamburger actually work at serve time — immune to builder autosave,
- * which routinely strips BOTH the <div id="mobileMenu"> panel AND its toggle script,
- * leaving a .hamburger button that does nothing (recurring bug). Two heals:
- *   1. If the button exists but no panel does, build a panel from megaPages + static links.
- *   2. Always inject a small idempotent toggle script (guarded by data-mm-toggle).
+ * Makes the mobile hamburger work AND identical on every page — immune to builder autosave,
+ * which strips or DUPLICATES the drawer (some stored pages carried 3 <div id="mobileMenu">
+ * panels and duplicated CTAs, so the drawer froze and showed an incomplete/inconsistent menu).
+ * Canonical rebuild: remove EVERY existing panel, then insert ONE built from megaPages +
+ * fixed static links + a single pair of nav CTAs. Plus an idempotent toggle script + CSS.
  * Self-guards on the presence of a hamburger button, so pages without one are untouched.
  */
 function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   const hasHamburger = /id="hamburgerBtn"/.test(html) || /class="[^"]*\bhamburger\b/.test(html)
   if (!hasHamburger) return html
 
-  const hasPanel = /id="mobileMenu"/.test(html) || /<div[^>]*class="[^"]*\bmobile-menu\b/.test(html)
-  if (!hasPanel) {
-    const groups = new Map<string, MegaPage[]>()
-    for (const p of megaPages) {
-      const key = p.megaMenu || 'funcionalidades'
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)!.push(p)
-    }
-    const orderKeys = ['funcionalidades', 'comparativas']
-    const sorted = [...groups.entries()].sort(
-      (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
-    )
-    const details = sorted.map(([group, pages]) => {
-      const label = group.charAt(0).toUpperCase() + group.slice(1)
-      const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
-      return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
-    }).join('\n')
-    // Carry over the nav CTAs (Iniciar sesión / Prueba gratis) — they live in the desktop
-    // nav (hidden on mobile) and must be repeated inside the drawer or they vanish on mobile.
-    const ctas = [...html.matchAll(/<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g)]
-      .map(m => '  ' + m[0].trim()).join('\n')
-    const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
-    if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
-    else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
-    else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
-  } else if (!/id="mobileMenu"/.test(html)) {
-    // Panel exists as .mobile-menu but lacks the id the toggle looks up first — add it.
-    html = html.replace(/(<div[^>]*class="[^"]*\bmobile-menu\b[^"]*")/, '$1 id="mobileMenu"')
+  // 1. Nuke every existing drawer panel (dedupe stale/duplicate ones from stored HTML).
+  html = html.replace(/<div\b[^>]*(?:id="mobileMenu"|class="[^"]*\bmobile-menu\b[^"]*")[^>]*>[\s\S]*?<\/div>/gi, '')
+
+  // 2. Build the canonical panel from megaPages (same on every page).
+  const groups = new Map<string, MegaPage[]>()
+  for (const p of megaPages) {
+    const key = p.megaMenu || 'funcionalidades'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(p)
   }
+  const orderKeys = ['funcionalidades', 'comparativas']
+  const sorted = [...groups.entries()].sort(
+    (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
+  )
+  const details = sorted.map(([group, pages]) => {
+    const label = group.charAt(0).toUpperCase() + group.slice(1)
+    const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
+    return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
+  }).join('\n')
+  // Single canonical CTA pair from the nav (one ghost + one accent) — panels already removed,
+  // so these matches come only from the desktop nav, never from a stale drawer.
+  const ctaAll = [...html.matchAll(/<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g)].map(m => m[0].trim())
+  const ghost = ctaAll.find(c => /btn-ghost-nav/.test(c))
+  const accent = ctaAll.find(c => /btn-accent-nav/.test(c))
+  const ctas = [ghost, accent].filter(Boolean).map(c => '  ' + c).join('\n')
+  const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
+  if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
+  else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
+  else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
 
   if (!/data-mm-toggle/.test(html)) {
     // Accent CTA (black bg) inherits the drawer's black link color → black-on-black.
