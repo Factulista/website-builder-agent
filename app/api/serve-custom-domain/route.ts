@@ -153,7 +153,7 @@ ${items}
     })
   }
 
-  const PAGE_SIZE = 16
+  const PAGE_SIZE = 15
 
   // ── Blog routes ────────────────────────────────────────────────────────────
   const isBlogPath = pathname === '/blog' || pathname === '/blog/' || pathname.startsWith('/blog/')

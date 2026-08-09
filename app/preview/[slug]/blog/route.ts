@@ -23,7 +23,7 @@ function detectLang(context: Record<string, unknown>, homeHtml: string): string 
   return m?.[1]?.slice(0, 2) ?? 'it'
 }
 
-const PAGE_SIZE = 16
+const PAGE_SIZE = 15
 
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
