@@ -668,11 +668,15 @@ export function buildBlogListPage(
       }
     }
 
-    paginationHtml = `<nav class="blog-pagination" aria-label="Pagination">
+    // NOTE: deliberately a <div role="navigation">, NOT <nav> — same reason as the
+    // breadcrumb below: tenant site CSS is injected before the blog CSS and often has
+    // aggressive `nav { position:fixed; top:0 }` selectors that would hijack this and
+    // render the pager as a bar pinned over the real header instead of under the grid.
+    paginationHtml = `<div class="blog-pagination" role="navigation" aria-label="Pagination">
   <a class="blog-page-link${prevDisabled ? ' disabled' : ''}" href="${prevDisabled ? '#' : pageHref(currentPage - 1)}" ${prevDisabled ? 'aria-disabled="true"' : ''}>&#8592;</a>
   ${pageLinks.join('\n  ')}
   <a class="blog-page-link${nextDisabled ? ' disabled' : ''}" href="${nextDisabled ? '#' : pageHref(currentPage + 1)}" ${nextDisabled ? 'aria-disabled="true"' : ''}>&#8594;</a>
-</nav>`
+</div>`
   }
 
   const fixedNav = fixNavLinks(siteNav, baseUrl)
@@ -725,7 +729,9 @@ export function buildBlogListPage(
     .blog-card-author{font-size:.75rem;color:#888;font-style:italic}
     @media(min-width:640px){.blog-grid{grid-template-columns:repeat(2,1fr)}}
     @media(min-width:1024px){.blog-grid{grid-template-columns:repeat(3,1fr)}}
-    .blog-pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:2.5rem;flex-wrap:wrap}
+    /* Defensive like .blog-breadcrumb: tenant CSS injected earlier may pin navigation-ish
+       elements to the top; force this pager to stay in flow under the grid. */
+    .blog-pagination{position:static !important;width:auto !important;max-width:100% !important;height:auto !important;background:transparent !important;box-shadow:none !important;border:none !important;z-index:auto !important;display:flex !important;align-items:center;justify-content:center;gap:6px;margin-top:2.5rem;flex-wrap:wrap}
     .blog-page-link{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 10px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-size:.85rem;font-weight:500;text-decoration:none;transition:background .15s,border-color .15s}
     .blog-page-link:hover{background:#f3f4f6;border-color:#d1d5db}
     .blog-page-link.active{background:var(--color-accent,#2563eb);border-color:var(--color-accent,#2563eb);color:#fff;font-weight:700;pointer-events:none}
