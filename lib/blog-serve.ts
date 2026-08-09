@@ -602,7 +602,14 @@ export function buildBlogListPage(
   const subtitle = lang === 'es' ? 'Artículos y novedades' : lang === 'en' ? 'Articles and updates' : 'Articoli e aggiornamenti'
   // SEO <title> / meta description: use the per-site overrides when provided,
   // else fall back to the generic defaults (so the tag is never empty/too short).
-  const title = seoTitle?.trim() || 'Blog'
+  const baseTitle = seoTitle?.trim() || 'Blog'
+  // Paginated pages are distinct pages, not duplicates of page 1: they get a
+  // self-referencing canonical/og:url and a differentiated <title>. Canonicalising
+  // page 2+ back to /blog tells Google to drop them from the index (explicitly
+  // discouraged since rel=next/prev support was dropped in 2019).
+  const pageLabel = lang === 'es' ? 'Página' : lang === 'en' ? 'Page' : 'Pagina'
+  const title = currentPage > 1 ? `${baseTitle} — ${pageLabel} ${currentPage}` : baseTitle
+  const canonicalUrl = currentPage > 1 ? `${baseUrl}/blog?page=${currentPage}` : `${baseUrl}/blog`
   const metaDescription = seoDescription?.trim() || subtitle
   const readMoreLabel = lang === 'es' ? 'Leer más →' : lang === 'en' ? 'Read more →' : 'Leggi →'
 
@@ -689,10 +696,10 @@ export function buildBlogListPage(
   <base href="${escapeHtml(baseUrl)}/">
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(metaDescription)}">
-  <link rel="canonical" href="${escapeHtml(baseUrl)}/blog">
+  <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
   <meta property="og:title" content="${escapeHtml(title)}">
   <meta property="og:description" content="${escapeHtml(metaDescription)}">
-  <meta property="og:url" content="${escapeHtml(baseUrl)}/blog">
+  <meta property="og:url" content="${escapeHtml(canonicalUrl)}">
   <meta property="og:type" content="website">
   <script type="application/ld+json">${JSON.stringify({
     '@context': 'https://schema.org',
