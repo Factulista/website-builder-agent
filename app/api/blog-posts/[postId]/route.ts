@@ -21,7 +21,7 @@ async function verifyPostOwnership(postId: string, userId: string) {
   const supabase = getSupabase()
   const { data } = await supabase
     .from('blog_posts')
-    .select('id, project_id, projects!inner(user_id)')
+    .select('id, project_id, published_at, projects!inner(user_id)')
     .eq('id', postId)
     .single()
   if (!data) return null
@@ -77,10 +77,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pos
   const existing = await verifyPostOwnership(postId, user.id)
   if (!existing) return NextResponse.json({ error: 'Post non trovato' }, { status: 404 })
 
+  // published_at is the editorial date the user set in the sidebar (DATA PUBBLICAZIONE)
+  // and must always win — it's what Google/sitemap/schema.org read as the real
+  // publish date. Publishing/unpublishing only ever flips `status`; it must never
+  // stomp on that date. Only default to "now" the very first time a post goes live
+  // and no date was ever chosen (existing.published_at is null).
   const updates =
     action === 'publish'
-      ? { status: 'published', published_at: new Date().toISOString(), updated_at: new Date().toISOString() }
-      : { status: 'draft', published_at: null, updated_at: new Date().toISOString() }
+      ? {
+          status: 'published',
+          ...(existing.published_at ? {} : { published_at: new Date().toISOString() }),
+          updated_at: new Date().toISOString(),
+        }
+      : { status: 'draft', updated_at: new Date().toISOString() }
 
   const { data, error } = await getSupabase()
     .from('blog_posts').update(updates).eq('id', postId).select().single()
