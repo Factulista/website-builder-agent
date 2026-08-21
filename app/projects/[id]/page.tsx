@@ -8178,16 +8178,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               setSchedulePopoverOpen(false)
             }
 
-            // Shared status pill — draft / scheduled (shows go-live day) / published.
+            // Shared status pill — draft / scheduled / published. The go-live day for
+            // 'scheduled' is shown in the Data column, not crammed into this badge.
             const statusBadge = (p: BlogPost): { bg: string; color: string; label: string } => {
               if (p.status === 'published') return { bg: '#dcfce7', color: '#166534', label: '● Pubblicato' }
-              if (p.status === 'scheduled') {
-                const dateLabel = p.scheduled_at
-                  ? new Date(`${p.scheduled_at}T00:00:00`).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })
-                  : ''
-                return { bg: '#fef3c7', color: '#92400e', label: `◔ Programmato${dateLabel ? ` · ${dateLabel}` : ''}` }
-              }
+              if (p.status === 'scheduled') return { bg: '#fef3c7', color: '#92400e', label: '◔ Programmato' }
               return { bg: '#f3f4f6', color: '#6b7280', label: '○ Bozza' }
+            }
+            // Data column: scheduled → the planned go-live day; published → the
+            // editorial date from the sidebar; draft → fall back to created_at.
+            const listDateLabel = (p: BlogPost): string => {
+              if (p.status === 'scheduled' && p.scheduled_at) {
+                return new Date(`${p.scheduled_at}T00:00:00`).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })
+              }
+              const d = p.published_at ?? p.created_at
+              return new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })
             }
 
             const saveMeta = async (postId: string, updates: Partial<BlogPost>) => {
@@ -8695,7 +8700,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   })()}
 
                   {/* Column headers */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 100px 120px', gap: '0 8px', padding: '8px 24px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 90px 120px', gap: '0 8px', padding: '8px 24px', background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
                     {['Articolo', 'Stato', 'Data', 'Azioni'].map((h, i) => (
                       <span key={i} style={{ fontSize: '0.67rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                     ))}
@@ -8718,7 +8723,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         key={post.id}
                         onClick={() => openPost(post)}
                         style={{
-                          display: 'grid', gridTemplateColumns: '1fr 90px 100px 120px', gap: '0 8px',
+                          display: 'grid', gridTemplateColumns: '1fr 120px 90px 120px', gap: '0 8px',
                           alignItems: 'center', padding: '12px 16px',
                           background: C.white, border: `1px solid ${C.border}`,
                           borderRadius: '10px', cursor: 'pointer',
@@ -8739,8 +8744,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           background: statusBadge(post).bg, color: statusBadge(post).color,
                         }}>{statusBadge(post).label}</span>
                         {/* Date */}
-                        <span style={{ fontSize: '0.75rem', color: C.textFaint }}>
-                          {post.published_at ? new Date(post.published_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' }) : new Date(post.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })}
+                        <span style={{ fontSize: '0.75rem', color: C.textFaint, whiteSpace: 'nowrap' }}>
+                          {listDateLabel(post)}
                         </span>
                         {/* Actions */}
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
