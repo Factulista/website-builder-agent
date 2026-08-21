@@ -8811,10 +8811,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         disabled={scheduleSaving}
                         title="Pianifica pubblicazione"
                         style={{
-                          background: post.status === 'scheduled' ? '#fef3c7' : C.white,
-                          color: post.status === 'scheduled' ? '#92400e' : C.text,
-                          border: `1px solid ${post.status === 'scheduled' ? '#fde68a' : C.border}`,
-                          padding: '6px 12px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                          background: '#F5B800',
+                          color: '#1a1a1a',
+                          border: 'none',
+                          padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                          ...(post.status === 'scheduled' ? { boxShadow: '0 0 0 2px #92400e66' } : {}),
                         }}
                       >📅 {post.status === 'scheduled' ? 'Pianificato' : 'Pianifica'}</button>
 
