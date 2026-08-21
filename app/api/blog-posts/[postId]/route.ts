@@ -67,7 +67,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ po
   return NextResponse.json({ post: data })
 }
 
-// POST /api/blog-posts/[postId]?action=publish|unpublish
+// POST /api/blog-posts/[postId]?action=publish|unpublish|schedule|unschedule
+//
+// published_at is the editorial date the user set in the sidebar (DATA
+// PUBBLICAZIONE) and must always win — it's what Google/sitemap/schema.org
+// read as the real publish date. None of these actions ever touch it, except
+// the one-time default the very first time a post goes live with no date
+// ever chosen (existing.published_at is null).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
   const { postId } = await params
   const action = req.nextUrl.searchParams.get('action')
@@ -77,19 +83,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pos
   const existing = await verifyPostOwnership(postId, user.id)
   if (!existing) return NextResponse.json({ error: 'Post non trovato' }, { status: 404 })
 
-  // published_at is the editorial date the user set in the sidebar (DATA PUBBLICAZIONE)
-  // and must always win — it's what Google/sitemap/schema.org read as the real
-  // publish date. Publishing/unpublishing only ever flips `status`; it must never
-  // stomp on that date. Only default to "now" the very first time a post goes live
-  // and no date was ever chosen (existing.published_at is null).
-  const updates =
-    action === 'publish'
-      ? {
-          status: 'published',
-          ...(existing.published_at ? {} : { published_at: new Date().toISOString() }),
-          updated_at: new Date().toISOString(),
-        }
-      : { status: 'draft', updated_at: new Date().toISOString() }
+  let updates: Record<string, unknown>
+
+  if (action === 'publish') {
+    updates = {
+      status: 'published',
+      scheduled_at: null,
+      ...(existing.published_at ? {} : { published_at: new Date().toISOString() }),
+      updated_at: new Date().toISOString(),
+    }
+  } else if (action === 'schedule') {
+    const body = await req.json().catch(() => null) as { scheduledAt?: string } | null
+    const scheduledAt = body?.scheduledAt
+    if (!scheduledAt || !/^\d{4}-\d{2}-\d{2}$/.test(scheduledAt)) {
+      return NextResponse.json({ error: 'Data non valida (atteso YYYY-MM-DD)' }, { status: 400 })
+    }
+    updates = { status: 'scheduled', scheduled_at: scheduledAt, updated_at: new Date().toISOString() }
+  } else if (action === 'unschedule') {
+    updates = { status: 'draft', scheduled_at: null, updated_at: new Date().toISOString() }
+  } else {
+    // unpublish (default/back-compat)
+    updates = { status: 'draft', scheduled_at: null, updated_at: new Date().toISOString() }
+  }
 
   const { data, error } = await getSupabase()
     .from('blog_posts').update(updates).eq('id', postId).select().single()

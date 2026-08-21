@@ -108,6 +108,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     .select('id, title, slug, excerpt, featured_image, published_at, categories, tags, content_html, seo_title, seo_description, author')
     .eq('project_id', project.id)
     .eq('slug', postSlug)
+    .eq('status', 'published')
     .single()
 
   if (!post) return new Response('Post not found', { status: 404 })

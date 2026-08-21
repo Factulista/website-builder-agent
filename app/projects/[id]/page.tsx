@@ -2091,7 +2091,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   // ── Blog state ──────────────────────────────────────────────────────────────
-  type BlogPost = { id: string; title: string; slug: string; excerpt: string; featured_image: string | null; status: 'draft' | 'published'; published_at: string | null; categories: string[]; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string; author: string; related_post_ids?: string[] }
+  type BlogPost = { id: string; title: string; slug: string; excerpt: string; featured_image: string | null; status: 'draft' | 'published' | 'scheduled'; published_at: string | null; scheduled_at: string | null; categories: string[]; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string; author: string; related_post_ids?: string[] }
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
   const [blogLoading, setBlogLoading] = useState(false)
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null)
@@ -2114,6 +2114,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [injectPointsSaving, setInjectPointsSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
   const injectPointsRef = useRef<Record<string, string>>({})
   const [blogSidebarBannerSaving, setBlogSidebarBannerSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  // "Pianifica" popover — go-live day only (no time, the cron runs once/day).
+  // Independent from published_at (the editorial/SEO date, set separately in the sidebar).
+  const [schedulePopoverOpen, setSchedulePopoverOpen] = useState(false)
+  const [scheduleDate, setScheduleDate] = useState('')
+  const [scheduleSaving, setScheduleSaving] = useState(false)
   const [showUrlDropdown, setShowUrlDropdown] = useState(false)
   const [userFullName, setUserFullName] = useState('')
   const [previewIframePath, setPreviewIframePath] = useState<string | null>(null)
@@ -7994,6 +7999,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           /* ── Blog Manager ───────────────────────────────────────────────────── */
           (() => {
             const openPost = async (post: BlogPost) => {
+              setSchedulePopoverOpen(false)
               // CRITICAL: flush any pending autosave BEFORE fetching, so we don't
               // race the API GET against an in-flight save of older content
               await flushBlogSave()
@@ -8130,6 +8136,58 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 setBlogPosts(prev => prev.map(p => p.id === post.id ? { ...p, ...json.post } : p))
               }
               setBlogPublishing(false)
+            }
+
+            // Pianifica: go-live day only — independent from published_at (the
+            // editorial/SEO date set separately in the sidebar "Data pubblicazione").
+            const schedulePost = async (post: BlogPost, dateStr: string) => {
+              if (!dateStr) return
+              setScheduleSaving(true)
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) { setScheduleSaving(false); return }
+              const res = await fetch(`/api/blog-posts/${post.id}?action=schedule`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ scheduledAt: dateStr }),
+              })
+              const json = await res.json()
+              if (json.post) {
+                setSelectedPost(prev => prev?.id === post.id ? { ...prev, ...json.post } : prev)
+                setBlogPosts(prev => prev.map(p => p.id === post.id ? { ...p, ...json.post } : p))
+              }
+              setScheduleSaving(false)
+              setSchedulePopoverOpen(false)
+            }
+
+            const unschedulePost = async (post: BlogPost) => {
+              setScheduleSaving(true)
+              const { data: { session } } = await supabase.auth.getSession()
+              const token = session?.access_token
+              if (!token) { setScheduleSaving(false); return }
+              const res = await fetch(`/api/blog-posts/${post.id}?action=unschedule`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+              })
+              const json = await res.json()
+              if (json.post) {
+                setSelectedPost(prev => prev?.id === post.id ? { ...prev, ...json.post } : prev)
+                setBlogPosts(prev => prev.map(p => p.id === post.id ? { ...p, ...json.post } : p))
+              }
+              setScheduleSaving(false)
+              setSchedulePopoverOpen(false)
+            }
+
+            // Shared status pill — draft / scheduled (shows go-live day) / published.
+            const statusBadge = (p: BlogPost): { bg: string; color: string; label: string } => {
+              if (p.status === 'published') return { bg: '#dcfce7', color: '#166534', label: '● Pubblicato' }
+              if (p.status === 'scheduled') {
+                const dateLabel = p.scheduled_at
+                  ? new Date(`${p.scheduled_at}T00:00:00`).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })
+                  : ''
+                return { bg: '#fef3c7', color: '#92400e', label: `◔ Programmato${dateLabel ? ` · ${dateLabel}` : ''}` }
+              }
+              return { bg: '#f3f4f6', color: '#6b7280', label: '○ Bozza' }
             }
 
             const saveMeta = async (postId: string, updates: Partial<BlogPost>) => {
@@ -8677,9 +8735,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         {/* Status badge */}
                         <span style={{
                           fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', textAlign: 'center',
-                          background: post.status === 'published' ? '#dcfce7' : '#f3f4f6',
-                          color: post.status === 'published' ? '#166534' : '#6b7280',
-                        }}>{post.status === 'published' ? '● Pubblicato' : '○ Bozza'}</span>
+                          whiteSpace: 'nowrap',
+                          background: statusBadge(post).bg, color: statusBadge(post).color,
+                        }}>{statusBadge(post).label}</span>
                         {/* Date */}
                         <span style={{ fontSize: '0.75rem', color: C.textFaint }}>
                           {post.published_at ? new Date(post.published_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' }) : new Date(post.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })}
@@ -8718,10 +8776,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   <div style={{ width: '1px', height: '16px', background: C.border }} />
                   <span style={{ fontSize: '0.87rem', fontWeight: 600, color: C.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</span>
                   <span style={{
-                    fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                    background: post.status === 'published' ? '#dcfce7' : '#f3f4f6',
-                    color: post.status === 'published' ? '#166534' : '#6b7280',
-                  }}>{post.status === 'published' ? '● Pubblicato' : '○ Bozza'}</span>
+                    fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap',
+                    background: statusBadge(post).bg, color: statusBadge(post).color,
+                  }}>{statusBadge(post).label}</span>
                   {blogSaving === 'saving' && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>💾 Salvataggio...</span>}
                   {blogSaving === 'saved' && <span style={{ fontSize: '0.72rem', color: '#16a34a' }}>✓ Salvato</span>}
                   {blogSaving === 'failed' && <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 600 }}>⚠ Salvataggio fallito — controlla la console</span>}
@@ -8744,13 +8801,67 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     /blog/{post.slug}
                   </a>
+                  {post.status !== 'published' && (
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => {
+                          setScheduleDate(post.scheduled_at ?? new Date().toISOString().slice(0, 10))
+                          setSchedulePopoverOpen(o => !o)
+                        }}
+                        disabled={scheduleSaving}
+                        title="Pianifica pubblicazione"
+                        style={{
+                          background: post.status === 'scheduled' ? '#fef3c7' : C.white,
+                          color: post.status === 'scheduled' ? '#92400e' : C.text,
+                          border: `1px solid ${post.status === 'scheduled' ? '#fde68a' : C.border}`,
+                          padding: '6px 12px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                        }}
+                      >📅 {post.status === 'scheduled' ? 'Pianificato' : 'Pianifica'}</button>
+
+                      {schedulePopoverOpen && (
+                        <>
+                          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setSchedulePopoverOpen(false)} />
+                          <div style={{
+                            position: 'absolute', top: '110%', right: 0, background: C.white, border: `1px solid ${C.border}`,
+                            borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '14px', width: '240px', zIndex: 50,
+                          }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: C.text, marginBottom: '8px' }}>Pubblicazione programmata</div>
+                            <input
+                              type="date"
+                              value={scheduleDate}
+                              min={new Date().toISOString().slice(0, 10)}
+                              onChange={e => setScheduleDate(e.target.value)}
+                              style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.8rem', fontFamily: 'inherit', marginBottom: '10px' }}
+                            />
+                            <div style={{ fontSize: '0.68rem', color: C.textFaint, marginBottom: '10px', lineHeight: 1.4 }}>
+                              L&apos;articolo va online da solo quel giorno. La data pubblicazione (SEO, a sinistra) non cambia.
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                onClick={() => schedulePost(post, scheduleDate)}
+                                disabled={scheduleSaving || !scheduleDate}
+                                style={{ flex: 1, background: C.blue, color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                              >{scheduleSaving ? '⏳' : 'Programma'}</button>
+                              {post.status === 'scheduled' && (
+                                <button
+                                  onClick={() => unschedulePost(post)}
+                                  disabled={scheduleSaving}
+                                  style={{ background: '#f3f4f6', color: '#6b7280', border: 'none', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                                >Annulla</button>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={() => togglePublish(post)}
                     disabled={blogPublishing}
                     style={{
                       background: post.status === 'published' ? '#f3f4f6' : C.blue,
                       color: post.status === 'published' ? C.text : 'white',
-                      border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit',
+                      border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
                     }}
                   >{blogPublishing ? '⏳...' : post.status === 'published' ? '↩ Bozza' : '↑ Pubblica'}</button>
                 </div>
