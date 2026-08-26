@@ -5262,16 +5262,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       })
       return
     }
-    // Show warnings (non-blocking) if any
-    if (seoReport.warnings.length > 0 && seoReport.score < 70) {
-      const warnList = seoReport.warnings.slice(0, 5).map(w => `• [${w.page}] ${w.message}`).join('\n')
-      const proceed = await confirmDialog({
-        title: `⚠️ SEO score: ${seoReport.score}/100`,
-        message: `Ci sono alcune ottimizzazioni SEO consigliate:\n\n${warnList}\n\nVuoi pubblicare comunque?`,
-        confirmLabel: 'Pubblica comunque',
-      })
-      if (!proceed) return
-    }
     const ok = await confirmDialog({
       title: t('project.publishSiteTitle' as const, language as any),
       message: t('project.publishSiteMessage' as const, language as any).replace('{domain}', customDomain),
