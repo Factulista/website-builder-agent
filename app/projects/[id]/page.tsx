@@ -2374,6 +2374,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const articleKwInputRef = useRef<HTMLInputElement | null>(null)
   const mediaSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const codeFileInputRef = useRef<HTMLInputElement>(null)
   const latestPagesRef = useRef<Page[]>([])
   // Track slugs explicitly deleted in this session so the merge doesn't bring them back
   const deletedSlugsRef = useRef<Set<string>>(new Set())
@@ -3531,6 +3532,48 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       console.warn('[savePagesInline] unexpected, falling back to saveState:', e)
       return saveState(messages, newPages)
     }
+  }
+
+  // Code editor: export current HTML (page or blog post) as a downloadable .html file
+  const downloadCode = () => {
+    const filename = activeCodeBlogPostId
+      ? `${(activeCodeBlogPostTitle || 'articolo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'articolo'}.html`
+      : `${activePage?.slug || 'page'}.html`
+    const blob = new Blob([codeContent], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Code editor: load an uploaded .html file's content into the editor and save it
+  // immediately (same explicit-save path as the "Salva" button / Ctrl+S).
+  const handleUploadedHtml = async (text: string) => {
+    setCodeContent(text)
+    setCodeSaving('saving')
+    if (activeCodeBlogPostId) {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) { setCodeSaving('idle'); return }
+      await fetch(`/api/blog-posts/${activeCodeBlogPostId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content_html: text }),
+      })
+    } else {
+      if (!activePage) { setCodeSaving('idle'); return }
+      const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: text } : p)
+      setPages(newPages)
+      latestPagesRef.current = newPages
+      void createVersion('Upload HTML manuale', newPages)
+      await savePagesInline(newPages)
+    }
+    setCodeSaving('saved')
+    setTimeout(() => setCodeSaving('idle'), 2000)
   }
 
   // NOTE: `_newVersions` is accepted for backwards-compat with existing call sites
@@ -7733,6 +7776,39 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </optgroup>
                   </select>
                 )}
+                <button
+                  type="button"
+                  onClick={downloadCode}
+                  title="Scarica come file .html"
+                  style={{ fontSize: '0.72rem', background: '#3e3e3e', color: '#ccc', border: '1px solid #555', borderRadius: '5px', padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  ⬇ Download
+                </button>
+                <button
+                  type="button"
+                  onClick={() => codeFileInputRef.current?.click()}
+                  title="Carica un file .html"
+                  style={{ fontSize: '0.72rem', background: '#3e3e3e', color: '#ccc', border: '1px solid #555', borderRadius: '5px', padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  ⬆ Upload
+                </button>
+                <input
+                  ref={codeFileInputRef}
+                  type="file"
+                  accept=".html,.htm,text/html"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      const text = typeof reader.result === 'string' ? reader.result : ''
+                      void handleUploadedHtml(text)
+                    }
+                    reader.readAsText(file)
+                    e.target.value = ''
+                  }}
+                />
               </div>
               <HtmlCodeEditor
                 content={codeContent}
