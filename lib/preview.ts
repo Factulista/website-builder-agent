@@ -263,6 +263,114 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
 }
 
 /**
+ * PREVIEW-ONLY "Autónomos" mega menu — categorised 3-column dropdown between
+ * Comparativas and Blog. Deliberately NOT wired into the shared megaMenu/
+ * megaPages data system (that only supports a flat one-level item list, no
+ * per-category sub-headers) and deliberately NOT touching shared_nav_html
+ * (which is the SAME field servePublished reads — editing it would put this
+ * live immediately). Instead this is pure serve-time markup, called ONLY from
+ * servePreview(), so it can never appear on servePublished() (www / custom
+ * domains). Promoting it to production later means wiring these same items
+ * into the page.megaMenu system and/or calling this from servePublished too.
+ *
+ * Idempotent (checks NFD_AUTONOMOS_ID) and a safe no-op if the Blog nav link
+ * isn't found in the expected shape, so it can never break page rendering.
+ */
+const NFD_AUTONOMOS_ID = 'nfd-autonomos'
+type AutonomosCategory = { icon: string; iconClass: string; title: string; items: Array<{ label: string; slug: string }> }
+const AUTONOMOS_CATEGORIES: AutonomosCategory[] = [
+  { icon: '🩺', iconClass: 'am-purple', title: 'Salud y bienestar', items: [
+    { label: 'Psicólogos', slug: 'programa-de-facturacion-para-psicologos' },
+    { label: 'Fisioterapeutas', slug: 'programa-de-facturacion-para-fisioterapeutas' },
+    { label: 'Nutricionistas', slug: 'programa-de-facturacion-para-nutricionistas' },
+    { label: 'Entrenadores personales', slug: 'programa-de-facturacion-para-entrenadores-personales' },
+  ] },
+  { icon: '⚖️', iconClass: 'am-blue', title: 'Servicios profesionales', items: [
+    { label: 'Abogados', slug: 'programa-de-facturacion-para-abogados' },
+    { label: 'Consultores y asesores', slug: 'programa-de-facturacion-para-consultores-y-asesores' },
+    { label: 'Traductores', slug: 'programa-de-facturacion-para-traductores' },
+    { label: 'Arquitectos', slug: 'programa-de-facturacion-para-arquitectos' },
+  ] },
+  { icon: '🎨', iconClass: 'am-pink', title: 'Creativos y digitales', items: [
+    { label: 'Diseñadores gráficos', slug: 'programa-de-facturacion-para-disenadores-graficos' },
+    { label: 'Programadores', slug: 'programa-de-facturacion-para-programadores' },
+    { label: 'Fotógrafos', slug: 'programa-de-facturacion-para-fotografos' },
+    { label: 'Marketing digital', slug: 'programa-de-facturacion-para-marketing-digital' },
+  ] },
+  { icon: '💻', iconClass: 'am-green', title: 'Formación', items: [
+    { label: 'Formadores', slug: 'programa-de-facturacion-para-formadores' },
+    { label: 'Coaches', slug: 'programa-de-facturacion-para-coaches' },
+  ] },
+  { icon: '⚡', iconClass: 'am-orange', title: 'Oficios y reformas', items: [
+    { label: 'Electricistas', slug: 'programa-de-facturacion-para-electricistas' },
+    { label: 'Fontaneros', slug: 'programa-de-facturacion-para-fontaneros' },
+    { label: 'Pintores', slug: 'programa-de-facturacion-para-pintores' },
+    { label: 'Cerrajeros', slug: 'programa-de-facturacion-para-cerrajeros' },
+  ] },
+  { icon: '💼', iconClass: 'am-teal', title: 'Comercio y ventas', items: [
+    { label: 'Comerciales y agentes', slug: 'programa-de-facturacion-para-comerciales-y-agentes' },
+    { label: 'Agentes inmobiliarios', slug: 'programa-de-facturacion-para-agentes-inmobiliarios' },
+  ] },
+]
+
+function injectAutonomosMegaMenu(html: string): string {
+  if (html.includes(NFD_AUTONOMOS_ID)) return html // already injected (e.g. re-run on cached html)
+  const blogLiRe = /<li><a href="\.\/blog"[^>]*>Blog<\/a><\/li>/
+  if (!blogLiRe.test(html)) return html // unexpected nav shape — no-op, never break the page
+
+  const cols = AUTONOMOS_CATEGORIES.map(cat => {
+    const links = cat.items.map(it =>
+      `<a href="./${it.slug}" class="am-link" role="menuitem">${it.label}</a>`
+    ).join('\n      ')
+    return `    <div class="am-col">
+      <div class="am-cat"><span class="am-icon ${cat.iconClass}">${cat.icon}</span><span class="am-cat-title">${cat.title}</span></div>
+      ${links}
+    </div>`
+  }).join('\n')
+
+  const trigger = `<li class="comp-nfd" data-comp="nav-feature-dropdown" data-open="false">
+  <button type="button" class="comp-nfd-trigger" aria-expanded="false" aria-controls="${NFD_AUTONOMOS_ID}" aria-haspopup="menu">
+    Autónomos<svg class="comp-nfd-chevron" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 3.5 5 7 8.5 3.5"></polyline></svg>
+  </button>
+  <div class="autonomos-mega-panel" id="${NFD_AUTONOMOS_ID}" role="menu">
+${cols}
+    <a href="./autonomos" class="am-viewall" role="menuitem">Ver todos los sectores →</a>
+  </div>
+  <script>
+    (function(){
+      var li=document.currentScript.parentElement;
+      var btn=li.querySelector('.comp-nfd-trigger');
+      var t=null;
+      function open(v){li.setAttribute('data-open',v?'true':'false');btn.setAttribute('aria-expanded',String(v));}
+      open(false);
+      btn.addEventListener('click',function(e){e.stopPropagation();clearTimeout(t);open(li.getAttribute('data-open')!=='true');});
+      li.addEventListener('mouseenter',function(){if(window.matchMedia('(min-width:641px)').matches){clearTimeout(t);open(true);}});
+      li.addEventListener('mouseleave',function(){if(window.matchMedia('(min-width:641px)').matches){t=setTimeout(function(){open(false);},180);}});
+      document.addEventListener('click',function(e){if(!li.contains(e.target)){clearTimeout(t);open(false);}});
+      document.addEventListener('keydown',function(e){if(e.key==='Escape'){clearTimeout(t);open(false);}});
+    })();
+  </script>
+</li>`
+
+  const css = `<style data-am-css="1">
+.autonomos-mega-panel{position:fixed;top:var(--header-h,68px);left:50%;transform:translateX(-50%);width:min(94vw,760px);max-width:760px;background:var(--surface,#fff);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.13),0 3px 10px rgba(0,0,0,0.05);padding:22px 26px 16px;display:none;z-index:500;}
+.comp-nfd[data-open="true"] .autonomos-mega-panel{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 28px;}
+.am-col{display:flex;flex-direction:column;min-width:0;}
+.am-cat{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.am-icon{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.am-purple{background:#f2ebfb;} .am-blue{background:#e8f0fe;} .am-pink{background:#fdeaf3;} .am-green{background:#e6f7ee;} .am-orange{background:#fef1e3;} .am-teal{background:#e3f6f5;}
+.am-cat-title{font-weight:700;font-size:0.85rem;color:#111;}
+.am-link{display:block;padding:5px 0 5px 34px;color:#555;text-decoration:none;font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.am-link:hover{color:#000;text-decoration:underline;}
+.am-viewall{grid-column:1 / -1;display:block;text-align:center;margin-top:8px;padding-top:14px;border-top:1px solid #eee;color:var(--color-accent,#2563eb);font-weight:600;font-size:0.85rem;text-decoration:none;}
+.am-viewall:hover{text-decoration:underline;}
+@media(max-width:900px){.comp-nfd[data-open="true"] .autonomos-mega-panel{grid-template-columns:1fr;}}
+</style>`
+
+  return html.replace(blogLiRe, css + trigger + '$&')
+}
+
+/**
  * Replaces the content of .comp-nfd-panel with items (with icons) built from megaPages.
  * Panel gets data-count attribute so CSS can switch column count per item count.
  *
@@ -621,7 +729,12 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
   const megaPages = (config?.pages ?? [])
     .filter(p => !!p.megaMenu)
     .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon, megaMenu: p.megaMenu }))
-  return new Response(prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
+  let preparedHtml = prepareHtml(pageHtml, base, siteUrl, isStaging, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page?.robots, page?.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages)
+  // PREVIEW-ONLY: the "Autónomos" mega menu is deliberately never wired into
+  // servePublished — see injectAutonomosMegaMenu's doc comment. isStaging is
+  // exactly "this is not the real public domain" (myweb, never www/custom domain).
+  if (isStaging) preparedHtml = injectAutonomosMegaMenu(preparedHtml)
+  return new Response(preparedHtml, {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
