@@ -334,7 +334,7 @@ function injectAutonomosMegaMenu(html: string): string {
   </button>
   <div class="autonomos-mega-panel" id="${NFD_AUTONOMOS_ID}" role="menu">
 ${cols}
-    <a href="./autonomos" class="am-viewall" role="menuitem">Ver todos los sectores →</a>
+    <a href="./sectores" class="am-viewall" role="menuitem">Ver todos los sectores →</a>
   </div>
   <script>
     (function(){
