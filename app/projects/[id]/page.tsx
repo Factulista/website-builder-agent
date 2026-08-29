@@ -3705,6 +3705,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
+  // Top-nav view switcher (Anteprima/Codice/Modifica/Media/SEO/Pagine/Blog/Design/Integrazioni):
+  // flushes any pending blog-post edit BEFORE unmounting the blog editor, so leaving via the
+  // top bar doesn't lose changes the way a plain setViewMode() would (only the dedicated
+  // "← torna alla lista" button used to do this flush).
+  const switchViewMode = async (mode: 'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design' | 'integrations') => {
+    if (viewMode === 'blog' && selectedPost) await flushBlogSave()
+    setViewMode(mode)
+  }
+
   // Flush on tab visibility change (user switches tab or minimises window)
   useEffect(() => {
     const onVisibility = () => {
@@ -5858,29 +5867,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               label="🌐"
               title={t('project.preview' as const, language as any)}
               active={viewMode === 'preview'}
-              onClick={() => setViewMode('preview')}
+              onClick={() => switchViewMode('preview')}
             />
             <ToolbarBtn
               label="</>"
               title={t('project.htmlCode' as const, language as any)}
               active={viewMode === 'code'}
-              onClick={() => {
+              onClick={async () => {
+                await switchViewMode('code')
                 setCodeContent(activePage?.html ?? '')
                 setCodeSaving('idle')
-                setViewMode('code')
               }}
             />
             <ToolbarBtn
               label="✎"
               title={t('project.inlineEditor' as const, language as any)}
               active={viewMode === 'edit'}
-              onClick={() => setViewMode('edit')}
+              onClick={() => switchViewMode('edit')}
             />
             <ToolbarBtn
               label={<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"><rect x="0.5" y="1.5" width="13" height="11" rx="1.5"/><circle cx="4.5" cy="5.5" r="1.2"/><polyline points="0.5,12.5 4.5,8 7.5,10.5 9.5,8 13.5,12.5"/></svg>}
               title={t('project.mediaLibrary' as const, language as any)}
               active={viewMode === 'media'}
-              onClick={() => setViewMode('media')}
+              onClick={() => switchViewMode('media')}
             />
             <ToolbarBtn
               label={(() => {
@@ -5892,31 +5901,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               })()}
               title="SEO Optimizer"
               active={viewMode === 'seo'}
-              onClick={() => setViewMode('seo')}
+              onClick={() => switchViewMode('seo')}
             />
             <ToolbarBtn
               label={<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"><rect x="2" y="2" width="10" height="12" rx="1.5"/><line x1="4.5" y1="5.5" x2="9.5" y2="5.5"/><line x1="4.5" y1="8" x2="9.5" y2="8"/><line x1="4.5" y1="10.5" x2="7.5" y2="10.5"/></svg>}
               title="Gestione pagine"
               active={viewMode === 'pages'}
-              onClick={() => setViewMode('pages')}
+              onClick={() => switchViewMode('pages')}
             />
             <ToolbarBtn
               label={<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"><path d="M8 2H3.5A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14H10a1.5 1.5 0 0 0 1.5-1.5V5.5"/><line x1="4.5" y1="7" x2="8" y2="7"/><line x1="4.5" y1="9.5" x2="7" y2="9.5"/><path d="M9 1l2.5 2.5-3.5 3.5H5.5V4.5L9 1Z"/></svg>}
               title="Blog"
               active={viewMode === 'blog'}
-              onClick={() => setViewMode('blog')}
+              onClick={() => switchViewMode('blog')}
             />
             <ToolbarBtn
               label={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>}
               title="Design System"
               active={viewMode === 'design'}
-              onClick={() => setViewMode('design')}
+              onClick={() => switchViewMode('design')}
             />
             <ToolbarBtn
               label="🔌"
               title="Componenti"
               active={viewMode === 'integrations'}
-              onClick={() => setViewMode('integrations')}
+              onClick={() => switchViewMode('integrations')}
             />
           </div>
 
@@ -5969,7 +5978,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         && activeSlug === p.slug
                         && !(viewMode === 'preview' && previewIframePath && previewIframePath !== '/')
                     return (
-                      <button key={p.slug} onClick={() => {
+                      <button key={p.slug} onClick={async () => {
                         setShowUrlDropdown(false)
                         setActiveSlug(p.slug)
                         if (viewMode === 'code') {
@@ -5978,6 +5987,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           setCodeContent(pages.find(pg => pg.slug === p.slug)?.html ?? '')
                           setCodeSaving('idle')
                         } else if (viewMode === 'blog') {
+                          if (selectedPost) await flushBlogSave()
                           setViewMode('preview')
                         } else if (viewMode === 'preview') {
                           setPreviewIframePath(null)
