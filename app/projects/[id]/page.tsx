@@ -3714,6 +3714,96 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setViewMode(mode)
   }
 
+  // Open a blog post in the editor: flushes any pending save of whatever was open before,
+  // fetches fresh content from the server (never trusts the possibly-stale list row), and
+  // rebuilds the editor iframe's srcDoc + undo history from that fresh content. Hoisted to
+  // component scope (not just the Blog view's render) so every entry point — the Blog list,
+  // "Nuovo articolo", and the URL-bar page dropdown — goes through the same correct path
+  // instead of some of them setting selectedPost directly and showing stale content.
+  const openPost = async (post: BlogPost) => {
+    setSchedulePopoverOpen(false)
+    // CRITICAL: flush any pending autosave BEFORE fetching, so we don't
+    // race the API GET against an in-flight save of older content
+    await flushBlogSave()
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return
+    let full: BlogPost = post
+    try {
+      const res = await fetch(`/api/blog-posts/${post.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        alert(`Impossibile aprire l'articolo (${res.status}). Potrebbe essere stato eliminato.`)
+        await loadBlogPosts()
+        return
+      }
+      const json = await res.json()
+      full = json.post ?? post
+      console.log('[parent-blog] openPost fetched fresh content, length:', (full.content_html ?? '').length, 'preview:', (full.content_html ?? '').slice(0, 200))
+    } catch (err) {
+      console.error('openPost error:', err)
+      alert('Errore di rete nel caricamento dell\'articolo')
+      return
+    }
+    setSelectedPost(full)
+    setBlogMetaEdits({})
+    // Build editor srcdoc — uses the same CSS as the live blog preview
+    // Strip any accumulated wrapper divs from legacy saves
+    let contentHtml = full.content_html ?? ''
+    try {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(`<div id="__wrap">${contentHtml}</div>`, 'text/html')
+      const allContent = doc.querySelectorAll('.blog-post-content')
+      if (allContent.length > 0) {
+        contentHtml = allContent[allContent.length - 1].innerHTML.trim()
+      }
+    } catch { /* keep original */ }
+    // Extract ONLY CSS custom properties (:root variables) + Google Font links from
+    // the home page — NOT the full page CSS. Injecting the full site CSS into the
+    // blog editor causes heading rules (h1 { font-size: clamp(...); font-weight:700 })
+    // and layout rules to bleed into the editor, making list items appear as giant
+    // H1-styled text and breaking the blog content layout. CSS variables are enough
+    // to inherit brand colors (--accent, --color-text, etc.) and font families.
+    const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
+    const fontLinks = (homeHtml.match(/<link[^>]*(?:googleapis\.com|gstatic\.com)[^>]*>/gi) ?? []).join('\n')
+    const rootVars = (() => {
+      const blocks = homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []
+      for (const block of blocks) {
+        const css = block.replace(/<\/?style[^>]*>/gi, '')
+        const m = css.match(/:root\s*\{([^}]+)\}/)
+        if (m) return `:root{${m[1].trim()}}`
+      }
+      return ''
+    })()
+    // Extract scoped DS rules from shared_css (font-family, sizes, colors for .blog-post-content)
+    const sharedCssVal = sharedCssRef.current ?? ''
+    const DS_START = '/* fact-design-system:start */'
+    const DS_END   = '/* fact-design-system:end */'
+    const dsStartIdx = sharedCssVal.indexOf(DS_START)
+    const dsEndIdx   = sharedCssVal.indexOf(DS_END)
+    let dsBlockForEditor = ''
+    if (dsStartIdx !== -1 && dsEndIdx !== -1) {
+      const dsContent = sharedCssVal.slice(dsStartIdx, dsEndIdx + DS_END.length)
+      // Only scoped .blog-post-content rules, no :where() globals that could break editor
+      const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
+      dsBlockForEditor = `<style>${scopedOnly}</style>`
+    }
+    const siteStyleBlocks = [fontLinks, rootVars ? `<style>${rootVars}</style>` : ''].join('\n')
+    setBlogEditorSiteStyles(siteStyleBlocks)
+    // Editor-only overrides: live blog renders inside a grid layout that provides
+    // horizontal padding; the editor doesn't, so add it here to keep list markers
+    // (bullets/numbers) visible inside the iframe.
+    const editorOnlyCss = `body{margin:0!important}.blog-post-wrapper{padding:1.5rem 2rem 3rem!important;max-width:760px!important;margin:0 auto!important}`
+    // DS block comes LAST so it wins over BLOG_POST_CONTENT_CSS (same specificity, source order)
+    const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style><style>${editorOnlyCss}</style>${dsBlockForEditor}</head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
+    setBlogEditorSrcDoc(editorHtml)
+    blogBaseHtmlRef.current = editorHtml
+    // Initialise undo history with the loaded content as the first snapshot
+    blogHistoryRef.current = { stack: [contentHtml], index: 0 }
+  }
+
   // Flush on tab visibility change (user switches tab or minimises window)
   useEffect(() => {
     const onVisibility = () => {
@@ -6043,9 +6133,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               // SEO: select this article's analysis (stay in SEO view)
                               setSeoPageSlug(`blog/${post.slug}`)
                             } else {
-                              // All other modes: open blog editor on this article
+                              // All other modes: open blog editor on this article — via openPost
+                              // so it flushes any previously open post and loads fresh content
+                              // (a plain setSelectedPost would leave the editor showing stale HTML).
                               setViewMode('blog')
-                              setSelectedPost(post)
+                              await openPost(post)
                             }
                           }}
                             style={{
@@ -8181,90 +8273,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         ) : viewMode === 'blog' ? (
           /* ── Blog Manager ───────────────────────────────────────────────────── */
           (() => {
-            const openPost = async (post: BlogPost) => {
-              setSchedulePopoverOpen(false)
-              // CRITICAL: flush any pending autosave BEFORE fetching, so we don't
-              // race the API GET against an in-flight save of older content
-              await flushBlogSave()
-              const { data: { session } } = await supabase.auth.getSession()
-              const token = session?.access_token
-              if (!token) return
-              let full: BlogPost = post
-              try {
-                const res = await fetch(`/api/blog-posts/${post.id}`, {
-                  headers: { Authorization: `Bearer ${token}` },
-                  cache: 'no-store',
-                })
-                if (!res.ok) {
-                  alert(`Impossibile aprire l'articolo (${res.status}). Potrebbe essere stato eliminato.`)
-                  await loadBlogPosts()
-                  return
-                }
-                const json = await res.json()
-                full = json.post ?? post
-                console.log('[parent-blog] openPost fetched fresh content, length:', (full.content_html ?? '').length, 'preview:', (full.content_html ?? '').slice(0, 200))
-              } catch (err) {
-                console.error('openPost error:', err)
-                alert('Errore di rete nel caricamento dell\'articolo')
-                return
-              }
-              setSelectedPost(full)
-              setBlogMetaEdits({})
-              // Build editor srcdoc — uses the same CSS as the live blog preview
-              // Strip any accumulated wrapper divs from legacy saves
-              let contentHtml = full.content_html ?? ''
-              try {
-                const parser = new DOMParser()
-                const doc = parser.parseFromString(`<div id="__wrap">${contentHtml}</div>`, 'text/html')
-                const allContent = doc.querySelectorAll('.blog-post-content')
-                if (allContent.length > 0) {
-                  contentHtml = allContent[allContent.length - 1].innerHTML.trim()
-                }
-              } catch { /* keep original */ }
-              // Extract ONLY CSS custom properties (:root variables) + Google Font links from
-              // the home page — NOT the full page CSS. Injecting the full site CSS into the
-              // blog editor causes heading rules (h1 { font-size: clamp(...); font-weight:700 })
-              // and layout rules to bleed into the editor, making list items appear as giant
-              // H1-styled text and breaking the blog content layout. CSS variables are enough
-              // to inherit brand colors (--accent, --color-text, etc.) and font families.
-              const homeHtml = pages.find(p => p.slug === 'home')?.html ?? ''
-              const fontLinks = (homeHtml.match(/<link[^>]*(?:googleapis\.com|gstatic\.com)[^>]*>/gi) ?? []).join('\n')
-              const rootVars = (() => {
-                const blocks = homeHtml.match(/<style[\s\S]*?<\/style>/gi) ?? []
-                for (const block of blocks) {
-                  const css = block.replace(/<\/?style[^>]*>/gi, '')
-                  const m = css.match(/:root\s*\{([^}]+)\}/)
-                  if (m) return `:root{${m[1].trim()}}`
-                }
-                return ''
-              })()
-              // Extract scoped DS rules from shared_css (font-family, sizes, colors for .blog-post-content)
-              const sharedCssVal = sharedCssRef.current ?? ''
-              const DS_START = '/* fact-design-system:start */'
-              const DS_END   = '/* fact-design-system:end */'
-              const dsStartIdx = sharedCssVal.indexOf(DS_START)
-              const dsEndIdx   = sharedCssVal.indexOf(DS_END)
-              let dsBlockForEditor = ''
-              if (dsStartIdx !== -1 && dsEndIdx !== -1) {
-                const dsContent = sharedCssVal.slice(dsStartIdx, dsEndIdx + DS_END.length)
-                // Only scoped .blog-post-content rules, no :where() globals that could break editor
-                const scopedOnly = dsContent.split('\n').filter(l => !l.trim().startsWith(':where(')).join('\n')
-                dsBlockForEditor = `<style>${scopedOnly}</style>`
-              }
-              const siteStyleBlocks = [fontLinks, rootVars ? `<style>${rootVars}</style>` : ''].join('\n')
-              setBlogEditorSiteStyles(siteStyleBlocks)
-              // Editor-only overrides: live blog renders inside a grid layout that provides
-              // horizontal padding; the editor doesn't, so add it here to keep list markers
-              // (bullets/numbers) visible inside the iframe.
-              const editorOnlyCss = `body{margin:0!important}.blog-post-wrapper{padding:1.5rem 2rem 3rem!important;max-width:760px!important;margin:0 auto!important}`
-              // DS block comes LAST so it wins over BLOG_POST_CONTENT_CSS (same specificity, source order)
-              const editorHtml = `<!DOCTYPE html><html lang="${projectContext.language ?? 'it'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${EDITOR_FONTS_INJECT}${siteStyleBlocks}<style>${BLOG_POST_CONTENT_CSS}</style><style>${editorOnlyCss}</style>${dsBlockForEditor}</head><body><div class="blog-post-wrapper"><div class="blog-post-content" contenteditable="true" data-fact-edit="blog-content" style="outline:none">${contentHtml}</div></div></body></html>`
-              setBlogEditorSrcDoc(editorHtml)
-              blogBaseHtmlRef.current = editorHtml
-              // Initialise undo history with the loaded content as the first snapshot
-              blogHistoryRef.current = { stack: [contentHtml], index: 0 }
-            }
-
             const createPost = async () => {
               const title = 'Nuovo articolo'
               const slug = `${slugify(title)}-${Date.now().toString().slice(-6)}`
