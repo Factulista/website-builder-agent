@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildSourcesBlock } from '../../../lib/fetch-source'
-import { requireUser, requireUserAndProject, jsonError } from '../../../lib/api-auth'
+import { requireUser, requireUserAndProjectOwnership, jsonError } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits } from '../../../lib/credits'
 import { startRun, completeRun, failRun } from '../../../lib/agents/run-logger'
 
@@ -82,11 +82,13 @@ export async function POST(req: NextRequest) {
 
   if (!topic) return NextResponse.json({ error: 'topic richiesto' }, { status: 400 })
 
-  // Auth: con projectId verifica anche l'ownership del progetto; poi pre-check crediti.
+  // Auth: con projectId verifica anche l'ownership del progetto (senza scaricare
+  // site_config, che qui non serve mai — vedi requireUserAndProjectOwnership); poi
+  // pre-check crediti.
   let userId: string
   try {
     const authCtx = projectId
-      ? await requireUserAndProject(req, projectId)
+      ? await requireUserAndProjectOwnership(req, projectId)
       : await requireUser(req)
     await precheckCredits(authCtx.user.id, authCtx.supabase)
     userId = authCtx.user.id

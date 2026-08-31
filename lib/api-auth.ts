@@ -47,6 +47,29 @@ export async function requireUserAndProject(req: NextRequest, projectId: string)
 }
 
 /**
+ * Same ownership check as requireUserAndProject, WITHOUT pulling `site_config` —
+ * for routes that only need to verify the caller owns the project and never read
+ * its content (e.g. generate-blog-post, which fetches an unrelated Anthropic
+ * stream and only needs `user.id`). `site_config` can be several MB on an active
+ * project; fetching and discarding it on every request is real, avoidable load
+ * on the DB. Use `requireUserAndProject` instead whenever the route actually
+ * reads `project.site_config`/`slug`/etc. afterward.
+ */
+export async function requireUserAndProjectOwnership(req: NextRequest, projectId: string) {
+  if (!projectId) throw new ApiError(400, 'projectId richiesto')
+  const { user, supabase } = await requireUser(req)
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .single()
+  if (!project) throw new ApiError(404, 'Progetto non trovato')
+  return { user, supabase }
+}
+
+/**
  * Guard for /api/internal/* maintenance endpoints: requires the
  * x-internal-secret header to match INTERNAL_API_SECRET. Fails closed
  * if the env var is missing. Returns a Response to send, or null if OK.

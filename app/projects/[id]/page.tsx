@@ -2357,6 +2357,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [showVersionHistory, setShowVersionHistory] = useState(false)
   const [hoveredVersionId, setHoveredVersionId] = useState<string | null>(null)
   const [codeSaving, setCodeSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [codeOutdated, setCodeOutdated] = useState(false)
   const [editSrcDoc, setEditSrcDoc] = useState('')
   const [editSaving, setEditSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [editOutdated, setEditOutdated] = useState(false)
@@ -2376,10 +2377,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const codeFileInputRef = useRef<HTMLInputElement>(null)
   const latestPagesRef = useRef<Page[]>([])
+  const selectedPostRef = useRef<BlogPost | null>(null)
   // Track slugs explicitly deleted in this session so the merge doesn't bring them back
   const deletedSlugsRef = useRef<Set<string>>(new Set())
   const editIframeRef = useRef<HTMLIFrameElement>(null)
   const editBaseHtmlRef = useRef<string>('')
+  // Same staleness-detection idea as editBaseHtmlRef, but for the raw-HTML code editor on a
+  // PAGE (not a blog post — content_html isn't part of `pages`, so it can't drift this way).
+  const codeBaseHtmlRef = useRef<string>('')
   // Throttle inline-edit version snapshots: at most one every 90s during active
   // editing. Without this, every 800ms autosave pause inserted a full-pages snapshot
   // into project_versions — the main source of DB bloat + Disk IO during inline edits.
@@ -2400,6 +2405,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   useEffect(() => { latestPagesRef.current = pages }, [pages])
   useEffect(() => { faviconUrlRef.current = faviconUrl }, [faviconUrl])
+  // Live selectedPost snapshot for long-running async closures (e.g. generateWithAI's SSE
+  // stream) that must check "is the user still looking at this post?" with the CURRENT
+  // value, not the stale one captured when the closure was created.
+  useEffect(() => { selectedPostRef.current = selectedPost }, [selectedPost])
 
   // Credits balance: load on mount + refresh every 30s + on visibility change
   useEffect(() => {
@@ -2957,9 +2966,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (viewMode === 'code' && activePage && !activeCodeBlogPostId) {
       setCodeContent(activePage.html)
       setCodeSaving('idle')
+      codeBaseHtmlRef.current = activePage.html
+      setCodeOutdated(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSlug, viewMode])
+
+  // Detect when something OTHER than this editor's own typing changed the active page's HTML
+  // (AI chat edit, version restore, Design System re-apply) while the code editor is open on
+  // it — same idea as editOutdated for the visual editor. Without this, the next debounced
+  // autosave/Cmd+S silently overwrites that external change with the editor's stale content.
+  useEffect(() => {
+    if (viewMode !== 'code' || activeCodeBlogPostId || !activePage) return
+    if (activePage.html !== codeBaseHtmlRef.current) {
+      setCodeOutdated(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages])
 
   // Reset iframe path tracking when user explicitly changes page/mode
   useEffect(() => { setPreviewIframePath(null) }, [activeSlug, viewMode])
@@ -3569,6 +3592,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: text } : p)
       setPages(newPages)
       latestPagesRef.current = newPages
+      codeBaseHtmlRef.current = text
       void createVersion('Upload HTML manuale', newPages)
       await savePagesInline(newPages)
     }
@@ -3705,12 +3729,54 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
+  // Code editor (pages AND blog-post raw HTML): forces the debounced autosave right now
+  // instead of waiting out its 2s timer. Mirrors flushBlogSave — same rationale: any exit
+  // point from the code editor must call this or a pending edit is silently lost.
+  const flushCodeSave = async () => {
+    if (!codeAutoSaveTimer.current) return
+    clearTimeout(codeAutoSaveTimer.current)
+    codeAutoSaveTimer.current = null
+    setCodeSaving('saving')
+    if (activeCodeBlogPostId) {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) { setCodeSaving('idle'); return }
+      await fetch(`/api/blog-posts/${activeCodeBlogPostId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content_html: codeContent }),
+      })
+    } else {
+      if (!activePage) { setCodeSaving('idle'); return }
+      const curPages = latestPagesRef.current
+      const now = Date.now()
+      if (now - lastInlineVersionRef.current > 90_000) {
+        lastInlineVersionRef.current = now
+        void createVersion('Modifica HTML manuale', curPages)
+      }
+      await savePagesInline(curPages)
+    }
+    setCodeSaving('saved')
+    setTimeout(() => setCodeSaving(prev => prev === 'saved' ? 'idle' : prev), 2000)
+  }
+
+  // Media Library: forces the debounced media-meta + pages (alt/title baked into <img> tags)
+  // autosave right now instead of waiting out its 600ms timer.
+  const flushMediaSave = () => {
+    if (!mediaSaveTimer.current) return
+    clearTimeout(mediaSaveTimer.current)
+    mediaSaveTimer.current = null
+    return saveState(messages, latestPagesRef.current, versions, mediaMeta)
+  }
+
   // Top-nav view switcher (Anteprima/Codice/Modifica/Media/SEO/Pagine/Blog/Design/Integrazioni):
-  // flushes any pending blog-post edit BEFORE unmounting the blog editor, so leaving via the
-  // top bar doesn't lose changes the way a plain setViewMode() would (only the dedicated
-  // "← torna alla lista" button used to do this flush).
+  // flushes any pending blog-post edit, code-editor edit, or media-meta edit BEFORE switching
+  // view, so leaving via the top bar doesn't lose changes the way a plain setViewMode() would
+  // (only the dedicated "← torna alla lista" button used to do this for the blog editor).
   const switchViewMode = async (mode: 'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design' | 'integrations') => {
     if (viewMode === 'blog' && selectedPost) await flushBlogSave()
+    if (viewMode === 'code') await flushCodeSave()
+    if (viewMode === 'media') flushMediaSave()
     setViewMode(mode)
   }
 
@@ -3804,16 +3870,31 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     blogHistoryRef.current = { stack: [contentHtml], index: 0 }
   }
 
-  // Flush on tab visibility change (user switches tab or minimises window)
+  // Kept fresh on every render (not just at mount) so the visibility/unmount effect below
+  // never calls a stale closure of these flush functions — a `useEffect(..., [])` would
+  // otherwise capture whatever `selectedPost`/`activePage`/etc. looked like at first mount.
+  const flushAllPendingRef = useRef<() => void>(() => {})
+  flushAllPendingRef.current = () => {
+    flushBlogSave()
+    flushCodeSave()
+    flushMediaSave()
+  }
+
+  // Flush any pending blog/code/media autosave when the tab is hidden (switch tab, minimise,
+  // close) AND on unmount (navigating away from the project entirely) — previously only the
+  // blog editor flushed on visibility change, and none of the three timers were flushed on
+  // unmount at all, so a pending debounced save within the timer window was silently dropped.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        flushBlogSave()
+        flushAllPendingRef.current()
       }
     }
     document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      flushAllPendingRef.current()
+    }
   }, [])
 
   // Custom undo/redo for the blog editor. Restores a previous content snapshot
@@ -3829,7 +3910,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // so html-change never arrives and the flag would stay true forever — blocking
     // the next real user edit from being recorded. Reset it after a tick.
     undoOpInFlightRef.current = true
-    setTimeout(() => { undoOpInFlightRef.current = false }, 50)
+    // 300ms (was 50ms): fact-set-content doesn't trigger triggerSave, so this timeout is the
+    // ONLY thing that resets the flag — 50ms left a real, fast keystroke right after Ctrl+Z a
+    // narrow but real chance of being misclassified as the undo's own echo and dropped from
+    // history. 300ms is still well under a normal typing pause.
+    setTimeout(() => { undoOpInFlightRef.current = false }, 300)
     blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-set-content', html: prev }, '*')
     // Cancel any pending autosave — it would re-save the content we just undid.
     // Then schedule a fresh save of the restored content so the DB stays in sync.
@@ -3844,7 +3929,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     h.index++
     const next = h.stack[h.index]
     undoOpInFlightRef.current = true
-    setTimeout(() => { undoOpInFlightRef.current = false }, 50)
+    // 300ms (was 50ms): fact-set-content doesn't trigger triggerSave, so this timeout is the
+    // ONLY thing that resets the flag — 50ms left a real, fast keystroke right after Ctrl+Z a
+    // narrow but real chance of being misclassified as the undo's own echo and dropped from
+    // history. 300ms is still well under a normal typing pause.
+    setTimeout(() => { undoOpInFlightRef.current = false }, 300)
     blogIframeRef.current?.contentWindow?.postMessage({ type: 'fact-set-content', html: next }, '*')
     if (blogAutoSaveTimer.current) { clearTimeout(blogAutoSaveTimer.current); blogAutoSaveTimer.current = null }
     if (selectedPost?.id) blogPendingSaveRef.current = { postId: selectedPost.id, contentHtml: next }
@@ -4134,9 +4223,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   const deleteMedia = async (item: MediaItem) => {
+    // Warn if this file is still referenced in a page's HTML (hero image, background, etc.) —
+    // otherwise deleting the storage object silently leaves a broken <img src> live with no notice.
+    const usedInPages = pages.filter(p => p.html.includes(item.url)).map(p => p.name || p.slug)
+    const usageWarning = usedInPages.length > 0
+      ? `\n\n⚠️ Questo file è ancora usato in: ${usedInPages.join(', ')}. Eliminandolo, quelle immagini smetteranno di funzionare sul sito pubblicato.`
+      : ''
     const ok = await confirmDialog({
       title: 'Eliminare media',
-      message: `"${item.name}" verrà rimosso definitivamente. L'azione non è reversibile.`,
+      message: `"${item.name}" verrà rimosso definitivamente. L'azione non è reversibile.${usageWarning}`,
       confirmLabel: 'Elimina',
       variant: 'danger',
     })
@@ -5297,7 +5392,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     })
     if (!ok) return
     deletedSlugsRef.current.add(slug) // prevent merge from restoring it
-    const newPages = pages.filter(p => p.slug !== slug)
+    // Strip any <a href="...slug..."> nav links to the deleted page from every other page —
+    // same helper the AI-driven delete_page tool already uses (syncNavigation), just wired
+    // into the manual "trash icon" delete too. Without this, other pages' nav HTML keeps a
+    // link to the now-deleted page, a dead 404 link on the live site.
+    const filtered = pages.filter(p => p.slug !== slug)
+    const newPages = syncNavigation(filtered, 'delete', slug)
     setPages(newPages)
     if (activeSlug === slug) setActiveSlug(newPages[0]?.slug || 'home')
     await saveState(messages, newPages)
@@ -6072,7 +6172,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         setShowUrlDropdown(false)
                         setActiveSlug(p.slug)
                         if (viewMode === 'code') {
-                          // code editor: load page HTML, deselect any blog post
+                          // code editor: flush whatever was being edited, then load page HTML, deselect any blog post
+                          await flushCodeSave()
                           setActiveCodeBlogPostId(null)
                           setCodeContent(pages.find(pg => pg.slug === p.slug)?.html ?? '')
                           setCodeSaving('idle')
@@ -6116,7 +6217,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           <button key={post.id} onClick={async () => {
                             setShowUrlDropdown(false)
                             if (viewMode === 'code') {
-                              // HTML editor: load article HTML
+                              // HTML editor: flush whatever was being edited, then load article HTML
+                              await flushCodeSave()
                               setActiveCodeBlogPostId(post.id)
                               setActiveCodeBlogPostTitle(post.title)
                               setCodeSaving('idle')
@@ -7841,6 +7943,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     value={activeCodeBlogPostId ?? ''}
                     onChange={async e => {
                       const postId = e.target.value
+                      await flushCodeSave()
                       if (!postId) {
                         setActiveCodeBlogPostId(null)
                         setCodeContent(pages.find(p => p.slug === activeSlug)?.html ?? '')
@@ -7902,6 +8005,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   }}
                 />
               </div>
+              {codeOutdated && (
+                <div
+                  onClick={() => {
+                    if (!activePage) return
+                    setCodeContent(activePage.html)
+                    codeBaseHtmlRef.current = activePage.html
+                    setCodeOutdated(false)
+                  }}
+                  style={{
+                    padding: '10px 16px', background: '#1d4ed8', color: 'white',
+                    fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span>↻ La pagina è stata aggiornata altrove — clicca per ricaricare l&apos;HTML</span>
+                  <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>Le modifiche non salvate in questo editor andranno perse</span>
+                </div>
+              )}
               <HtmlCodeEditor
                 content={codeContent}
                 onChange={async (val) => {
@@ -7929,6 +8051,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     if (!activePage) return
                     const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: val } : p)
                     setPages(newPages)
+                    // Keep codeBaseHtmlRef in sync so the outdated-content detector doesn't
+                    // false-positive on the editor's own typing (only a truly external change
+                    // to this page's html — AI edit, version restore — should trip it).
+                    codeBaseHtmlRef.current = val
                     codeAutoSaveTimer.current = setTimeout(async () => {
                       setCodeSaving('saving')
                       const curPages = latestPagesRef.current
@@ -7961,6 +8087,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     const newPages = pages.map(p => p.slug === activePage.slug ? { ...p, html: content } : p)
                     setPages(newPages)
                     latestPagesRef.current = newPages
+                    codeBaseHtmlRef.current = content
                     // Explicit save (Cmd+S) → keep the version checkpoint (user intent)
                     void createVersion('Modifica HTML manuale', newPages)
                     // Fast-path: pages-only save via RPC (no full-blob read/write)
@@ -8531,7 +8658,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   const updateJson = await updateRes.json()
                   if (updateJson.post) {
                     await loadBlogPosts()
-                    openPost(updateJson.post)
+                    // Only force the editor back onto this draft if the user is STILL looking
+                    // at it — the SSE stream can take many seconds, and if the user navigated
+                    // to a different post (or closed the editor) in the meantime, forcibly
+                    // reopening this one would silently discard whatever they're doing now.
+                    // The generated content is already saved either way.
+                    if (selectedPostRef.current?.id === draftId) {
+                      openPost(updateJson.post)
+                    }
                   }
                 }
 
@@ -9065,8 +9199,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                 {/* Editor body: meta panel + iframe */}
                 <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-                  {/* Meta panel */}
-                  <div style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', background: C.white }}>
+                  {/* Meta panel — keyed by post.id so switching posts fully remounts these
+                      uncontrolled (defaultValue) inputs instead of leaving stale text from
+                      the previous post, which an onBlur would otherwise save onto the new post. */}
+                  <div key={post.id} style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', background: C.white }}>
                     {(() => {
                       const slugInputRef = { current: null as HTMLInputElement | null }
                       const slugEditedRef = { current: false }
