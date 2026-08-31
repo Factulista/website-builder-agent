@@ -1,5 +1,10 @@
 type Page = { slug: string; name: string; html?: string; inMenu?: boolean; robots?: { noindex?: boolean; nofollow?: boolean }; og_title?: string; megaMenu?: string }
 type BlogPostRef = { slug: string; title?: string; published_at: string | null; seo_description?: string }
+type SupportArticleRef = { slug: string; title?: string; category?: string; published_at: string | null; seo_description?: string; excerpt?: string }
+
+function slugifyForUrl(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
 
 function extractMetaDescription(html: string): string | undefined {
   const m = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{10,})/i)
@@ -24,7 +29,8 @@ export function generateSitemap(
   pages: Page[],
   baseUrl: string,
   projectSlug?: string,
-  blogPosts: BlogPostRef[] = []
+  blogPosts: BlogPostRef[] = [],
+  supportArticles: SupportArticleRef[] = []
 ): string {
   // Exclude pages that are explicitly hidden (inMenu=false or null) or noindex=true
   const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
@@ -58,7 +64,37 @@ export function generateSitemap(
   </url>`
   })
 
-  const allUrls = [...pageUrls, ...(hasBlogPosts ? [blogListUrl] : []), ...postUrls]
+  // Ayuda (support articles): hub + one entry per category + one per article.
+  const hasSupportArticles = supportArticles.length > 0
+  const ayudaHubUrl = hasSupportArticles ? `  <url>
+    <loc>${baseUrl}/ayuda</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>` : ''
+  const ayudaCategories = [...new Set(supportArticles.map(a => a.category).filter((c): c is string => !!c))]
+  const ayudaCategoryUrls = ayudaCategories.map(cat => `  <url>
+    <loc>${baseUrl}/ayuda/${slugifyForUrl(cat)}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`)
+  const ayudaArticleUrls = supportArticles.map(a => {
+    const lastmod = a.published_at ? `\n    <lastmod>${a.published_at.slice(0, 10)}</lastmod>` : ''
+    const catSlug = a.category ? `${slugifyForUrl(a.category)}/` : ''
+    return `  <url>
+    <loc>${baseUrl}/ayuda/${catSlug}${a.slug}</loc>${lastmod}
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>`
+  })
+
+  const allUrls = [
+    ...pageUrls,
+    ...(hasBlogPosts ? [blogListUrl] : []),
+    ...postUrls,
+    ...(hasSupportArticles ? [ayudaHubUrl] : []),
+    ...ayudaCategoryUrls,
+    ...ayudaArticleUrls,
+  ]
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -89,7 +125,8 @@ export function generateLlmsTxt(
   siteName: string,
   siteDescription?: string,
   blogPosts: BlogPostRef[] = [],
-  llmsIntroduction?: string
+  llmsIntroduction?: string,
+  supportArticles: SupportArticleRef[] = []
 ): string {
   const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
   const visiblePages = pages.filter(isVisible)
@@ -169,6 +206,17 @@ export function generateLlmsTxt(
       }).join('\n')
     : ''
 
+  // Support/help articles ("Ayuda") with descriptions — same treatment as blog posts.
+  const ayudaLines = supportArticles.length > 0
+    ? supportArticles.slice(0, 25).map(a => {
+        const catSlug = a.category ? `${a.category.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}/` : ''
+        const url = `${baseUrl}/ayuda/${catSlug}${a.slug}`
+        const title = a.title || a.slug
+        const desc = (a.seo_description || a.excerpt) ? `: ${(a.seo_description || a.excerpt)!.slice(0, 160)}` : ''
+        return `- [${title}](${url})${desc}`
+      }).join('\n')
+    : ''
+
   const descBlock = siteDescription ? `\n> ${siteDescription}` : ''
 
   return `# ${siteName}
@@ -176,7 +224,7 @@ ${descBlock}${introBlock}
 ## Pages
 
 ${pageLines}
-${blogPosts.length > 0 ? `\n## Blog\n\n${blogLines}` : ''}${featuresBlock}
+${blogPosts.length > 0 ? `\n## Blog\n\n${blogLines}` : ''}${supportArticles.length > 0 ? `\n## Ayuda\n\n${ayudaLines}` : ''}${featuresBlock}
 ${legalPages.length > 0 ? `\n## Optional\n\n${legalLines}\n` : ''}
 ## Resources
 
@@ -219,7 +267,8 @@ export function generateLlmsFullTxt(
   siteName: string,
   siteDescription?: string,
   blogPosts: Array<BlogPostRef & { content_html?: string | null }> = [],
-  llmsIntroduction?: string
+  llmsIntroduction?: string,
+  supportArticles: Array<SupportArticleRef & { content_html?: string | null }> = []
 ): string {
   const isVisible = (p: Page) => p.inMenu !== false && p.inMenu !== null && !p.robots?.noindex
   const visiblePages = pages.filter(isVisible).filter(p => !LEGAL_SLUG_RE.test(p.slug))
@@ -240,10 +289,19 @@ export function generateLlmsFullTxt(
     return `---\n\n# ${post.title || post.slug}\nURL: ${url}\n\n${body}`
   }).join('\n\n')
 
+  const ayudaSections = supportArticles.slice(0, 30).map(a => {
+    const catSlug = a.category ? `${a.category.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}/` : ''
+    const url = `${baseUrl}/ayuda/${catSlug}${a.slug}`
+    const body = a.content_html
+      ? htmlToText(a.content_html, 6000)
+      : (a.seo_description || a.excerpt || '')
+    return `---\n\n# ${a.title || a.slug}\nURL: ${url}\n\n${body}`
+  }).join('\n\n')
+
   return `# ${siteName} — full content
 ${intro}
 ${pageSections}
-${blogSections ? `\n${blogSections}\n` : ''}
+${blogSections ? `\n${blogSections}\n` : ''}${ayudaSections ? `\n${ayudaSections}\n` : ''}
 ---
 Updated: ${new Date().toISOString().slice(0, 10)}
 `

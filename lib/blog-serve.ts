@@ -4,7 +4,7 @@ import { injectSocialShareLinks } from './social-share'
 
 export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string; megaMenu?: string }
 
-const MEGA_MENU_CSS = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}`
+export const MEGA_MENU_CSS = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}`
 
 function megaLabel(p: MegaPage): string {
   const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
@@ -12,7 +12,7 @@ function megaLabel(p: MegaPage): string {
 }
 
 /** See the identical function in lib/preview.ts for the multi-dropdown rationale. */
-function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
+export function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
   const groupLabel = groupKey.charAt(0).toUpperCase() + groupKey.slice(1)
   const groupSlugs = new Set(megaPages.map(p => p.slug))
@@ -101,7 +101,7 @@ function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPag
 }
 
 /** See the identical function in lib/preview.ts for details. */
-function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
+export function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
   const mobileRe = /(<div[^>]*id="mobileMenu"[^>]*>)([\s\S]*?)(<\/div>)/
   const match = mobileRe.exec(html)
@@ -141,7 +141,7 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
  * existing panel, rebuilds ONE from megaPages + fixed static links + a single nav CTA pair,
  * then injects the idempotent toggle script + CSS. Self-guards on hamburger presence.
  */
-function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
+export function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   const hasHamburger = /id="hamburgerBtn"/.test(html) || /class="[^"]*\bhamburger\b/.test(html)
   if (!hasHamburger) return html
 
@@ -184,7 +184,7 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
 }
 
 /** Groups megaPages by their own megaMenu value and rebuilds each dropdown. */
-function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string {
+export function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string {
   if (!megaPages || megaPages.length === 0) return html
   const groups = new Map<string, MegaPage[]>()
   for (const p of megaPages) {
@@ -537,11 +537,11 @@ export type BlogSidebarBanner = {
  * Rewrites relative nav links (href="./slug") to absolute (href="baseUrl/slug").
  * Blog pages are served at /blog/category/post depth, so relative links resolve wrong.
  */
-function fixNavLinks(nav: string, baseUrl: string): string {
+export function fixNavLinks(nav: string, baseUrl: string): string {
   return nav.replace(/href="\.\//g, `href="${baseUrl}/`)
 }
 
-function slugifySimple(text: string): string {
+export function slugifySimple(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 

@@ -66,14 +66,20 @@ export async function GET(req: NextRequest) {
     : getProjectPublicBaseUrl(slug, project.custom_domain as string | null)
 
   if (file === 'sitemap.xml') {
-    // Fetch published blog posts to include in sitemap
+    // Fetch published blog posts + support articles to include in sitemap
     const { data: blogPosts } = await supabase
       .from('blog_posts')
       .select('slug, published_at')
       .eq('project_id', project.id)
       .eq('status', 'published')
       .order('published_at', { ascending: false })
-    const xml = generateSitemap(pages, baseUrl, slug, blogPosts ?? [])
+    const { data: supportArticles } = await supabase
+      .from('support_articles')
+      .select('slug, category, published_at')
+      .eq('project_id', project.id)
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+    const xml = generateSitemap(pages, baseUrl, slug, blogPosts ?? [], supportArticles ?? [])
     return new Response(xml, {
       headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
@@ -88,12 +94,19 @@ export async function GET(req: NextRequest) {
       .eq('status', 'published')
       .order('published_at', { ascending: false })
       .limit(isFull ? 30 : 20)
+    const { data: supportArticles } = await supabase
+      .from('support_articles')
+      .select(isFull ? 'slug, title, category, published_at, seo_description, excerpt, content_html' : 'slug, title, category, published_at, seo_description, excerpt')
+      .eq('project_id', project.id)
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(isFull ? 30 : 20)
     const siteName = (siteConfig.siteName as string) || slug
     const siteDesc = (siteConfig.siteDescription as string) || undefined
     const llmsIntro = (siteConfig.llmsIntroduction as string) || undefined
     const llms = isFull
-      ? generateLlmsFullTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro)
-      : generateLlmsTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro)
+      ? generateLlmsFullTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro, (supportArticles as any[]) ?? [])
+      : generateLlmsTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro, (supportArticles as any[]) ?? [])
     return new Response(llms, {
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     })
