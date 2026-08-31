@@ -4,7 +4,7 @@ import { servePublished } from '../../../lib/preview'
 import { generateSitemap, generateRobots, generateLlmsTxt, generateLlmsFullTxt } from '../../../lib/seo-files'
 import { buildBlogPostPage as buildBlogPostPageFromLib, buildBlogListPage as buildBlogListPageFromLib, type Post as LibPost, type BlogSidebarBanner, type InjectPoints, escapeHtml, safeUrl, slugifySimple } from '../../../lib/blog-serve'
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../lib/design-system'
-import { buildAyudaHubPage, buildAyudaCategoryPage, buildAyudaArticlePage, type SupportArticle as SupportArticleType } from '../../../lib/support-serve'
+import { buildAyudaHubPage, buildAyudaCategoryPage, buildAyudaArticlePage, normalizeCategoryLabel, type SupportArticle as SupportArticleType } from '../../../lib/support-serve'
 
 export const runtime = 'nodejs'
 
@@ -302,7 +302,7 @@ ${items}
         .eq('status', 'published')
       const counts = new Map<string, number>()
       for (const a of articles ?? []) {
-        const cat = (a.category as string) || 'General'
+        const cat = normalizeCategoryLabel(a.category as string)
         counts.set(cat, (counts.get(cat) ?? 0) + 1)
       }
       const categories = [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name))
@@ -313,23 +313,28 @@ ${items}
     }
 
     if (segments.length === 1) {
-      // /ayuda/{category} → category listing
+      // /ayuda/{category} → category listing. Matches every article whose NORMALIZED
+      // category slugifies to the URL segment (not just the first exact-string hit) —
+      // merges case/whitespace variants and makes "General" (uncategorized) reachable.
+      // content_html is not selected: this page only renders title/excerpt/slug/category.
       const categorySlug = segments[0]
       const { data: allPublished } = await supabase
         .from('support_articles')
-        .select('id, title, slug, excerpt, category, tags, published_at, content_html, seo_title, seo_description, author')
+        .select('id, title, slug, excerpt, category, tags, published_at, seo_title, seo_description, author')
         .eq('project_id', project.id)
         .eq('status', 'published')
-      const category = (allPublished ?? []).find(a => slugifySimple(a.category || '') === categorySlug)?.category
-      if (!category) {
+      const matches = (allPublished ?? []).filter(a => slugifySimple(normalizeCategoryLabel(a.category as string)) === categorySlug)
+      if (matches.length === 0) {
         return new Response('Category not found', { status: 404 })
       }
-      const catArticles = (allPublished ?? []).filter(a => a.category === category) as unknown as SupportArticleType[]
+      const category = normalizeCategoryLabel(matches[0].category as string)
+      const catArticles = matches.map(a => ({ ...a, category })) as unknown as SupportArticleType[]
       const html = buildAyudaCategoryPage(catArticles, category, baseUrl, siteNav, siteFooter, siteStyle, lang, faviconUrl, megaPagesAyuda)
       return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600' } })
     }
 
     // /ayuda/{category}/{slug} → article detail
+    const categorySlugFromUrl = segments[0]
     const articleSlug = segments[segments.length - 1]
     const { data: article } = await supabase
       .from('support_articles')
@@ -344,9 +349,16 @@ ${items}
         { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
       )
     }
+    // Redirect if the URL's category segment doesn't match the article's real category —
+    // previously any /ayuda/{anything}/{real-slug} served 200 (canonical tag only guides
+    // crawlers, it doesn't stop the wrong URL from serving).
+    const realCategorySlug = slugifySimple(normalizeCategoryLabel(article.category as string))
+    if (categorySlugFromUrl !== realCategorySlug) {
+      return Response.redirect(`${baseUrl}/ayuda/${realCategorySlug}/${articleSlug}`, 301)
+    }
     const { data: relCandidates } = await supabase
       .from('support_articles')
-      .select('id, title, slug, excerpt, category, tags, published_at, content_html, seo_title, seo_description, author')
+      .select('id, title, slug, excerpt, category, tags, published_at, seo_title, seo_description, author')
       .eq('project_id', project.id)
       .eq('status', 'published')
       .order('published_at', { ascending: false })
@@ -358,7 +370,8 @@ ${items}
       const byId = new Map(pool.map(a => [a.id, a]))
       relatedArticles = manualIds.map(id => byId.get(id)).filter((a): a is SupportArticleType => !!a).slice(0, 3)
     } else {
-      relatedArticles = pool.filter(a => a.category === article.category).slice(0, 3)
+      const articleCategory = normalizeCategoryLabel(article.category as string)
+      relatedArticles = pool.filter(a => normalizeCategoryLabel(a.category as string) === articleCategory).slice(0, 3)
     }
     const html = buildAyudaArticlePage(article as unknown as SupportArticleType, relatedArticles, baseUrl, siteNav, siteFooter, siteStyle, lang, faviconUrl, megaPagesAyuda)
     return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400' } })

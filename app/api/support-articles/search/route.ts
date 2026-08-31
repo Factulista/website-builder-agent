@@ -21,23 +21,28 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  let query = supabase
+  if (q) {
+    // Ranked full-text search (ts_rank) via a DB function — also folds accents on both
+    // the query and the stored content, so "facturacion" matches "facturación".
+    const { data: articles, error } = await supabase.rpc('search_support_articles', {
+      p_project_id: projectId,
+      p_query: q,
+      p_category: category || null,
+      p_limit: 20,
+    })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ articles: articles ?? [] })
+  }
+
+  // category-only browse (no free-text query): plain filter, most recent first.
+  const { data: articles, error } = await supabase
     .from('support_articles')
     .select('id, title, slug, excerpt, category')
     .eq('project_id', projectId)
     .eq('status', 'published')
-
-  if (category) query = query.eq('category', category)
-
-  if (q) {
-    // websearch_to_tsquery tolerates free-form user input (quotes, "OR", stray
-    // punctuation) without throwing, unlike plainto_tsquery/to_tsquery.
-    query = query.textSearch('search_vector', q, { type: 'websearch', config: 'simple' })
-  } else {
-    query = query.order('created_at', { ascending: false })
-  }
-
-  const { data: articles, error } = await query.limit(20)
+    .eq('category', category as string)
+    .order('created_at', { ascending: false })
+    .limit(20)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ articles: articles ?? [] })
 }

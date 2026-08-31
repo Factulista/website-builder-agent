@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildAyudaArticlePage, type SupportArticle } from '../../../../../../lib/support-serve'
+import { buildAyudaArticlePage, normalizeCategoryLabel, type SupportArticle, type SupportArticleSummary } from '../../../../../../lib/support-serve'
+import { slugifySimple } from '../../../../../../lib/blog-serve'
 
 export const runtime = 'nodejs'
 
@@ -20,7 +21,7 @@ function detectLang(context: Record<string, unknown>, homeHtml: string): string 
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string; category: string; articleSlug: string }> }) {
-  const { slug, articleSlug } = await params
+  const { slug, category: categorySlug, articleSlug } = await params
   const supabase = getSupabase()
 
   const { data: project } = await supabase
@@ -58,26 +59,39 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   if (!article) return new Response('Article not found', { status: 404 })
 
+  const originalHost = _req.headers.get('x-original-host')
+  const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
+
+  // The URL's category segment was never validated against the article's real category —
+  // any /ayuda/{anything}/{real-slug} would 200. Redirect to the canonical URL when they
+  // don't match, so the article has exactly one reachable path (the canonical tag alone
+  // only tells crawlers which URL to index, it doesn't stop the wrong one from serving 200).
+  const realCategorySlug = slugifySimple(normalizeCategoryLabel(article.category as string))
+  if (categorySlug !== realCategorySlug) {
+    return Response.redirect(`${baseUrl}/ayuda/${realCategorySlug}/${articleSlug}`, 301)
+  }
+
+  // content_html is NOT selected for the related-articles pool — buildAyudaArticlePage's
+  // related list only ever renders title/slug/category, never the body of a related item.
   const { data: relCandidates } = await supabase
     .from('support_articles')
-    .select('id, title, slug, excerpt, category, tags, published_at, content_html, seo_title, seo_description, author')
+    .select('id, title, slug, excerpt, category, tags, published_at, seo_title, seo_description, author')
     .eq('project_id', project.id)
     .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(40)
 
   const manualIds = (article.related_article_ids as string[] | undefined) ?? []
-  const pool = (relCandidates ?? []).filter(a => a.id !== article.id) as SupportArticle[]
-  let relatedArticles: SupportArticle[]
+  const pool = (relCandidates ?? []).filter(a => a.id !== article.id) as SupportArticleSummary[]
+  let relatedArticles: SupportArticleSummary[]
   if (manualIds.length > 0) {
     const byId = new Map(pool.map(a => [a.id, a]))
-    relatedArticles = manualIds.map(id => byId.get(id)).filter((a): a is SupportArticle => !!a).slice(0, 3)
+    relatedArticles = manualIds.map(id => byId.get(id)).filter((a): a is SupportArticleSummary => !!a).slice(0, 3)
   } else {
-    relatedArticles = pool.filter(a => a.category === article.category).slice(0, 3)
+    const articleCategory = normalizeCategoryLabel(article.category as string)
+    relatedArticles = pool.filter(a => normalizeCategoryLabel(a.category) === articleCategory).slice(0, 3)
   }
 
-  const originalHost = _req.headers.get('x-original-host')
-  const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
   const megaPages = pages.filter(p => !!p.megaMenu).map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined, megaMenu: p.megaMenu as string | undefined }))
 
   const html = buildAyudaArticlePage(article as SupportArticle, relatedArticles, baseUrl, siteNav, siteFooter, siteStyle, lang, faviconUrl, megaPages)

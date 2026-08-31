@@ -37,7 +37,26 @@ export type SupportArticle = {
   author?: string
 }
 
+// For contexts that only ever render a title/excerpt/link (category grid, related-articles
+// list) — deliberately WITHOUT content_html, so callers don't fetch a potentially large
+// column they never use (the category-listing and related-articles queries used to select
+// it needlessly, the same "read a big column you don't need" pattern that turned out to be
+// the likely cause of the Supabase load incident investigated separately).
+export type SupportArticleSummary = Omit<SupportArticle, 'content_html'> & { content_html?: string }
+
 export type SupportCategory = { name: string; count: number }
+
+/** Every article belongs to exactly one category; an empty/whitespace-only value is
+ * normalized to "General" — applied consistently everywhere a category is displayed,
+ * linked to, or matched against a URL slug, so an uncategorized article's tile/link/URL
+ * always agree (previously the hub showed "General" but the category page matched on the
+ * raw, empty string — a guaranteed 404). Also means two categories that only differ by
+ * case or surrounding whitespace ("Facturación", " facturación ") collapse into the same
+ * slug/tile instead of silently splitting an article's visibility between two pages. */
+export function normalizeCategoryLabel(cat: string | null | undefined): string {
+  const t = (cat ?? '').trim()
+  return t || 'General'
+}
 
 const SHARED_STYLE = `
   .ayuda-wrap{max-width:1100px;margin:0 auto;padding:3rem 1.5rem 5rem}
@@ -87,10 +106,10 @@ const SHARED_STYLE = `
   .ayuda-related a:hover{text-decoration:underline}
 `
 
-const LABELS: Record<string, { title: string; subtitle: string; search: string; empty: string; noResults: string; breadcrumbHome: string; breadcrumbAyuda: string }> = {
-  es: { title: 'Centro de ayuda', subtitle: '¿En qué podemos ayudarte?', search: 'Busca en los artículos de ayuda…', empty: 'Todavía no hay artículos de ayuda publicados.', noResults: 'No se han encontrado resultados.', breadcrumbHome: 'Inicio', breadcrumbAyuda: 'Ayuda' },
-  it: { title: 'Centro assistenza', subtitle: 'Come possiamo aiutarti?', search: 'Cerca negli articoli di supporto…', empty: 'Nessun articolo di supporto pubblicato ancora.', noResults: 'Nessun risultato trovato.', breadcrumbHome: 'Home', breadcrumbAyuda: 'Assistenza' },
-  en: { title: 'Help center', subtitle: 'How can we help you?', search: 'Search help articles…', empty: 'No help articles published yet.', noResults: 'No results found.', breadcrumbHome: 'Home', breadcrumbAyuda: 'Help' },
+const LABELS: Record<string, { title: string; subtitle: string; search: string; empty: string; noResults: string; breadcrumbHome: string; breadcrumbAyuda: string; article: string; articles: string }> = {
+  es: { title: 'Centro de ayuda', subtitle: '¿En qué podemos ayudarte?', search: 'Busca en los artículos de ayuda…', empty: 'Todavía no hay artículos de ayuda publicados.', noResults: 'No se han encontrado resultados.', breadcrumbHome: 'Inicio', breadcrumbAyuda: 'Ayuda', article: 'artículo', articles: 'artículos' },
+  it: { title: 'Centro assistenza', subtitle: 'Come possiamo aiutarti?', search: 'Cerca negli articoli di supporto…', empty: 'Nessun articolo di supporto pubblicato ancora.', noResults: 'Nessun risultato trovato.', breadcrumbHome: 'Home', breadcrumbAyuda: 'Assistenza', article: 'articolo', articles: 'articoli' },
+  en: { title: 'Help center', subtitle: 'How can we help you?', search: 'Search help articles…', empty: 'No help articles published yet.', noResults: 'No results found.', breadcrumbHome: 'Home', breadcrumbAyuda: 'Help', article: 'article', articles: 'articles' },
 }
 function labelsFor(lang: string) { return LABELS[lang] ?? LABELS.es }
 
@@ -110,12 +129,19 @@ function searchWidget(projectId: string, baseUrl: string, lang: string): string 
   if(!input||!results) return;
   var t=null, seq=0;
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  // Mirrors slugifySimple() server-side (lib/blog-serve.ts) exactly — lowercase, strip
+  // accents via NFD decomposition, non-alphanumeric runs become a single hyphen. Without
+  // this the link used only .toLowerCase(), which doesn't match the server's slug for any
+  // category with an accent or a space (e.g. "Facturación", "Cuentas y saldo") → 404.
+  function slugify(s){
+    return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  }
   function render(articles){
     if(!articles.length){results.innerHTML='<div class="ayuda-search-empty">${escapeHtml(t.noResults)}</div>';results.classList.add('open');return;}
     results.innerHTML=articles.map(function(a){
-      var cat=a.category?('${baseUrl}/ayuda/'+encodeURIComponent(a.category.toLowerCase())):'${baseUrl}/ayuda';
-      var href='${baseUrl}/ayuda/'+encodeURIComponent((a.category||'').toLowerCase())+'/'+encodeURIComponent(a.slug);
-      return '<a class="ayuda-search-result" href="'+href+'"><div class="ayuda-search-result-title">'+esc(a.title)+'</div>'+(a.category?'<div class="ayuda-search-result-cat">'+esc(a.category)+'</div>':'')+'</a>';
+      var catLabel=(a.category||'').trim()||'General';
+      var href='${baseUrl}/ayuda/'+encodeURIComponent(slugify(catLabel))+'/'+encodeURIComponent(a.slug);
+      return '<a class="ayuda-search-result" href="'+href+'"><div class="ayuda-search-result-title">'+esc(a.title)+'</div><div class="ayuda-search-result-cat">'+esc(catLabel)+'</div></a>';
     }).join('');
     results.classList.add('open');
   }
@@ -170,7 +196,7 @@ export function buildAyudaHubPage(
 
   const catCards = categories.map(c => `<a class="ayuda-cat-card" href="${escapeHtml(`${baseUrl}/ayuda/${slugifySimple(c.name)}`)}">
   <h3>${escapeHtml(c.name)}</h3>
-  <p>${c.count} ${c.count === 1 ? 'artículo' : 'artículos'}</p>
+  <p>${c.count} ${c.count === 1 ? t.article : t.articles}</p>
 </a>`).join('\n')
 
   const emptyState = categories.length === 0
@@ -225,7 +251,7 @@ export function buildAyudaHubPage(
 }
 
 export function buildAyudaCategoryPage(
-  articles: SupportArticle[],
+  articles: SupportArticleSummary[],
   category: string,
   baseUrl: string,
   siteNav: string,
@@ -298,7 +324,7 @@ export function buildAyudaCategoryPage(
 
 export function buildAyudaArticlePage(
   article: SupportArticle,
-  relatedArticles: SupportArticle[],
+  relatedArticles: SupportArticleSummary[],
   baseUrl: string,
   siteNav: string,
   siteFooter: string,
@@ -310,8 +336,12 @@ export function buildAyudaArticlePage(
   const t = labelsFor(lang)
   const title = article.seo_title?.trim() || article.title
   const metaDescription = article.seo_description?.trim() || article.excerpt || article.title
-  const catSlug = slugifySimple(article.category || '')
-  const canonicalUrl = catSlug ? `${baseUrl}/ayuda/${catSlug}/${article.slug}` : `${baseUrl}/ayuda/${article.slug}`
+  // Always a 3-level URL (ayuda/{category}/{slug}) — the routes never handle a 2-level
+  // ayuda/{slug} path, and normalizeCategoryLabel guarantees a non-empty category ("General"
+  // for uncategorized articles) so this never falls back to a URL nothing would serve.
+  const categoryLabel = normalizeCategoryLabel(article.category)
+  const catSlug = slugifySimple(categoryLabel)
+  const canonicalUrl = `${baseUrl}/ayuda/${catSlug}/${article.slug}`
   const fixedNav = fixNavLinks(siteNav, baseUrl)
   const dateStr = escapeHtml(formatDate(article.published_at, lang))
 
@@ -327,8 +357,7 @@ export function buildAyudaArticlePage(
   const relatedHtml = relatedArticles.length > 0 ? `<div class="ayuda-related">
   <h3>${lang === 'es' ? 'Artículos relacionados' : lang === 'en' ? 'Related articles' : 'Articoli correlati'}</h3>
   <ul>${relatedArticles.map(r => {
-    const rCat = slugifySimple(r.category || '')
-    const rHref = rCat ? `${baseUrl}/ayuda/${rCat}/${r.slug}` : `${baseUrl}/ayuda/${r.slug}`
+    const rHref = `${baseUrl}/ayuda/${slugifySimple(normalizeCategoryLabel(r.category))}/${r.slug}`
     return `<li><a href="${escapeHtml(rHref)}">${escapeHtml(r.title)}</a></li>`
   }).join('')}</ul>
 </div>` : ''
@@ -352,8 +381,8 @@ export function buildAyudaArticlePage(
     'itemListElement': [
       { '@type': 'ListItem', 'position': 1, 'name': t.breadcrumbHome, 'item': `${baseUrl}/` },
       { '@type': 'ListItem', 'position': 2, 'name': t.breadcrumbAyuda, 'item': `${baseUrl}/ayuda` },
-      ...(article.category ? [{ '@type': 'ListItem', 'position': 3, 'name': article.category, 'item': `${baseUrl}/ayuda/${catSlug}` }] : []),
-      { '@type': 'ListItem', 'position': article.category ? 4 : 3, 'name': article.title },
+      { '@type': 'ListItem', 'position': 3, 'name': categoryLabel, 'item': `${baseUrl}/ayuda/${catSlug}` },
+      { '@type': 'ListItem', 'position': 4, 'name': article.title },
     ],
   })}</script>
   ${howToSchema ? `<script type="application/ld+json">${JSON.stringify(howToSchema)}</script>` : ''}
@@ -366,7 +395,7 @@ export function buildAyudaArticlePage(
 <body>
   ${fixedNav}
   <article class="ayuda-article">
-    <div class="ayuda-breadcrumb"><a href="${escapeHtml(`${baseUrl}/ayuda`)}">${escapeHtml(t.breadcrumbAyuda)}</a>${article.category ? ` / <a href="${escapeHtml(`${baseUrl}/ayuda/${catSlug}`)}">${escapeHtml(article.category)}</a>` : ''}</div>
+    <div class="ayuda-breadcrumb"><a href="${escapeHtml(`${baseUrl}/ayuda`)}">${escapeHtml(t.breadcrumbAyuda)}</a> / <a href="${escapeHtml(`${baseUrl}/ayuda/${catSlug}`)}">${escapeHtml(categoryLabel)}</a></div>
     <h1>${escapeHtml(article.title)}</h1>
     <div class="ayuda-article-meta">${dateStr}${article.author ? ` · ${escapeHtml(article.author)}` : ''}</div>
     <div class="ayuda-article-content">${article.content_html}</div>

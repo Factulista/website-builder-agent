@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildAyudaCategoryPage, type SupportArticle } from '../../../../../lib/support-serve'
+import { buildAyudaCategoryPage, normalizeCategoryLabel, type SupportArticleSummary } from '../../../../../lib/support-serve'
 import { slugifySimple } from '../../../../../lib/blog-serve'
 
 export const runtime = 'nodejs'
@@ -49,18 +49,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const siteStyle = sharedCss ? `${fontLinks}\n<style>${sharedCss}</style>` : (homePage ? `${fontLinks}\n${extractStyles(homePage.html)}` : '')
   const faviconUrl = typeof config.favicon_url === 'string' ? config.favicon_url : undefined
 
-  // Categories are stored as free text; the URL uses a slugified version, so resolve
-  // the real category string by matching slugs (case/accents-insensitive).
+  // Categories are stored as free text; the URL uses a slugified, normalized version, so
+  // resolve every article whose NORMALIZED category slugifies to the URL segment — not
+  // just the first exact-string match. This both (a) makes an empty/uncategorized article
+  // reachable under its "General" tile instead of 404ing, and (b) merges articles whose
+  // category only differs by case/whitespace ("Facturación" / " facturación ") onto the
+  // same page instead of silently hiding one variant's articles. content_html is NOT
+  // selected here — this page only ever renders title/excerpt/slug/category.
   const { data: allPublished } = await supabase
     .from('support_articles')
-    .select('id, title, slug, excerpt, category, tags, published_at, content_html, seo_title, seo_description, author')
+    .select('id, title, slug, excerpt, category, tags, published_at, seo_title, seo_description, author')
     .eq('project_id', project.id)
     .eq('status', 'published')
 
-  const category = (allPublished ?? []).find(a => slugifySimple(a.category || '') === categorySlug)?.category
-  if (!category) return new Response('Category not found', { status: 404 })
+  const matches = (allPublished ?? []).filter(a => slugifySimple(normalizeCategoryLabel(a.category)) === categorySlug)
+  if (matches.length === 0) return new Response('Category not found', { status: 404 })
 
-  const articles = (allPublished ?? []).filter(a => a.category === category) as SupportArticle[]
+  const category = normalizeCategoryLabel(matches[0].category)
+  const articles = matches.map(a => ({ ...a, category })) as SupportArticleSummary[]
 
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`

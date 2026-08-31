@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { buildAyudaHubPage, type SupportCategory } from '../../../../lib/support-serve'
+import { buildAyudaHubPage, normalizeCategoryLabel, type SupportCategory } from '../../../../lib/support-serve'
 
 export const runtime = 'nodejs'
 
@@ -56,7 +56,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const counts = new Map<string, number>()
   for (const a of articles ?? []) {
-    const cat = (a.category as string) || 'General'
+    const cat = normalizeCategoryLabel(a.category as string)
     counts.set(cat, (counts.get(cat) ?? 0) + 1)
   }
   const categories: SupportCategory[] = [...counts.entries()]
