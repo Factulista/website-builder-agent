@@ -2163,7 +2163,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [verifying, setVerifying] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [publishedAt, setPublishedAt] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design' | 'integrations'>('preview')
+  const [viewMode, setViewMode] = useState<'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'ayuda' | 'design' | 'integrations'>('preview')
   const [brevoApiKey, setBrevoApiKey] = useState('')
   const [brevoListId, setBrevoListId] = useState('')
   const [brevoSaving, setBrevoSaving] = useState<'idle'|'saving'|'saved'>('idle')
@@ -2300,6 +2300,28 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const blogAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blogBaseHtmlRef = useRef<string>('')
   const blogIframeRef = useRef<HTMLIFrameElement>(null)
+
+  // ── Ayuda (support/help center) state ──────────────────────────────────────
+  type SupportArticle = { id: string; title: string; slug: string; excerpt: string; category: string; status: 'draft' | 'published' | 'scheduled'; published_at: string | null; scheduled_at: string | null; tags: string[]; seo_title: string | null; seo_description: string | null; content_html?: string; created_at: string; updated_at: string; author: string; related_article_ids?: string[] }
+  const [supportArticles, setSupportArticles] = useState<SupportArticle[]>([])
+  const [ayudaLoading, setAyudaLoading] = useState(false)
+  const [selectedArticle, setSelectedArticle] = useState<SupportArticle | null>(null)
+  const [ayudaContent, setAyudaContent] = useState('')
+  const [ayudaSaving, setAyudaSaving] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const [ayudaSchedulePopoverOpen, setAyudaSchedulePopoverOpen] = useState(false)
+  const [ayudaScheduleDate, setAyudaScheduleDate] = useState('')
+  const [ayudaScheduleSaving, setAyudaScheduleSaving] = useState(false)
+  const [ayudaPublishing, setAyudaPublishing] = useState(false)
+  const [showAyudaGenPrompt, setShowAyudaGenPrompt] = useState(false)
+  const [ayudaGenTopic, setAyudaGenTopic] = useState('')
+  const [ayudaGenCategory, setAyudaGenCategory] = useState('')
+  const [ayudaGenWordCount, setAyudaGenWordCount] = useState(600)
+  const [ayudaGenerating, setAyudaGenerating] = useState(false)
+  const [ayudaGenDraftId, setAyudaGenDraftId] = useState<string | null>(null)
+  const ayudaContentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ayudaPendingSaveRef = useRef<{ articleId: string; contentHtml: string } | null>(null)
+  const selectedArticleRef = useRef<SupportArticle | null>(null)
+  useEffect(() => { selectedArticleRef.current = selectedArticle }, [selectedArticle])
 
   const [projectContext, setProjectContext] = useState<{ businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }>({})
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -3773,8 +3795,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // flushes any pending blog-post edit, code-editor edit, or media-meta edit BEFORE switching
   // view, so leaving via the top bar doesn't lose changes the way a plain setViewMode() would
   // (only the dedicated "← torna alla lista" button used to do this for the blog editor).
-  const switchViewMode = async (mode: 'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'design' | 'integrations') => {
+  const switchViewMode = async (mode: 'preview' | 'code' | 'edit' | 'media' | 'seo' | 'pages' | 'blog' | 'ayuda' | 'design' | 'integrations') => {
     if (viewMode === 'blog' && selectedPost) await flushBlogSave()
+    if (viewMode === 'ayuda' && selectedArticle) await flushAyudaSave()
     if (viewMode === 'code') await flushCodeSave()
     if (viewMode === 'media') flushMediaSave()
     setViewMode(mode)
@@ -3876,6 +3899,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const flushAllPendingRef = useRef<() => void>(() => {})
   flushAllPendingRef.current = () => {
     flushBlogSave()
+    flushAyudaSave()
     flushCodeSave()
     flushMediaSave()
   }
@@ -3997,6 +4021,260 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setBlogLoading(false)
     }
   }, [id])
+
+  const loadSupportArticles = useCallback(async () => {
+    setAyudaLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) { setAyudaLoading(false); return }
+      const res = await fetch(`/api/support-articles?projectId=${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      setSupportArticles(json.articles ?? [])
+    } catch (e) {
+      console.error('loadSupportArticles error:', e)
+    } finally {
+      setAyudaLoading(false)
+    }
+  }, [id])
+
+  // Forces the debounced content_html autosave right now — same rationale as
+  // flushBlogSave/flushCodeSave: any exit point from the Ayuda editor must call this
+  // or a pending edit within the debounce window is silently lost.
+  const flushAyudaSave = async () => {
+    if (!ayudaContentSaveTimer.current) return
+    clearTimeout(ayudaContentSaveTimer.current)
+    ayudaContentSaveTimer.current = null
+    const pending = ayudaPendingSaveRef.current
+    if (!pending) return
+    ayudaPendingSaveRef.current = null
+    setAyudaSaving('saving')
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) { setAyudaSaving('failed'); return }
+    try {
+      const res = await fetch(`/api/support-articles/${pending.articleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content_html: pending.contentHtml }),
+      })
+      if (!res.ok) { setAyudaSaving('failed'); return }
+      setAyudaSaving('saved')
+      setTimeout(() => setAyudaSaving(prev => prev === 'saved' ? 'idle' : prev), 1500)
+    } catch {
+      setAyudaSaving('failed')
+    }
+  }
+
+  // Opens an article in the editor: flushes whatever was open before, fetches fresh
+  // content from the server, and resets local state — mirrors openPost's fix (the
+  // "switching posts left the editor showing stale content" bug from earlier today).
+  const openSupportArticle = async (article: SupportArticle) => {
+    setAyudaSchedulePopoverOpen(false)
+    await flushAyudaSave()
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return
+    let full: SupportArticle = article
+    try {
+      const res = await fetch(`/api/support-articles/${article.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        await alertDialog({ title: 'Errore', message: `Impossibile aprire l'articolo (${res.status}).`, variant: 'danger' })
+        await loadSupportArticles()
+        return
+      }
+      const json = await res.json()
+      full = json.article ?? article
+    } catch (err) {
+      console.error('openSupportArticle error:', err)
+      return
+    }
+    setSelectedArticle(full)
+    setAyudaContent(full.content_html ?? '')
+    setAyudaSaving('idle')
+  }
+
+  const createSupportArticle = async () => {
+    const title = 'Nuevo artículo'
+    const slug = `${slugify(title)}-${Date.now().toString().slice(-6)}`
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return
+    const res = await fetch('/api/support-articles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ projectId: id, title, slug, author: userFullName, content_html: '<p>Empieza a escribir tu artículo aquí...</p>' }),
+    })
+    const json = await res.json()
+    if (json.article) {
+      await loadSupportArticles()
+      openSupportArticle(json.article)
+    }
+  }
+
+  const deleteSupportArticle = async (articleId: string) => {
+    const ok = await confirmDialog('¿Eliminar este artículo? Esta acción es irreversible.')
+    if (!ok) return
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return
+    const res = await fetch(`/api/support-articles/${articleId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) { await alertDialog({ title: 'Errore', message: `Errore eliminazione: ${res.status}`, variant: 'danger' }); return }
+    if (selectedArticle?.id === articleId) setSelectedArticle(null)
+    await loadSupportArticles()
+  }
+
+  const saveArticleMeta = async (articleId: string, updates: Partial<SupportArticle>) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return
+    const res = await fetch(`/api/support-articles/${articleId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(updates),
+    })
+    const json = await res.json()
+    if (json.article) {
+      setSelectedArticle(prev => prev?.id === articleId ? { ...prev, ...json.article } : prev)
+      setSupportArticles(prev => prev.map(a => a.id === articleId ? { ...a, ...json.article } : a))
+    }
+  }
+
+  const toggleArticlePublish = async (article: SupportArticle) => {
+    setAyudaPublishing(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) { setAyudaPublishing(false); return }
+    const action = article.status === 'published' ? 'unpublish' : 'publish'
+    const res = await fetch(`/api/support-articles/${article.id}?action=${action}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const json = await res.json()
+    if (json.article) {
+      setSelectedArticle(prev => prev?.id === article.id ? { ...prev, ...json.article } : prev)
+      setSupportArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...json.article } : a))
+    }
+    setAyudaPublishing(false)
+  }
+
+  const scheduleArticle = async (article: SupportArticle, dateStr: string) => {
+    if (!dateStr) return
+    setAyudaScheduleSaving(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) { setAyudaScheduleSaving(false); return }
+    const res = await fetch(`/api/support-articles/${article.id}?action=schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ scheduledAt: dateStr }),
+    })
+    const json = await res.json()
+    if (json.article) {
+      setSelectedArticle(prev => prev?.id === article.id ? { ...prev, ...json.article } : prev)
+      setSupportArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...json.article } : a))
+    }
+    setAyudaScheduleSaving(false)
+    setAyudaSchedulePopoverOpen(false)
+  }
+
+  const unscheduleArticle = async (article: SupportArticle) => {
+    setAyudaScheduleSaving(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) { setAyudaScheduleSaving(false); return }
+    const res = await fetch(`/api/support-articles/${article.id}?action=unschedule`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const json = await res.json()
+    if (json.article) {
+      setSelectedArticle(prev => prev?.id === article.id ? { ...prev, ...json.article } : prev)
+      setSupportArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...json.article } : a))
+    }
+    setAyudaScheduleSaving(false)
+  }
+
+  const ayudaStatusBadge = (a: SupportArticle): { bg: string; color: string; label: string } => {
+    if (a.status === 'published') return { bg: '#dcfce7', color: '#166534', label: 'Pubblicato' }
+    if (a.status === 'scheduled') return { bg: '#fef3c7', color: '#92400e', label: `Pianificato · ${a.scheduled_at ?? ''}` }
+    return { bg: '#f3f4f6', color: '#4b5563', label: 'Bozza' }
+  }
+
+  const generateSupportArticleWithAI = async () => {
+    if (!ayudaGenTopic.trim()) return
+    setAyudaGenerating(true)
+    setShowAyudaGenPrompt(false)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) { setAyudaGenerating(false); return }
+
+      const draftRes = await fetch('/api/support-articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          projectId: id,
+          title: `✍️ ${ayudaGenTopic}`,
+          slug: `generating-${Date.now()}`,
+          content_html: '<p style="color:#999;">⏳ Generazione in corso...</p>',
+          category: ayudaGenCategory,
+          excerpt: '',
+        }),
+      })
+      const draftJson = await draftRes.json()
+      if (!draftJson.article) { setAyudaGenerating(false); return }
+      const draftId = draftJson.article.id
+      setAyudaGenDraftId(draftId)
+      openSupportArticle(draftJson.article)
+
+      const res = await fetch('/api/generate-support-article', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ topic: ayudaGenTopic, category: ayudaGenCategory, wordCount: ayudaGenWordCount, projectId: id, context: projectContext }),
+      })
+      if (!res.ok) {
+        await alertDialog({ title: 'Errore generazione', message: `Errore (${res.status}). Riprova.`, variant: 'danger' })
+        setAyudaGenerating(false)
+        return
+      }
+      const genJson = await res.json()
+      if (genJson.article) {
+        const updateRes = await fetch(`/api/support-articles/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            title: genJson.article.title,
+            slug: genJson.article.slug,
+            content_html: genJson.article.content_html,
+            excerpt: genJson.article.excerpt,
+            seo_title: genJson.article.seo_title,
+            seo_description: genJson.article.seo_description,
+          }),
+        })
+        const updateJson = await updateRes.json()
+        if (updateJson.article) {
+          await loadSupportArticles()
+          // Only reopen if the user hasn't since navigated to something else —
+          // same guard used for the blog generator's equivalent race.
+          if (selectedArticleRef.current?.id === draftId) {
+            openSupportArticle(updateJson.article)
+          }
+        }
+      }
+      setAyudaGenTopic('')
+    } catch (err) {
+      await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' })
+    } finally {
+      setAyudaGenerating(false)
+      setAyudaGenDraftId(null)
+    }
+  }
 
   /**
    * Generates 3 demo blog articles and saves them as published to blog_posts.
@@ -6104,6 +6382,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               title="Blog"
               active={viewMode === 'blog'}
               onClick={() => switchViewMode('blog')}
+            />
+            <ToolbarBtn
+              label={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 1.9-2.4 3.7"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>}
+              title="Ayuda"
+              active={viewMode === 'ayuda'}
+              onClick={() => { switchViewMode('ayuda'); if (supportArticles.length === 0) loadSupportArticles() }}
             />
             <ToolbarBtn
               label={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>}
@@ -9886,6 +10170,219 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         sandbox="allow-scripts allow-same-origin"
                       />
                     ) : null}
+                  </div>
+                </div>
+              </div>
+            )
+          })()
+        ) : viewMode === 'ayuda' ? (
+          /* ── Ayuda (support/help center) ──────────────────────────────────── */
+          (() => {
+            if (!selectedArticle) {
+              return (
+                <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: C.bg }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
+                    <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: C.text }}>Ayuda</h2>
+                    <span style={{ fontSize: '0.8rem', color: C.textFaint }}>{supportArticles.length} artículos</span>
+                    <div style={{ flex: 1 }} />
+                    <button
+                      onClick={() => setShowAyudaGenPrompt(true)}
+                      style={{ background: C.white, color: C.blue, border: `1px solid ${C.blue}`, padding: '7px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >+ Genera con AI</button>
+                    <button
+                      onClick={createSupportArticle}
+                      style={{ background: '#000', color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                    >+ Nuevo artículo</button>
+                  </div>
+
+                  {showAyudaGenPrompt && (
+                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '16px', marginBottom: '18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <input
+                        type="text" placeholder="¿Sobre qué tema? (ej. Cómo configurar el saldo de una cuenta)"
+                        value={ayudaGenTopic} onChange={e => setAyudaGenTopic(e.target.value)}
+                        style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'inherit' }}
+                      />
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <input
+                          type="text" placeholder="Categoría (ej. Configuración)"
+                          value={ayudaGenCategory} onChange={e => setAyudaGenCategory(e.target.value)}
+                          style={{ flex: 1, padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'inherit' }}
+                        />
+                        <input
+                          type="number" min={200} max={2000} step={100} value={ayudaGenWordCount}
+                          onChange={e => setAyudaGenWordCount(Number(e.target.value))}
+                          title="Palabras aproximadas"
+                          style={{ width: '110px', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'inherit' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setShowAyudaGenPrompt(false)} style={{ background: '#f3f4f6', color: '#4b5563', border: 'none', padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+                        <button
+                          onClick={generateSupportArticleWithAI}
+                          disabled={ayudaGenerating || !ayudaGenTopic.trim()}
+                          style={{ background: C.blue, color: '#fff', border: 'none', padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                        >{ayudaGenerating ? '⏳ Generando…' : 'Generar'}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {ayudaLoading ? (
+                    <div style={{ color: C.textFaint, fontSize: '0.85rem', padding: '20px 0' }}>Cargando…</div>
+                  ) : supportArticles.length === 0 ? (
+                    <div style={{ color: C.textFaint, fontSize: '0.85rem', padding: '20px 0' }}>Todavía no hay artículos de ayuda. Crea el primero.</div>
+                  ) : (
+                    <div style={{ background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 120px 90px', padding: '10px 16px', borderBottom: `1px solid ${C.border}`, fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <span>Artículo</span><span>Categoría</span><span>Estado</span><span></span>
+                      </div>
+                      {supportArticles.map(a => (
+                        <div key={a.id} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 120px 90px', padding: '12px 16px', borderBottom: `1px solid ${C.border}`, alignItems: 'center', fontSize: '0.85rem' }}>
+                          <button onClick={() => openSupportArticle(a)} style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, color: C.text, padding: 0 }}>{a.title}</button>
+                          <span style={{ color: C.textFaint, fontSize: '0.8rem' }}>{a.category || 'General'}</span>
+                          <span style={{
+                            fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap', width: 'fit-content',
+                            background: ayudaStatusBadge(a).bg, color: ayudaStatusBadge(a).color,
+                          }}>{ayudaStatusBadge(a).label}</span>
+                          <button onClick={() => deleteSupportArticle(a.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.9rem', justifySelf: 'end' }}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            const article = selectedArticle
+            return (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+                <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, background: C.white }}>
+                  <button
+                    onClick={async () => { await flushAyudaSave(); setSelectedArticle(null) }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textFaint, fontSize: '0.85rem', padding: '4px 8px', borderRadius: '6px', fontFamily: 'inherit', fontWeight: 500 }}
+                  >← Lista</button>
+                  <div style={{ width: '1px', height: '16px', background: C.border }} />
+                  <span style={{ fontSize: '0.87rem', fontWeight: 600, color: C.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{article.title}</span>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', whiteSpace: 'nowrap',
+                    background: ayudaStatusBadge(article).bg, color: ayudaStatusBadge(article).color,
+                  }}>{ayudaStatusBadge(article).label}</span>
+                  {ayudaSaving === 'saving' && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>💾 Guardando...</span>}
+                  {ayudaSaving === 'saved' && <span style={{ fontSize: '0.72rem', color: '#16a34a' }}>✓ Guardado</span>}
+                  {ayudaSaving === 'failed' && <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 600 }}>⚠ Error al guardar</span>}
+                  {article.status !== 'published' && (
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => { setAyudaScheduleDate(article.scheduled_at ?? new Date().toISOString().slice(0, 10)); setAyudaSchedulePopoverOpen(o => !o) }}
+                        disabled={ayudaScheduleSaving}
+                        style={{ background: '#F5B800', color: '#1a1a1a', border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                      >📅 {article.status === 'scheduled' ? 'Programado' : 'Programar'}</button>
+                      {ayudaSchedulePopoverOpen && (
+                        <>
+                          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setAyudaSchedulePopoverOpen(false)} />
+                          <div style={{ position: 'absolute', top: '110%', right: 0, background: C.white, border: `1px solid ${C.border}`, borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '14px', width: '220px', zIndex: 50 }}>
+                            <input
+                              type="date" value={ayudaScheduleDate} min={new Date().toISOString().slice(0, 10)}
+                              onChange={e => setAyudaScheduleDate(e.target.value)}
+                              style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.8rem', fontFamily: 'inherit', marginBottom: '10px' }}
+                            />
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button onClick={() => scheduleArticle(article, ayudaScheduleDate)} disabled={ayudaScheduleSaving || !ayudaScheduleDate} style={{ flex: 1, background: C.blue, color: 'white', border: 'none', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer', fontFamily: 'inherit' }}>{ayudaScheduleSaving ? '⏳' : 'Programar'}</button>
+                              {article.status === 'scheduled' && (
+                                <button onClick={() => unscheduleArticle(article)} disabled={ayudaScheduleSaving} style={{ background: '#f3f4f6', color: '#6b7280', border: 'none', padding: '6px 10px', borderRadius: '6px', fontWeight: 600, fontSize: '0.76rem', cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => toggleArticlePublish(article)}
+                    disabled={ayudaPublishing}
+                    style={{ background: article.status === 'published' ? '#f3f4f6' : C.blue, color: article.status === 'published' ? C.text : 'white', border: 'none', padding: '6px 14px', borderRadius: '7px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                  >{ayudaPublishing ? '⏳...' : article.status === 'published' ? '↩ Borrador' : '↑ Publicar'}</button>
+                </div>
+
+                <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                  <div key={article.id} style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', background: C.white }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Título</label>
+                      <input
+                        defaultValue={article.title}
+                        onBlur={e => { if (e.target.value.trim() && e.target.value !== article.title) saveArticleMeta(article.id, { title: e.target.value.trim() }) }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug</label>
+                      <input
+                        defaultValue={article.slug}
+                        onBlur={e => { if (e.target.value.trim() && e.target.value !== article.slug) saveArticleMeta(article.id, { slug: e.target.value.trim() }) }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.78rem', fontFamily: 'monospace' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Categoría</label>
+                      <input
+                        defaultValue={article.category}
+                        placeholder="ej. Configuración"
+                        onBlur={e => { if (e.target.value.trim() !== (article.category ?? '')) saveArticleMeta(article.id, { category: e.target.value.trim() }) }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Extracto</label>
+                      <textarea
+                        defaultValue={article.excerpt}
+                        onBlur={e => { if (e.target.value !== article.excerpt) saveArticleMeta(article.id, { excerpt: e.target.value }) }}
+                        rows={3}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.8rem', fontFamily: 'inherit', resize: 'vertical' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Autor</label>
+                      <input
+                        defaultValue={article.author}
+                        onBlur={e => { if (e.target.value !== article.author) saveArticleMeta(article.id, { author: e.target.value }) }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div style={{ height: '1px', background: C.border, margin: '4px 0' }} />
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>SEO title</label>
+                      <input
+                        defaultValue={article.seo_title ?? ''}
+                        onBlur={e => { if (e.target.value !== (article.seo_title ?? '')) saveArticleMeta(article.id, { seo_title: e.target.value }) }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.8rem', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>SEO description</label>
+                      <textarea
+                        defaultValue={article.seo_description ?? ''}
+                        onBlur={e => { if (e.target.value !== (article.seo_description ?? '')) saveArticleMeta(article.id, { seo_description: e.target.value }) }}
+                        rows={3}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.78rem', fontFamily: 'inherit', resize: 'vertical' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <HtmlCodeEditor
+                      content={ayudaContent}
+                      onChange={val => {
+                        setAyudaContent(val)
+                        setAyudaSaving('idle')
+                        ayudaPendingSaveRef.current = { articleId: article.id, contentHtml: val }
+                        if (ayudaContentSaveTimer.current) clearTimeout(ayudaContentSaveTimer.current)
+                        ayudaContentSaveTimer.current = setTimeout(() => { flushAyudaSave() }, 800)
+                      }}
+                      onSave={async (content) => {
+                        ayudaPendingSaveRef.current = { articleId: article.id, contentHtml: content }
+                        await flushAyudaSave()
+                      }}
+                      saving={ayudaSaving === 'saving' ? 'saving' : ayudaSaving === 'saved' ? 'saved' : 'idle'}
+                    />
                   </div>
                 </div>
               </div>
