@@ -2322,6 +2322,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   type AyudaGenStep = { file: File; previewUrl: string; caption: string }
   const [ayudaGenSteps, setAyudaGenSteps] = useState<AyudaGenStep[]>([])
   const ayudaGenStepInputRef = useRef<HTMLInputElement>(null)
+  const [ayudaGenDragOver, setAyudaGenDragOver] = useState(false)
   const [ayudaGenerating, setAyudaGenerating] = useState(false)
   const [ayudaGenDraftId, setAyudaGenDraftId] = useState<string | null>(null)
   const ayudaContentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -10304,17 +10305,34 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                         <input
                           ref={ayudaGenStepInputRef}
-                          type="file" accept="image/*" style={{ display: 'none' }}
+                          type="file" accept="image/*" multiple style={{ display: 'none' }}
                           onChange={e => {
-                            const file = e.target.files?.[0]
-                            if (file) setAyudaGenSteps(prev => [...prev, { file, previewUrl: URL.createObjectURL(file), caption: '' }])
+                            const files = Array.from(e.target.files ?? []).filter(f => f.type.startsWith('image/'))
+                            if (files.length > 0) {
+                              setAyudaGenSteps(prev => [...prev, ...files.map(file => ({ file, previewUrl: URL.createObjectURL(file), caption: '' }))])
+                            }
                             e.target.value = ''
                           }}
                         />
                         <button
                           onClick={() => ayudaGenStepInputRef.current?.click()}
-                          style={{ background: C.white, color: C.text, border: `1px dashed ${C.border}`, padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}
-                        >+ Añadir captura</button>
+                          onDragOver={e => { e.preventDefault(); setAyudaGenDragOver(true) }}
+                          onDragLeave={() => setAyudaGenDragOver(false)}
+                          onDrop={e => {
+                            e.preventDefault()
+                            setAyudaGenDragOver(false)
+                            const files = Array.from(e.dataTransfer.files ?? []).filter(f => f.type.startsWith('image/'))
+                            if (files.length > 0) {
+                              setAyudaGenSteps(prev => [...prev, ...files.map(file => ({ file, previewUrl: URL.createObjectURL(file), caption: '' }))])
+                            }
+                          }}
+                          style={{
+                            background: ayudaGenDragOver ? '#eff6ff' : C.white, color: C.text,
+                            border: `1px dashed ${ayudaGenDragOver ? C.blue : C.border}`,
+                            padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit',
+                            transition: 'background 0.15s, border-color 0.15s',
+                          }}
+                        >{ayudaGenDragOver ? '⬇ Suelta aquí' : '+ Añadir captura (o arrastra aquí)'}</button>
                       </div>
 
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
