@@ -2316,6 +2316,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [ayudaGenTopic, setAyudaGenTopic] = useState('')
   const [ayudaGenCategory, setAyudaGenCategory] = useState('')
   const [ayudaGenWordCount, setAyudaGenWordCount] = useState(600)
+  // Ordered screenshots for the AI generator: each has the local File (for upload +
+  // base64/vision), a preview URL for the thumbnail, and a short user caption describing
+  // what happens in that step. Cleared after each generation.
+  type AyudaGenStep = { file: File; previewUrl: string; caption: string }
+  const [ayudaGenSteps, setAyudaGenSteps] = useState<AyudaGenStep[]>([])
+  const ayudaGenStepInputRef = useRef<HTMLInputElement>(null)
   const [ayudaGenerating, setAyudaGenerating] = useState(false)
   const [ayudaGenDraftId, setAyudaGenDraftId] = useState<string | null>(null)
   const ayudaContentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -4233,10 +4239,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setAyudaGenDraftId(draftId)
       openSupportArticle(draftJson.article)
 
+      // Upload each screenshot to storage (so the article can reference a real, permanent
+      // URL) AND read it as base64 (so Claude can actually see it via vision) — the
+      // generation endpoint needs both: the URL to embed, the bytes to look at.
+      let stepsPayload: Array<{ caption: string; imageBase64: string; mediaType: string; imageUrl: string }> | undefined
+      if (ayudaGenSteps.length > 0) {
+        const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = reader.result as string
+            resolve(result.slice(result.indexOf(',') + 1))
+          }
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+        try {
+          stepsPayload = await Promise.all(ayudaGenSteps.map(async (step, i) => {
+            const ext = step.file.name.split('.').pop() || 'png'
+            const path = `${session.user.id}/${id}/ayuda-${Date.now()}-${i}.${ext}`
+            const { error: upErr } = await supabase.storage.from('project-assets').upload(path, step.file, { contentType: step.file.type, upsert: false })
+            if (upErr) throw upErr
+            const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
+            const imageBase64 = await fileToBase64(step.file)
+            return { caption: step.caption, imageBase64, mediaType: step.file.type || 'image/png', imageUrl: publicUrl }
+          }))
+        } catch (uploadErr) {
+          await alertDialog({ title: 'Errore upload capturas', message: String(uploadErr), variant: 'danger' })
+          setAyudaGenerating(false)
+          return
+        }
+      }
+
       const res = await fetch('/api/generate-support-article', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ topic: ayudaGenTopic, category: ayudaGenCategory, wordCount: ayudaGenWordCount, projectId: id, context: projectContext }),
+        body: JSON.stringify({ topic: ayudaGenTopic, category: ayudaGenCategory, wordCount: ayudaGenWordCount, projectId: id, context: projectContext, steps: stepsPayload }),
       })
       if (!res.ok) {
         await alertDialog({ title: 'Errore generazione', message: `Errore (${res.status}). Riprova.`, variant: 'danger' })
@@ -4268,6 +4305,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       }
       setAyudaGenTopic('')
+      ayudaGenSteps.forEach(s => URL.revokeObjectURL(s.previewUrl))
+      setAyudaGenSteps([])
     } catch (err) {
       await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' })
     } finally {
@@ -10215,6 +10254,54 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           style={{ width: '110px', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'inherit' }}
                         />
                       </div>
+
+                      <div style={{ height: '1px', background: C.border, margin: '2px 0' }} />
+
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Capturas de pantalla (opcional)</span>
+                          <span style={{ fontSize: '0.7rem', color: C.textFaint }}>— añade los pasos en orden, la IA ve cada captura y escribe el paso</span>
+                        </div>
+
+                        {ayudaGenSteps.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                            {ayudaGenSteps.map((step, i) => (
+                              <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '8px' }}>
+                                <img src={step.previewUrl} alt={`Paso ${i + 1}`} style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0, border: `1px solid ${C.border}` }} />
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint }}>Paso {i + 1}</span>
+                                  <input
+                                    type="text" placeholder="¿Qué pasa en esta captura? (ej. Haz clic en Configuración)"
+                                    value={step.caption}
+                                    onChange={e => setAyudaGenSteps(prev => prev.map((s, idx) => idx === i ? { ...s, caption: e.target.value } : s))}
+                                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.8rem', fontFamily: 'inherit' }}
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => { URL.revokeObjectURL(step.previewUrl); setAyudaGenSteps(prev => prev.filter((_, idx) => idx !== i)) }}
+                                  title="Eliminar"
+                                  style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.9rem', padding: '4px', flexShrink: 0 }}
+                                >✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <input
+                          ref={ayudaGenStepInputRef}
+                          type="file" accept="image/*" style={{ display: 'none' }}
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            if (file) setAyudaGenSteps(prev => [...prev, { file, previewUrl: URL.createObjectURL(file), caption: '' }])
+                            e.target.value = ''
+                          }}
+                        />
+                        <button
+                          onClick={() => ayudaGenStepInputRef.current?.click()}
+                          style={{ background: C.white, color: C.text, border: `1px dashed ${C.border}`, padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                        >+ Añadir captura</button>
+                      </div>
+
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         <button onClick={() => setShowAyudaGenPrompt(false)} style={{ background: '#f3f4f6', color: '#4b5563', border: 'none', padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
                         <button
