@@ -22,15 +22,15 @@ export async function POST(req: NextRequest) {
     wordCount?: number
     projectId?: string
     context?: { businessName?: string; businessType?: string; language?: string }
-    // Optional: ordered screenshots the user uploaded, each with a short caption
-    // describing what happens at that step. When present, the model sees the actual
-    // screenshot (vision) alongside the caption instead of guessing from text alone,
-    // and is told the exact already-uploaded URL to embed for each one.
-    steps?: Array<{ caption: string; imageBase64: string; mediaType: string; imageUrl: string }>
+    // Optional: ordered sections the user sketched out. Each becomes one <h2> in the
+    // final article — `title` is the (rough) heading, `description` is a draft the model
+    // must rewrite and EXPAND (not just clean up), and the screenshot (if any) is provided
+    // to the model via vision alongside its already-uploaded URL to embed verbatim.
+    steps?: Array<{ title: string; description: string; imageBase64?: string; mediaType?: string; imageUrl?: string }>
   }
 
   if (!topic) return NextResponse.json({ error: 'topic richiesto' }, { status: 400 })
-  if (steps && steps.length > 12) return NextResponse.json({ error: 'Máximo 12 capturas por artículo' }, { status: 400 })
+  if (steps && steps.length > 12) return NextResponse.json({ error: 'Máximo 12 secciones por artículo' }, { status: 400 })
 
   let userId: string
   try {
@@ -75,15 +75,16 @@ REGLA ABSOLUTA — HTML SEMÁNTICO PURO:
 - Si aplica, añade una sección "Requisitos previos" (<ul>) antes de los pasos.
 - Cierra con una breve sección de preguntas frecuentes si tiene sentido.${businessCtx}${hasSteps ? `
 
-REGLA PARA LAS CAPTURAS DE PANTALLA:
-- Se te proporcionan ${steps!.length} capturas de pantalla en orden, cada una con una URL YA SUBIDA y una breve nota del usuario sobre qué pasa en ese paso.
-- Para CADA captura, escribe el paso correspondiente en <li> basándote en lo que ves en la imagen + la nota del usuario, e inserta EXACTAMENTE la etiqueta <img src="LA_URL_EXACTA_INDICADA" alt="descripción breve y precisa de la captura"> inmediatamente después del <li> de ese paso (fuera de la lista, como elemento propio).
-- No inventes URLs — usa solo las URLs que se te dan, una vez cada una, en el mismo orden.` : ''}`
+REGLA PARA LAS SECCIONES PROPORCIONADAS (MUY IMPORTANTE):
+- Se te proporcionan ${steps!.length} secciones en orden. Cada una trae un título (borrador de H2) y una descripción (borrador de lo que pasa en ese paso), y opcionalmente una captura de pantalla.
+- Usa cada sección como base para un <h2> del artículo, EN EL MISMO ORDEN. Puedes pulir el título si hace falta, pero debe reflejar fielmente la sección original.
+- El texto bajo cada <h2> NO es un resumen de la descripción — es una REDACCIÓN EXPANDIDA Y MEJORADA de la misma: desarrolla el borrador del usuario en frases completas, con los <li> numerados que hagan falta, añadiendo detalle y precisión (usando también lo que veas en la captura, si se te da una) sin inventar pasos que contradigan la descripción.
+- Si una sección trae una captura de pantalla, inserta EXACTAMENTE la etiqueta <img src="LA_URL_EXACTA_INDICADA" alt="descripción breve y precisa de la captura"> dentro de esa sección, cerca del paso al que corresponde. No inventes URLs — usa solo las que se te dan.` : ''}`
 
   const userMessageText = `Escribe un artículo de ayuda sobre: "${topic}"
 ${category ? `Categoría: "${category}"` : ''}
 Longitud aproximada: ${wordCount} palabras.
-${hasSteps ? `\nA continuación tienes las ${steps!.length} capturas de pantalla en orden, cada una con su nota y su URL ya subida.` : ''}
+${hasSteps ? `\nA continuación tienes las ${steps!.length} secciones en orden (título + descripción a expandir, y su captura si la hay).` : ''}
 
 FORMATO DE SALIDA — DOS BLOQUES SEPARADOS:
 
@@ -95,18 +96,25 @@ Luego, en una línea aparte, escribe EXACTAMENTE este delimitador:
 
 Luego el HTML COMPLETO del artículo, HTML crudo (no dentro de una cadena JSON, sin escapar comillas).`
 
-  // Build the user message content: plain text when there are no screenshots, or an
+  // Build the user message content: plain text when there are no sections, or an
   // interleaved array of text/image blocks (Claude vision) when there are — one text
-  // block per step (caption + the exact URL to use) immediately followed by that step's
-  // image, so the model can see and describe each screenshot in its actual context.
+  // block per section (title + draft description, plus the exact URL to use if it has
+  // an image) immediately followed by that section's image when present.
   type ContentBlock = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   const messageContent: string | ContentBlock[] = hasSteps
     ? [
         { type: 'text', text: userMessageText },
-        ...steps!.flatMap((s, i): ContentBlock[] => [
-          { type: 'text', text: `Paso ${i + 1}. Nota del usuario: "${s.caption || '(sin nota)'}" — URL ya subida para este paso: ${s.imageUrl}` },
-          { type: 'image', source: { type: 'base64', media_type: s.mediaType || 'image/png', data: s.imageBase64 } },
-        ]),
+        ...steps!.flatMap((s, i): ContentBlock[] => {
+          const hasImage = !!(s.imageBase64 && s.imageUrl)
+          const blocks: ContentBlock[] = [{
+            type: 'text',
+            text: `Sección ${i + 1}. Título (borrador): "${s.title || '(sin título)'}". Descripción (borrador a expandir): "${s.description || '(sin descripción — básate solo en el título y, si la hay, en la captura)'}"${hasImage ? ` — URL ya subida para la captura de esta sección: ${s.imageUrl}` : ''}`,
+          }]
+          if (hasImage) {
+            blocks.push({ type: 'image', source: { type: 'base64', media_type: s.mediaType || 'image/png', data: s.imageBase64! } })
+          }
+          return blocks
+        }),
       ]
     : userMessageText
 

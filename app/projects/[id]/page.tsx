@@ -2319,10 +2319,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Ordered screenshots for the AI generator: each has the local File (for upload +
   // base64/vision), a preview URL for the thumbnail, and a short user caption describing
   // what happens in that step. Cleared after each generation.
-  type AyudaGenStep = { file: File; previewUrl: string; caption: string }
+  type AyudaGenStep = { file: File | null; previewUrl: string | null; title: string; description: string }
   const [ayudaGenSteps, setAyudaGenSteps] = useState<AyudaGenStep[]>([])
   const ayudaGenStepInputRef = useRef<HTMLInputElement>(null)
-  const [ayudaGenDragOver, setAyudaGenDragOver] = useState(false)
+  const [ayudaGenImageTargetIndex, setAyudaGenImageTargetIndex] = useState<number | null>(null)
+  const [ayudaGenDragOverIndex, setAyudaGenDragOverIndex] = useState<number | null>(null)
   const [ayudaGenerating, setAyudaGenerating] = useState(false)
   const [ayudaGenDraftId, setAyudaGenDraftId] = useState<string | null>(null)
   const ayudaContentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -4255,10 +4256,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setAyudaGenDraftId(draftId)
       openSupportArticle(draftJson.article)
 
-      // Upload each screenshot to storage (so the article can reference a real, permanent
-      // URL) AND read it as base64 (so Claude can actually see it via vision) — the
-      // generation endpoint needs both: the URL to embed, the bytes to look at.
-      let stepsPayload: Array<{ caption: string; imageBase64: string; mediaType: string; imageUrl: string }> | undefined
+      // Upload each section's image (when present) to storage — for the article to
+      // reference a real, permanent URL — AND read it as base64 so Claude can actually
+      // see it via vision. Image is optional per section: title + description alone are
+      // enough for the AI to write and expand that H2.
+      let stepsPayload: Array<{ title: string; description: string; imageBase64?: string; mediaType?: string; imageUrl?: string }> | undefined
       if (ayudaGenSteps.length > 0) {
         const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
@@ -4271,13 +4273,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         })
         try {
           stepsPayload = await Promise.all(ayudaGenSteps.map(async (step, i) => {
+            if (!step.file) return { title: step.title, description: step.description }
             const ext = step.file.name.split('.').pop() || 'png'
             const path = `${session.user.id}/${id}/ayuda-${Date.now()}-${i}.${ext}`
             const { error: upErr } = await supabase.storage.from('project-assets').upload(path, step.file, { contentType: step.file.type, upsert: false })
             if (upErr) throw upErr
             const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
             const imageBase64 = await fileToBase64(step.file)
-            return { caption: step.caption, imageBase64, mediaType: step.file.type || 'image/png', imageUrl: publicUrl }
+            return { title: step.title, description: step.description, imageBase64, mediaType: step.file.type || 'image/png', imageUrl: publicUrl }
           }))
         } catch (uploadErr) {
           await alertDialog({ title: 'Errore upload capturas', message: String(uploadErr), variant: 'danger' })
@@ -4321,7 +4324,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       }
       setAyudaGenTopic('')
-      ayudaGenSteps.forEach(s => URL.revokeObjectURL(s.previewUrl))
+      ayudaGenSteps.forEach(s => { if (s.previewUrl) URL.revokeObjectURL(s.previewUrl) })
       setAyudaGenSteps([])
     } catch (err) {
       await alertDialog({ title: 'Errore', message: String(err), variant: 'danger' })
@@ -10275,27 +10278,79 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Capturas de pantalla (opcional)</span>
-                          <span style={{ fontSize: '0.7rem', color: C.textFaint }}>— añade los pasos en orden, la IA ve cada captura y escribe el paso</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Secciones del artículo (opcional)</span>
+                          <span style={{ fontSize: '0.7rem', color: C.textFaint }}>— cada sección es un H2: título + borrador de descripción (+ captura opcional). La IA lo redacta y amplía.</span>
                         </div>
 
+                        {/* Single hidden input shared by every step's image slot — which step it
+                            targets is tracked in ayudaGenImageTargetIndex, set right before opening
+                            the picker (click) or on drop (no picker needed). */}
+                        <input
+                          ref={ayudaGenStepInputRef}
+                          type="file" accept="image/*" style={{ display: 'none' }}
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            const idx = ayudaGenImageTargetIndex
+                            if (file && idx !== null) {
+                              setAyudaGenSteps(prev => prev.map((s, i) => i === idx ? { ...s, file, previewUrl: URL.createObjectURL(file) } : s))
+                            }
+                            e.target.value = ''
+                          }}
+                        />
+
                         {ayudaGenSteps.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '10px' }}>
                             {ayudaGenSteps.map((step, i) => (
-                              <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '8px' }}>
-                                <img src={step.previewUrl} alt={`Paso ${i + 1}`} style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0, border: `1px solid ${C.border}` }} />
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint }}>Paso {i + 1}</span>
+                              <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', background: C.bg, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px' }}>
+                                {step.previewUrl ? (
+                                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                                    <img src={step.previewUrl} alt={`Sección ${i + 1}`} style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '6px', border: `1px solid ${C.border}` }} />
+                                    <button
+                                      onClick={() => { if (step.previewUrl) URL.revokeObjectURL(step.previewUrl); setAyudaGenSteps(prev => prev.map((s, idx) => idx === i ? { ...s, file: null, previewUrl: null } : s)) }}
+                                      title="Quitar imagen"
+                                      style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '0.65rem', cursor: 'pointer', lineHeight: 1 }}
+                                    >✕</button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => { setAyudaGenImageTargetIndex(i); ayudaGenStepInputRef.current?.click() }}
+                                    onDragOver={e => { e.preventDefault(); setAyudaGenDragOverIndex(i) }}
+                                    onDragLeave={() => setAyudaGenDragOverIndex(prev => prev === i ? null : prev)}
+                                    onDrop={e => {
+                                      e.preventDefault()
+                                      setAyudaGenDragOverIndex(null)
+                                      const file = Array.from(e.dataTransfer.files ?? []).find(f => f.type.startsWith('image/'))
+                                      if (file) setAyudaGenSteps(prev => prev.map((s, idx) => idx === i ? { ...s, file, previewUrl: URL.createObjectURL(file) } : s))
+                                    }}
+                                    title="Añadir imagen (click o arrastra aquí)"
+                                    style={{
+                                      width: '64px', height: '64px', flexShrink: 0, borderRadius: '6px',
+                                      border: `1px dashed ${ayudaGenDragOverIndex === i ? C.blue : C.border}`,
+                                      background: ayudaGenDragOverIndex === i ? '#eff6ff' : C.white,
+                                      color: C.textFaint, fontSize: '0.65rem', cursor: 'pointer', fontFamily: 'inherit',
+                                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px',
+                                    }}
+                                  ><span style={{ fontSize: '1rem' }}>🖼️</span>+ imagen</button>
+                                )}
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: C.textFaint }}>Sección {i + 1} · H2</span>
                                   <input
-                                    type="text" placeholder="¿Qué pasa en esta captura? (ej. Haz clic en Configuración)"
-                                    value={step.caption}
-                                    onChange={e => setAyudaGenSteps(prev => prev.map((s, idx) => idx === i ? { ...s, caption: e.target.value } : s))}
-                                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.8rem', fontFamily: 'inherit' }}
+                                    type="text" placeholder="Título de la sección (ej. Configurar el saldo inicial)"
+                                    value={step.title}
+                                    onChange={e => setAyudaGenSteps(prev => prev.map((s, idx) => idx === i ? { ...s, title: e.target.value } : s))}
+                                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.8rem', fontFamily: 'inherit', fontWeight: 600 }}
+                                  />
+                                  <textarea
+                                    placeholder="Borrador: describe con tus palabras cómo se hace — la IA lo redacta mejor y lo amplía"
+                                    value={step.description}
+                                    onChange={e => setAyudaGenSteps(prev => prev.map((s, idx) => idx === i ? { ...s, description: e.target.value } : s))}
+                                    rows={2}
+                                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.78rem', fontFamily: 'inherit', resize: 'vertical' }}
                                   />
                                 </div>
                                 <button
-                                  onClick={() => { URL.revokeObjectURL(step.previewUrl); setAyudaGenSteps(prev => prev.filter((_, idx) => idx !== i)) }}
-                                  title="Eliminar"
+                                  onClick={() => { if (step.previewUrl) URL.revokeObjectURL(step.previewUrl); setAyudaGenSteps(prev => prev.filter((_, idx) => idx !== i)) }}
+                                  title="Eliminar sección"
                                   style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.9rem', padding: '4px', flexShrink: 0 }}
                                 >✕</button>
                               </div>
@@ -10303,36 +10358,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                           </div>
                         )}
 
-                        <input
-                          ref={ayudaGenStepInputRef}
-                          type="file" accept="image/*" multiple style={{ display: 'none' }}
-                          onChange={e => {
-                            const files = Array.from(e.target.files ?? []).filter(f => f.type.startsWith('image/'))
-                            if (files.length > 0) {
-                              setAyudaGenSteps(prev => [...prev, ...files.map(file => ({ file, previewUrl: URL.createObjectURL(file), caption: '' }))])
-                            }
-                            e.target.value = ''
-                          }}
-                        />
                         <button
-                          onClick={() => ayudaGenStepInputRef.current?.click()}
-                          onDragOver={e => { e.preventDefault(); setAyudaGenDragOver(true) }}
-                          onDragLeave={() => setAyudaGenDragOver(false)}
-                          onDrop={e => {
-                            e.preventDefault()
-                            setAyudaGenDragOver(false)
-                            const files = Array.from(e.dataTransfer.files ?? []).filter(f => f.type.startsWith('image/'))
-                            if (files.length > 0) {
-                              setAyudaGenSteps(prev => [...prev, ...files.map(file => ({ file, previewUrl: URL.createObjectURL(file), caption: '' }))])
-                            }
-                          }}
-                          style={{
-                            background: ayudaGenDragOver ? '#eff6ff' : C.white, color: C.text,
-                            border: `1px dashed ${ayudaGenDragOver ? C.blue : C.border}`,
-                            padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit',
-                            transition: 'background 0.15s, border-color 0.15s',
-                          }}
-                        >{ayudaGenDragOver ? '⬇ Suelta aquí' : '+ Añadir captura (o arrastra aquí)'}</button>
+                          onClick={() => setAyudaGenSteps(prev => [...prev, { file: null, previewUrl: null, title: '', description: '' }])}
+                          style={{ background: C.white, color: C.text, border: `1px dashed ${C.border}`, padding: '7px 14px', borderRadius: '6px', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                        >+ Añadir sección</button>
                       </div>
 
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
