@@ -2327,6 +2327,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const ayudaContentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ayudaEditorRef = useRef<HTMLDivElement | null>(null)
   const ayudaImageInputRef = useRef<HTMLInputElement>(null)
+  const [ayudaTagChips, setAyudaTagChips] = useState<string[]>([])
+  const ayudaTagInputRef = useRef<HTMLInputElement>(null)
   const ayudaPendingSaveRef = useRef<{ articleId: string; contentHtml: string } | null>(null)
   const selectedArticleRef = useRef<SupportArticle | null>(null)
   useEffect(() => { selectedArticleRef.current = selectedArticle }, [selectedArticle])
@@ -4104,6 +4106,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     setSelectedArticle(full)
     setAyudaContent(full.content_html ?? '')
+    setAyudaTagChips(full.tags ?? [])
     setAyudaSaving('idle')
   }
 
@@ -10404,22 +10407,44 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
                 <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                   <div key={article.id} style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', background: C.white }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Título</label>
-                      <input
-                        defaultValue={article.title}
-                        onBlur={e => { if (e.target.value.trim() && e.target.value !== article.title) saveArticleMeta(article.id, { title: e.target.value.trim() }) }}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit' }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug</label>
-                      <input
-                        defaultValue={article.slug}
-                        onBlur={e => { if (e.target.value.trim() && e.target.value !== article.slug) saveArticleMeta(article.id, { slug: e.target.value.trim() }) }}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.78rem', fontFamily: 'monospace' }}
-                      />
-                    </div>
+                    {(() => {
+                      const slugInputRef = { current: null as HTMLInputElement | null }
+                      const slugEditedRef = { current: false }
+                      return (<>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Título</label>
+                          <input
+                            defaultValue={article.title}
+                            onBlur={e => {
+                              const newTitle = e.target.value.trim() || article.title
+                              saveArticleMeta(article.id, { title: newTitle })
+                              // Auto-update slug from title, same as the blog — unless the
+                              // user has manually edited the slug field themselves.
+                              if (!slugEditedRef.current && slugInputRef.current) {
+                                const newSlug = slugify(newTitle) || article.slug
+                                slugInputRef.current.value = newSlug
+                                saveArticleMeta(article.id, { slug: newSlug })
+                              }
+                            }}
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Slug</label>
+                          <input
+                            ref={el => { slugInputRef.current = el }}
+                            defaultValue={article.slug}
+                            onChange={() => { slugEditedRef.current = true }}
+                            onBlur={e => {
+                              const val = slugify(e.target.value.trim()) || article.slug
+                              e.target.value = val
+                              saveArticleMeta(article.id, { slug: val })
+                            }}
+                            style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.78rem', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                      </>)
+                    })()}
                     <div>
                       <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Categoría</label>
                       <input
@@ -10439,11 +10464,59 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       />
                     </div>
                     <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Fecha de publicación</label>
+                      <input
+                        type="date"
+                        defaultValue={article.published_at ? article.published_at.slice(0, 10) : new Date().toISOString().slice(0, 10)}
+                        onBlur={e => { if (e.target.value) saveArticleMeta(article.id, { published_at: new Date(e.target.value).toISOString() }) }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div>
                       <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Autor</label>
                       <input
                         defaultValue={article.author}
                         onBlur={e => { if (e.target.value !== article.author) saveArticleMeta(article.id, { author: e.target.value }) }}
                         style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.82rem', fontFamily: 'inherit' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: C.textFaint, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Tags</label>
+                      {ayudaTagChips.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '6px' }}>
+                          {ayudaTagChips.map((tag, i) => (
+                            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#dbeafe', color: '#1d4ed8', borderRadius: '5px', padding: '2px 7px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {tag}
+                              <button onClick={() => { const next = ayudaTagChips.filter((_, j) => j !== i); setAyudaTagChips(next); saveArticleMeta(article.id, { tags: next }) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', fontSize: '0.85rem', lineHeight: 1, padding: '0 0 0 2px' }}>×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <input
+                        ref={ayudaTagInputRef}
+                        placeholder="Escribe y pulsa Enter..."
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            const val = (e.target as HTMLInputElement).value.trim()
+                            if (!val) return
+                            const newTags = val.split(',').map(s => s.trim()).filter(Boolean)
+                            const next = [...ayudaTagChips, ...newTags.filter(t => !ayudaTagChips.includes(t))]
+                            setAyudaTagChips(next)
+                            saveArticleMeta(article.id, { tags: next });
+                            (e.target as HTMLInputElement).value = ''
+                          }
+                        }}
+                        onBlur={e => {
+                          const val = e.target.value.trim()
+                          if (!val) return
+                          const newTags = val.split(',').map(s => s.trim()).filter(Boolean)
+                          const next = [...ayudaTagChips, ...newTags.filter(t => !ayudaTagChips.includes(t))]
+                          setAyudaTagChips(next)
+                          saveArticleMeta(article.id, { tags: next })
+                          e.target.value = ''
+                        }}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: '6px', fontSize: '0.78rem', fontFamily: 'inherit' }}
                       />
                     </div>
                     <div style={{ height: '1px', background: C.border, margin: '4px 0' }} />
