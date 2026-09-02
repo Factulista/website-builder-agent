@@ -2325,6 +2325,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [ayudaGenerating, setAyudaGenerating] = useState(false)
   const [ayudaGenDraftId, setAyudaGenDraftId] = useState<string | null>(null)
   const ayudaContentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ayudaEditorRef = useRef<HTMLDivElement | null>(null)
+  const ayudaImageInputRef = useRef<HTMLInputElement>(null)
   const ayudaPendingSaveRef = useRef<{ articleId: string; contentHtml: string } | null>(null)
   const selectedArticleRef = useRef<SupportArticle | null>(null)
   useEffect(() => { selectedArticleRef.current = selectedArticle }, [selectedArticle])
@@ -10464,21 +10466,93 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </div>
                   </div>
 
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    <HtmlCodeEditor
-                      content={ayudaContent}
-                      onChange={val => {
-                        setAyudaContent(val)
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
+                    {/* Formatting toolbar — execCommand on the focused contentEditable div below.
+                        Deprecated API but still universally supported and the simplest reliable
+                        way to get real WYSIWYG (bold shows bold, etc.) without building a full
+                        iframe+postMessage editor like the blog's. */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.white, flexShrink: 0, flexWrap: 'wrap' }}>
+                      {[
+                        { label: 'H2', cmd: 'formatBlock', value: 'h2', title: 'Título de sección' },
+                        { label: 'H3', cmd: 'formatBlock', value: 'h3', title: 'Subtítulo' },
+                        { label: 'P', cmd: 'formatBlock', value: 'p', title: 'Párrafo normal' },
+                      ].map(btn => (
+                        <button
+                          key={btn.label}
+                          title={btn.title}
+                          onMouseDown={e => { e.preventDefault(); document.execCommand(btn.cmd, false, btn.value) }}
+                          style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 9px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}
+                        >{btn.label}</button>
+                      ))}
+                      <div style={{ width: '1px', height: '18px', background: C.border, margin: '0 4px' }} />
+                      <button title="Negrita" onMouseDown={e => { e.preventDefault(); document.execCommand('bold') }} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 10px', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>B</button>
+                      <button title="Cursiva" onMouseDown={e => { e.preventDefault(); document.execCommand('italic') }} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 10px', fontSize: '0.8rem', fontStyle: 'italic', cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>I</button>
+                      <div style={{ width: '1px', height: '18px', background: C.border, margin: '0 4px' }} />
+                      <button title="Lista con viñetas" onMouseDown={e => { e.preventDefault(); document.execCommand('insertUnorderedList') }} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 9px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>• ―</button>
+                      <button title="Lista numerada" onMouseDown={e => { e.preventDefault(); document.execCommand('insertOrderedList') }} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 9px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>1. ―</button>
+                      <div style={{ width: '1px', height: '18px', background: C.border, margin: '0 4px' }} />
+                      <button
+                        title="Insertar enlace"
+                        onMouseDown={async e => {
+                          e.preventDefault()
+                          const url = window.prompt('URL del enlace:')
+                          if (url) document.execCommand('createLink', false, url)
+                        }}
+                        style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 9px', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', color: C.text }}
+                      >🔗</button>
+                      <input
+                        ref={ayudaImageInputRef}
+                        type="file" accept="image/*" style={{ display: 'none' }}
+                        onChange={async e => {
+                          const file = e.target.files?.[0]
+                          e.target.value = ''
+                          if (!file) return
+                          const { data: { session } } = await supabase.auth.getSession()
+                          if (!session) return
+                          const ext = file.name.split('.').pop() || 'png'
+                          const path = `${session.user.id}/${id}/ayuda-inline-${Date.now()}.${ext}`
+                          const { error } = await supabase.storage.from('project-assets').upload(path, file, { contentType: file.type, upsert: false })
+                          if (error) { await alertDialog({ title: 'Errore upload', message: error.message, variant: 'danger' }); return }
+                          const { data: { publicUrl } } = supabase.storage.from('project-assets').getPublicUrl(path)
+                          ayudaEditorRef.current?.focus()
+                          document.execCommand('insertImage', false, publicUrl)
+                        }}
+                      />
+                      <button title="Insertar imagen" onMouseDown={e => { e.preventDefault(); ayudaImageInputRef.current?.click() }} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: '5px', padding: '5px 9px', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', color: C.text }}>🖼️</button>
+                      <div style={{ flex: 1 }} />
+                      {ayudaSaving === 'saving' && <span style={{ fontSize: '0.72rem', color: C.textFaint }}>💾 Guardando...</span>}
+                      {ayudaSaving === 'saved' && <span style={{ fontSize: '0.72rem', color: '#16a34a' }}>✓ Guardado</span>}
+                    </div>
+                    <div
+                      key={article.id}
+                      ref={el => {
+                        ayudaEditorRef.current = el
+                        if (el && el.dataset.initialized !== article.id) {
+                          el.innerHTML = ayudaContent
+                          el.dataset.initialized = article.id
+                        }
+                      }}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onInput={e => {
+                        const val = (e.currentTarget as HTMLDivElement).innerHTML
                         setAyudaSaving('idle')
                         ayudaPendingSaveRef.current = { articleId: article.id, contentHtml: val }
                         if (ayudaContentSaveTimer.current) clearTimeout(ayudaContentSaveTimer.current)
                         ayudaContentSaveTimer.current = setTimeout(() => { flushAyudaSave() }, 800)
                       }}
-                      onSave={async (content) => {
-                        ayudaPendingSaveRef.current = { articleId: article.id, contentHtml: content }
-                        await flushAyudaSave()
+                      onKeyDown={e => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                          e.preventDefault()
+                          ayudaPendingSaveRef.current = { articleId: article.id, contentHtml: (e.currentTarget as HTMLDivElement).innerHTML }
+                          flushAyudaSave()
+                        }
                       }}
-                      saving={ayudaSaving === 'saving' ? 'saving' : ayudaSaving === 'saved' ? 'saved' : 'idle'}
+                      style={{
+                        flex: 1, overflowY: 'auto', padding: '2.5rem 3rem', background: '#fff', outline: 'none',
+                        maxWidth: '760px', margin: '0 auto', width: '100%', boxSizing: 'border-box',
+                        fontSize: '1rem', lineHeight: 1.7, color: '#1a1a1a', fontFamily: 'inherit',
+                      }}
                     />
                   </div>
                 </div>
