@@ -4120,6 +4120,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (json.article) {
       await loadSupportArticles()
       openSupportArticle(json.article)
+    } else {
+      await alertDialog({ title: 'Errore', message: json.error ?? `Impossibile creare l'articolo (${res.status})`, variant: 'danger' })
     }
   }
 
@@ -4148,6 +4150,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (json.article) {
       setSelectedArticle(prev => prev?.id === articleId ? { ...prev, ...json.article } : prev)
       setSupportArticles(prev => prev.map(a => a.id === articleId ? { ...a, ...json.article } : a))
+    } else {
+      await alertDialog({ title: 'Errore', message: json.error ?? `Salvataggio fallito (${res.status})`, variant: 'danger' })
     }
   }
 
@@ -4165,6 +4169,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (json.article) {
       setSelectedArticle(prev => prev?.id === article.id ? { ...prev, ...json.article } : prev)
       setSupportArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...json.article } : a))
+    } else {
+      await alertDialog({ title: 'Errore', message: json.error ?? `Operazione fallita (${res.status})`, variant: 'danger' })
     }
     setAyudaPublishing(false)
   }
@@ -4184,6 +4190,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (json.article) {
       setSelectedArticle(prev => prev?.id === article.id ? { ...prev, ...json.article } : prev)
       setSupportArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...json.article } : a))
+    } else {
+      await alertDialog({ title: 'Errore', message: json.error ?? `Pianificazione fallita (${res.status})`, variant: 'danger' })
     }
     setAyudaScheduleSaving(false)
     setAyudaSchedulePopoverOpen(false)
@@ -4202,6 +4210,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     if (json.article) {
       setSelectedArticle(prev => prev?.id === article.id ? { ...prev, ...json.article } : prev)
       setSupportArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...json.article } : a))
+    } else {
+      await alertDialog({ title: 'Errore', message: json.error ?? `Operazione fallita (${res.status})`, variant: 'danger' })
     }
     setAyudaScheduleSaving(false)
   }
