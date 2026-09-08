@@ -156,6 +156,21 @@ function megaLabel(p: MegaPage): string {
 }
 
 /**
+ * Flat "Autónomos" links for the mobile drawer (all sector pages, no sub-category
+ * headers — mobile <details> lists don't need the desktop panel's 3-column grouping).
+ * Reuses AUTONOMOS_CATEGORIES (defined below) so both menus stay in sync from one
+ * source of truth. Declared here as a function (not a const) so it can be called
+ * before AUTONOMOS_CATEGORIES's own declaration further down the file — hoisting
+ * makes this safe since it only runs after the whole module has loaded.
+ */
+function autonomosMobileLinks(): string {
+  const links = AUTONOMOS_CATEGORIES.flatMap(cat => cat.items).map(it =>
+    `    <a href="./${it.slug}">${it.label}</a>`
+  ).join('\n')
+  return `${links}\n    <a href="./sectores">Ver todos los sectores →</a>`
+}
+
+/**
  * Rebuilds the <div id="mobileMenu"> from megaPages at serve time.
  * Mirrors rebuildMegaMenuPanel for the desktop nav: immune to builder stale-saves.
  * Groups pages into <details class="mobile-fn"> blocks (one per mega-group),
@@ -188,6 +203,12 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
     return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
   }).join('\n')
 
+  // "Autónomos" (sector pages) and "Recursos" (Blog + Ayuda) mirror their desktop
+  // dropdown counterparts — see injectAutonomosMegaMenu's doc comment for why
+  // Autónomos isn't part of the megaPages/megaMenu field system.
+  const autonomosBlock = `  <details class="mobile-fn">\n    <summary>Autónomos</summary>\n${autonomosMobileLinks()}\n  </details>`
+  const recursosBlock = `  <details class="mobile-fn">\n    <summary>Recursos</summary>\n    <a href="./blog">Blog</a>\n    <a href="./ayuda">Ayuda</a>\n  </details>`
+
   // Extract CTAs (btn-ghost-nav / btn-accent-nav) from existing inner HTML
   const ctaRe = /<a[^>]*class="[^"]*btn-(?:ghost|accent)-nav[^"]*"[\s\S]*?<\/a>/g
   const ctas = [...inner.matchAll(ctaRe)].map(m => '  ' + m[0].trim()).join('\n')
@@ -198,10 +219,7 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
   const preciosLine = '  ' + (preciosM ? preciosM[0] : '<a href="./precios">Precios</a>')
   const contactLine = contactM ? '  ' + contactM[0] : ''
 
-  // Add Blog link if not already present
-  const blogLine = /href=["']\.\/blog["']/.test(inner) ? '' : '  <a href="./blog">Blog</a>'
-
-  const newInner = [detailsBlocks, preciosLine, blogLine, contactLine, ctas]
+  const newInner = [autonomosBlock, detailsBlocks, preciosLine, recursosBlock, contactLine, ctas]
     .filter(Boolean).join('\n')
 
   const start = match.index
@@ -245,7 +263,9 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   const ghost = ctaAll.find(c => /btn-ghost-nav/.test(c))
   const accent = ctaAll.find(c => /btn-accent-nav/.test(c))
   const ctas = [ghost, accent].filter(Boolean).map(c => '  ' + c).join('\n')
-  const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
+  const autonomosBlock = `  <details class="mobile-fn">\n    <summary>Autónomos</summary>\n${autonomosMobileLinks()}\n  </details>`
+  const recursosBlock = `  <details class="mobile-fn">\n    <summary>Recursos</summary>\n    <a href="./blog">Blog</a>\n    <a href="./ayuda">Ayuda</a>\n  </details>`
+  const panel = `<div id="mobileMenu" class="mobile-menu">\n${autonomosBlock}\n${details}\n  <a href="./precios">Precios</a>\n${recursosBlock}\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
   if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
   else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
   else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
