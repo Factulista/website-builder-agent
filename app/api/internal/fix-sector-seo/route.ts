@@ -49,8 +49,12 @@ export async function POST(req: NextRequest) {
       html = html.replace(ogTitleRe, `$1${item.ogTitle}$2`)
     }
 
-    // 2. JSON-LD: only inject if the page doesn't already have one
-    if (!/application\/ld\+json/.test(html) && item.jsonLd) {
+    // 2. JSON-LD: pages already carry a sitewide generic Organization schema, so
+    // "has any ld+json" isn't the right idempotency check — multiple ld+json blocks
+    // are valid schema.org. Skip only if THIS sector's own schema was already inserted
+    // (re-run safety), matched by its distinctive "name" field.
+    const marker = item.jsonLd.match(/"name":\s*"([^"]+)"/)?.[1]
+    if ((!marker || !html.includes(`"name":"${marker}"`) && !html.includes(`"name": "${marker}"`)) && item.jsonLd) {
       const script = `<script type="application/ld+json">${item.jsonLd}</script>\n</head>`
       if (html.includes('</head>')) {
         html = html.replace('</head>', script)
