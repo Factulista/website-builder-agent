@@ -300,36 +300,36 @@ const NFD_AUTONOMOS_ID = 'nfd-autonomos'
 type AutonomosCategory = { icon: string; iconClass: string; title: string; items: Array<{ label: string; slug: string }> }
 const AUTONOMOS_CATEGORIES: AutonomosCategory[] = [
   { icon: '🩺', iconClass: 'am-purple', title: 'Salud y bienestar', items: [
-    { label: 'Psicólogos', slug: 'programa-de-facturacion-para-psicologos' },
-    { label: 'Fisioterapeutas', slug: 'programa-de-facturacion-para-fisioterapeutas' },
-    { label: 'Nutricionistas', slug: 'programa-de-facturacion-para-nutricionistas' },
-    { label: 'Entrenadores personales', slug: 'programa-de-facturacion-para-entrenadores-personales' },
+    { label: 'Psicólogos', slug: 'autonomos/programa-de-facturacion-para-psicologos' },
+    { label: 'Fisioterapeutas', slug: 'autonomos/programa-de-facturacion-para-fisioterapeutas' },
+    { label: 'Nutricionistas', slug: 'autonomos/programa-de-facturacion-para-nutricionistas' },
+    { label: 'Entrenadores personales', slug: 'autonomos/programa-de-facturacion-para-entrenadores-personales' },
   ] },
   { icon: '⚖️', iconClass: 'am-blue', title: 'Servicios profesionales', items: [
-    { label: 'Abogados', slug: 'programa-de-facturacion-para-abogados' },
-    { label: 'Consultores y asesores', slug: 'programa-de-facturacion-para-consultores-y-asesores' },
-    { label: 'Traductores', slug: 'programa-de-facturacion-para-traductores' },
-    { label: 'Arquitectos', slug: 'programa-de-facturacion-para-arquitectos' },
+    { label: 'Abogados', slug: 'autonomos/programa-de-facturacion-para-abogados' },
+    { label: 'Consultores y asesores', slug: 'autonomos/programa-de-facturacion-para-consultores-y-asesores' },
+    { label: 'Traductores', slug: 'autonomos/programa-de-facturacion-para-traductores' },
+    { label: 'Arquitectos', slug: 'autonomos/programa-de-facturacion-para-arquitectos' },
   ] },
   { icon: '🎨', iconClass: 'am-pink', title: 'Creativos y digitales', items: [
-    { label: 'Diseñadores gráficos', slug: 'programa-de-facturacion-para-disenadores-graficos' },
-    { label: 'Programadores', slug: 'programa-de-facturacion-para-programadores' },
-    { label: 'Fotógrafos', slug: 'programa-de-facturacion-para-fotografos' },
-    { label: 'Marketing digital', slug: 'programa-de-facturacion-para-marketing-digital' },
+    { label: 'Diseñadores gráficos', slug: 'autonomos/programa-de-facturacion-para-disenadores-graficos' },
+    { label: 'Programadores', slug: 'autonomos/programa-de-facturacion-para-programadores' },
+    { label: 'Fotógrafos', slug: 'autonomos/programa-de-facturacion-para-fotografos' },
+    { label: 'Marketing digital', slug: 'autonomos/programa-de-facturacion-para-marketing-digital' },
   ] },
   { icon: '💻', iconClass: 'am-green', title: 'Formación', items: [
-    { label: 'Formadores', slug: 'programa-de-facturacion-para-formadores' },
-    { label: 'Coaches', slug: 'programa-de-facturacion-para-coaches' },
+    { label: 'Formadores', slug: 'autonomos/programa-de-facturacion-para-formadores' },
+    { label: 'Coaches', slug: 'autonomos/programa-de-facturacion-para-coaches' },
   ] },
   { icon: '⚡', iconClass: 'am-orange', title: 'Oficios y reformas', items: [
-    { label: 'Electricistas', slug: 'programa-de-facturacion-para-electricistas' },
-    { label: 'Fontaneros', slug: 'programa-de-facturacion-para-fontaneros' },
-    { label: 'Pintores', slug: 'programa-de-facturacion-para-pintores' },
-    { label: 'Cerrajeros', slug: 'programa-de-facturacion-para-cerrajeros' },
+    { label: 'Electricistas', slug: 'autonomos/programa-de-facturacion-para-electricistas' },
+    { label: 'Fontaneros', slug: 'autonomos/programa-de-facturacion-para-fontaneros' },
+    { label: 'Pintores', slug: 'autonomos/programa-de-facturacion-para-pintores' },
+    { label: 'Cerrajeros', slug: 'autonomos/programa-de-facturacion-para-cerrajeros' },
   ] },
   { icon: '💼', iconClass: 'am-teal', title: 'Comercio y ventas', items: [
-    { label: 'Comerciales y agentes', slug: 'programa-de-facturacion-para-comerciales-y-agentes' },
-    { label: 'Agentes inmobiliarios', slug: 'programa-de-facturacion-para-agentes-inmobiliarios' },
+    { label: 'Comerciales y agentes', slug: 'autonomos/programa-de-facturacion-para-comerciales-y-agentes' },
+    { label: 'Agentes inmobiliarios', slug: 'autonomos/programa-de-facturacion-para-agentes-inmobiliarios' },
   ] },
 ]
 
