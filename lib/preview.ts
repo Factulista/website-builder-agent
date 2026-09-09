@@ -163,7 +163,7 @@ function megaLabel(p: MegaPage): string {
  * before AUTONOMOS_CATEGORIES's own declaration further down the file — hoisting
  * makes this safe since it only runs after the whole module has loaded.
  */
-function autonomosMobileLinks(): string {
+export function autonomosMobileLinks(): string {
   const links = AUTONOMOS_CATEGORIES.flatMap(cat => cat.items).map(it =>
     `    <a href="./${it.slug}">${it.label}</a>`
   ).join('\n')
@@ -241,6 +241,14 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   // 1. Nuke every existing drawer panel (dedupe stale/duplicate ones from stored HTML).
   html = html.replace(/<div\b[^>]*(?:id="mobileMenu"|class="[^"]*\bmobile-menu\b[^"]*")[^>]*>[\s\S]*?<\/div>/gi, '')
 
+  // 1b. Nuke every non-canonical hamburger-toggle <script> too. Older pages carry
+  // their own inline toggle script from whatever template generated them — left in
+  // place, it double-toggles the 'open' class alongside the canonical script below
+  // (one listener adds it, the other immediately removes it on the same click), so
+  // the drawer silently fails to open. Anything referencing hamburgerBtn that isn't
+  // OUR marked script gets removed before we inject the one true copy.
+  html = html.replace(/<script(?![^>]*data-mm-toggle)[^>]*>(?:(?!<\/script>)[\s\S])*?hamburgerBtn[\s\S]*?<\/script>/gi, '')
+
   // 2. Build the canonical panel from megaPages (same on every page).
   const groups = new Map<string, MegaPage[]>()
   for (const p of megaPages) {
@@ -270,14 +278,22 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
   else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
 
+  // CSS is always (re-)injected, forcing the canonical layout with !important —
+  // some older pages carry their own incompatible .mobile-menu rule (no
+  // position:fixed/overflow-y:auto, a stray .active toggle class instead of
+  // .open) that would otherwise win by source order or leave the drawer
+  // effectively unopenable/clipped. This makes every page behave identically
+  // regardless of what its own stored CSS says.
+  if (!/data-mm-css="1"/.test(html)) {
+    const css = `<style data-mm-css="1">.mobile-menu .btn-accent-nav{color:#fff !important;}.mobile-menu .btn-ghost-nav{color:#111 !important;}.mobile-menu{position:fixed !important;inset:64px 0 0 0 !important;z-index:199 !important;overflow-y:auto !important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}.mobile-menu.open{display:flex !important;}.mobile-menu>*{flex-shrink:0;}html.mm-lock{overflow:hidden;height:100%;}html.mm-lock body{overflow:hidden;height:100%;}</style>`
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${css}\n</body>`)
+    else html += css
+  }
+
   if (!/data-mm-toggle/.test(html)) {
-    // Accent CTA (black bg) inherits the drawer's black link color → black-on-black.
-    // Re-assert readable text for both CTAs inside the drawer.
-    const css = `<style data-mm-css="1">.mobile-menu .btn-accent-nav{color:#fff !important;}.mobile-menu .btn-ghost-nav{color:#111 !important;}.mobile-menu{-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}.mobile-menu>*{flex-shrink:0;}html.mm-lock{overflow:hidden;height:100%;}html.mm-lock body{overflow:hidden;height:100%;}</style>`
     const script = `<script data-mm-toggle="1">(function(){var b=document.getElementById('hamburgerBtn')||document.querySelector('.hamburger');var m=document.getElementById('mobileMenu')||document.querySelector('.mobile-menu');if(!b||!m)return;function set(o){m.classList.toggle('open',o);b.classList.toggle('open',o);b.setAttribute('aria-expanded',o?'true':'false');document.documentElement.classList.toggle('mm-lock',o);}b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();set(!m.classList.contains('open'));});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false);});})();</script>`
-    const inject = css + '\n' + script
-    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${inject}\n</body>`)
-    else html += inject
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${script}\n</body>`)
+    else html += script
   }
   return html
 }

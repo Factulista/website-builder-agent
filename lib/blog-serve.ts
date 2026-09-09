@@ -1,6 +1,7 @@
 import { FRAME_GLOBAL_FIX } from './shared-frame'
 import { resolveNfdIcon } from './components/index'
 import { injectSocialShareLinks } from './social-share'
+import { autonomosMobileLinks } from './preview'
 
 export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string; megaMenu?: string }
 
@@ -146,6 +147,10 @@ export function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   if (!hasHamburger) return html
 
   html = html.replace(/<div\b[^>]*(?:id="mobileMenu"|class="[^"]*\bmobile-menu\b[^"]*")[^>]*>[\s\S]*?<\/div>/gi, '')
+  // See preview.ts's ensureMobileNav for why: an older, unmarked toggle script
+  // baked into some pages double-toggles the 'open' class alongside ours, so the
+  // drawer silently fails to open on those pages.
+  html = html.replace(/<script(?![^>]*data-mm-toggle)[^>]*>(?:(?!<\/script>)[\s\S])*?hamburgerBtn[\s\S]*?<\/script>/gi, '')
 
   const groups = new Map<string, MegaPage[]>()
   for (const p of megaPages) {
@@ -166,19 +171,25 @@ export function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   const ghost = ctaAll.find(c => /btn-ghost-nav/.test(c))
   const accent = ctaAll.find(c => /btn-accent-nav/.test(c))
   const ctas = [ghost, accent].filter(Boolean).map(c => '  ' + c).join('\n')
-  const panel = `<div id="mobileMenu" class="mobile-menu">\n${details}\n  <a href="./precios">Precios</a>\n  <a href="./blog">Blog</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
+  const autonomosBlock = `  <details class="mobile-fn">\n    <summary>Autónomos</summary>\n${autonomosMobileLinks()}\n  </details>`
+  const recursosBlock = `  <details class="mobile-fn">\n    <summary>Recursos</summary>\n    <a href="./blog">Blog</a>\n    <a href="./ayuda">Ayuda</a>\n  </details>`
+  const panel = `<div id="mobileMenu" class="mobile-menu">\n${autonomosBlock}\n${details}\n  <a href="./precios">Precios</a>\n${recursosBlock}\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
   if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
   else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
   else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
 
+  // CSS is always (re-)injected with !important, forcing the canonical layout
+  // regardless of what a page's own stored CSS says (see preview.ts's ensureMobileNav).
+  if (!/data-mm-css="1"/.test(html)) {
+    const css = `<style data-mm-css="1">.mobile-menu .btn-accent-nav{color:#fff !important;}.mobile-menu .btn-ghost-nav{color:#111 !important;}.mobile-menu{position:fixed !important;inset:64px 0 0 0 !important;z-index:199 !important;overflow-y:auto !important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}.mobile-menu.open{display:flex !important;}.mobile-menu>*{flex-shrink:0;}html.mm-lock{overflow:hidden;height:100%;}html.mm-lock body{overflow:hidden;height:100%;}</style>`
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${css}\n</body>`)
+    else html += css
+  }
+
   if (!/data-mm-toggle/.test(html)) {
-    // Accent CTA (black bg) inherits the drawer's black link color → black-on-black.
-    // Re-assert readable text for both CTAs inside the drawer.
-    const css = `<style data-mm-css="1">.mobile-menu .btn-accent-nav{color:#fff !important;}.mobile-menu .btn-ghost-nav{color:#111 !important;}.mobile-menu{-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}.mobile-menu>*{flex-shrink:0;}html.mm-lock{overflow:hidden;height:100%;}html.mm-lock body{overflow:hidden;height:100%;}</style>`
     const script = `<script data-mm-toggle="1">(function(){var b=document.getElementById('hamburgerBtn')||document.querySelector('.hamburger');var m=document.getElementById('mobileMenu')||document.querySelector('.mobile-menu');if(!b||!m)return;function set(o){m.classList.toggle('open',o);b.classList.toggle('open',o);b.setAttribute('aria-expanded',o?'true':'false');document.documentElement.classList.toggle('mm-lock',o);}b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();set(!m.classList.contains('open'));});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false);});})();</script>`
-    const inject = css + '\n' + script
-    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${inject}\n</body>`)
-    else html += inject
+    if (/<\/body>/i.test(html)) html = html.replace(/<\/body>/i, `${script}\n</body>`)
+    else html += script
   }
   return html
 }
