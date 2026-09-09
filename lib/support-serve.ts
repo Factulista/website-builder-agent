@@ -59,7 +59,7 @@ export function normalizeCategoryLabel(cat: string | null | undefined): string {
 }
 
 const SHARED_STYLE = `
-  .ayuda-wrap{max-width:1100px;margin:0 auto;padding:3rem 1.5rem 5rem}
+  .ayuda-wrap{max-width:1100px;margin:0 auto;padding:calc(64px + 2.5rem) 1.5rem 5rem}
   .ayuda-breadcrumb{font-size:.85rem;color:#888;margin-bottom:1.5rem}
   .ayuda-breadcrumb a{color:inherit;text-decoration:none}
   .ayuda-breadcrumb a:hover{text-decoration:underline}
