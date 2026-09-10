@@ -21,6 +21,11 @@ function splitCriticalCss(css: string): { critical: string; deferred: string } {
   const CRITICAL_PATTERNS = [
     /^:root\s*\{/, /^\*\s*[\{,]/, /^html\s*[\{,]/, /^body\s*[\{,]/,
     /nav/i, /footer/i, /\.header/i, /^header/i, /--[a-z]/, /^@/,
+    // Mobile drawer + its trigger — deferring these to window.load meant the
+    // base (closed-state) rules landed AFTER the @media block that opens them
+    // on narrow screens, silently overriding it and locking the hamburger to
+    // display:none / the drawer to unopenable on every blog post page.
+    /\.hamburger/i, /\.mobile-menu/i, /\.comp-nfd/i,
   ]
   const lines = css.split('\n')
   const critical: string[] = []

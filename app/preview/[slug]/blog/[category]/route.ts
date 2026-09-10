@@ -33,6 +33,11 @@ function splitCriticalCss(css: string): { critical: string; deferred: string } {
     /nav/i, /footer/i, /\.header/i, /^header/i,
     /--[a-z]/, // CSS variables
     /^@/, // @keyframes, @media etc — keep them all (may contain nav rules)
+    // Mobile drawer + its trigger — deferring these to window.load meant the
+    // base (closed-state) rules landed AFTER the @media block that opens them
+    // on narrow screens, silently overriding it and locking the hamburger to
+    // display:none / the drawer to unopenable on every blog category page.
+    /\.hamburger/i, /\.mobile-menu/i, /\.comp-nfd/i,
   ]
 
   // Collect contiguous rule blocks
