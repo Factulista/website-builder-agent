@@ -63,8 +63,10 @@ export async function POST(req: NextRequest) {
 
     // 3. upsert into published under `to`
     const pubIdx = published.findIndex(p => p.slug === to)
-    if (pubIdx >= 0) published[pubIdx] = { ...draft }
-    else published.push({ ...draft })
+    // Never copy the editor-only `blocks` cache into published_pages (see publish-project).
+    const { blocks: _blocks, ...live } = draft
+    if (pubIdx >= 0) published[pubIdx] = { ...live }
+    else published.push({ ...live })
 
     // 4. remove stale published entry `from`
     const staleIdx = published.findIndex(p => p.slug === from)

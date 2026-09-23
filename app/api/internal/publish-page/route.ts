@@ -27,9 +27,11 @@ export async function POST(req: NextRequest) {
   if (!draft) return NextResponse.json({ error: `draft page "${slug}" not found` }, { status: 404 })
   const published = (config.published_pages as Array<{slug:string;html?:string}> | undefined) ?? []
   const existing = published.findIndex(p => p.slug === slug)
+  // Never copy the editor-only `blocks` cache into published_pages (see publish-project).
+  const { blocks: _blocks, ...live } = draft as { slug: string; html?: string; blocks?: unknown }
   const updated = existing >= 0
-    ? published.map((p, i) => i === existing ? { ...draft } : p)
-    : [...published, { ...draft }]
+    ? published.map((p, i) => i === existing ? { ...live } : p)
+    : [...published, { ...live }]
   const { error: saveErr } = await supabase.from('projects').update({
     site_config: { ...config, published_pages: updated },
     updated_at: new Date().toISOString(),

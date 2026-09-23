@@ -46,11 +46,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nessuna pagina da pubblicare' }, { status: 400 })
     }
 
-    // Copy pages → published_pages
+    // Copy pages → published_pages, WITHOUT `blocks`. Blocks are the editor's per-section
+    // split of the html (regenerated from html whenever missing — see splitHtmlIntoBlocks);
+    // nothing reads them from published_pages, and copying them doubled each published
+    // page's size in site_config (Sep 2026 Vercel/Supabase load investigation).
+    const publishedPages = (config.pages as Array<Record<string, unknown>>).map(p => {
+      const { blocks: _blocks, ...rest } = p
+      return rest
+    })
     const { error } = await supabase
       .from('projects')
       .update({
-        site_config: { ...config, published_pages: config.pages },
+        site_config: { ...config, published_pages: publishedPages },
         updated_at: new Date().toISOString(),
       })
       .eq('id', projectId)
