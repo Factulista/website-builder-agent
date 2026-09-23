@@ -21,6 +21,20 @@ export async function GET(req: NextRequest) {
   const t1 = Date.now()
   const total = JSON.stringify(config).length
   const stringifyMs = Date.now() - t1
+  // ?detail=pages → per-page fingerprint of pages + published_pages (html sha256, field
+  // names, blocks presence) so a data cleanup can be proven to leave html untouched.
+  if (req.nextUrl.searchParams.get('detail') === 'pages') {
+    const { createHash } = await import('crypto')
+    const fp = (arr: unknown) => ((arr as Array<Record<string, unknown>>) ?? []).map(p => ({
+      slug: p.slug,
+      htmlSha: createHash('sha256').update(String(p.html ?? '')).digest('hex').slice(0, 16),
+      htmlLen: String(p.html ?? '').length,
+      hasBlocks: Array.isArray(p.blocks) && (p.blocks as unknown[]).length > 0,
+      fields: Object.keys(p).filter(k => k !== 'html' && k !== 'blocks').sort(),
+      meta: Object.fromEntries(Object.entries(p).filter(([k]) => k !== 'html' && k !== 'blocks')),
+    }))
+    return NextResponse.json({ pages: fp(config.pages), published_pages: fp(config.published_pages) })
+  }
   const keys = Object.entries(config)
     .map(([k, v]) => ({ key: k, bytes: JSON.stringify(v ?? null).length }))
     .sort((a, b) => b.bytes - a.bytes)
