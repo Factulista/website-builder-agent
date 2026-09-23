@@ -2434,6 +2434,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const sharedCssRef = useRef<string>('')
   const sharedNavHtmlRef = useRef<string>('')
   const sharedFooterHtmlRef = useRef<string>('')
+  // Last nav/footer this tab loaded from (or wrote to) shared_nav_html / shared_footer_html.
+  // Saves only re-derive + write the shared header/footer when the home page's copy
+  // actually differs from this baseline, i.e. someone edited it in THIS session —
+  // otherwise every unrelated save (any page, any text) re-wrote the header from the
+  // home page's own <nav>, silently reverting fixes made to shared_nav_html (Sep 2026:
+  // Precios/Recursos/Autónomos-panel regressions kept coming back this way).
+  const sharedNavBaselineRef = useRef<string | null>(null)
+  const sharedFooterBaselineRef = useRef<string | null>(null)
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -3300,6 +3308,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         const lang = (config?.context as { language?: string } | undefined)?.language ?? 'it'
         loadedPages = addBlogLinkToNav(loadedPages, lang === 'es' ? 'Blog' : 'Blog')
       }
+      // Shared header/footer are the source of truth: align the home page's own
+      // <nav>/<footer> copy to them on load. Saves derive shared_nav_html from the home
+      // page, so a stale copy there (e.g. after shared_nav_html was fixed directly in
+      // the DB) would otherwise be written back over the fix on the first edit of the
+      // nav. Home's blocks are dropped when its html changes so the backfill below
+      // re-splits them from the aligned html. Also records the save baselines.
+      {
+        const cfgAny = config as Record<string, unknown> | null
+        const sharedNavAtLoad = typeof cfgAny?.shared_nav_html === 'string' && cfgAny.shared_nav_html ? cfgAny.shared_nav_html : null
+        const sharedFooterAtLoad = typeof cfgAny?.shared_footer_html === 'string' && cfgAny.shared_footer_html ? cfgAny.shared_footer_html : null
+        const src = loadedPages.find(p => p.slug === 'home') ?? loadedPages[0]
+        if (src && (sharedNavAtLoad || sharedFooterAtLoad)) {
+          let html = src.html
+          if (sharedNavAtLoad && /<nav[\s\S]*?<\/nav>/i.test(html)) html = html.replace(/<nav[\s\S]*?<\/nav>/i, () => sharedNavAtLoad)
+          if (sharedFooterAtLoad && /<footer[\s\S]*?<\/footer>/i.test(html)) html = html.replace(/<footer[\s\S]*?<\/footer>/i, () => sharedFooterAtLoad)
+          if (html !== src.html) {
+            console.log('[shared_nav/footer] aligned home page copy to the shared header/footer')
+            loadedPages = loadedPages.map(p => p === src ? { ...p, html, blocks: undefined } : p)
+          }
+        }
+        const alignedSrc = loadedPages.find(p => p.slug === 'home') ?? loadedPages[0]
+        sharedNavBaselineRef.current = sharedNavAtLoad ?? alignedSrc?.html.match(/<nav[\s\S]*?<\/nav>/i)?.[0] ?? null
+        sharedFooterBaselineRef.current = sharedFooterAtLoad ?? alignedSrc?.html.match(/<footer[\s\S]*?<\/footer>/i)?.[0] ?? null
+      }
       // Fase 1: backfill blocks for pages that don't have them yet (migration).
       // Run in background after load — non-blocking, saves on next agent action.
       loadedPages = loadedPages.map(p => {
@@ -3534,17 +3566,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // At serve time (preview.ts) these are injected into every page, replacing
     // their per-page copies — so editing nav/footer on home propagates everywhere
     // automatically without any per-page sync loop.
+    // Only written when the home copy differs from this tab's baseline (= edited in this
+    // session); otherwise `cfg` keeps base's current DB value — see sharedNavBaselineRef.
     const homePage = newPages.find(p => p.slug === 'home') ?? newPages[0]
     if (homePage?.html) {
       const navMatch = homePage.html.match(/<nav[\s\S]*?<\/nav>/i)
-      if (navMatch) {
+      if (navMatch && navMatch[0] !== sharedNavBaselineRef.current) {
         cfg.shared_nav_html = navMatch[0]
         sharedNavHtmlRef.current = navMatch[0]
+        sharedNavBaselineRef.current = navMatch[0]
       }
       const footerMatch = homePage.html.match(/<footer[\s\S]*?<\/footer>/i)
-      if (footerMatch) {
+      if (footerMatch && footerMatch[0] !== sharedFooterBaselineRef.current) {
         cfg.shared_footer_html = footerMatch[0]
         sharedFooterHtmlRef.current = footerMatch[0]
+        sharedFooterBaselineRef.current = footerMatch[0]
       }
     }
 
@@ -3562,15 +3598,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Falls back to saveState if the RPC isn't deployed or errors.
   const savePagesInline = async (newPages: Page[]): Promise<boolean> => {
     if (!Array.isArray(newPages) || newPages.length === 0) return false
-    // Re-derive shared nav/footer from home (mirrors buildSiteConfig's logic)
+    // Re-derive shared nav/footer from home (mirrors buildSiteConfig's logic): sent only
+    // when edited in this session; null makes the RPC keep the DB's current value.
     const homePage = newPages.find(p => p.slug === 'home') ?? newPages[0]
     let navJson: string | null = null
     let footerJson: string | null = null
     if (homePage?.html) {
       const navMatch = homePage.html.match(/<nav[\s\S]*?<\/nav>/i)
-      if (navMatch) { navJson = navMatch[0]; sharedNavHtmlRef.current = navMatch[0] }
+      if (navMatch && navMatch[0] !== sharedNavBaselineRef.current) { navJson = navMatch[0]; sharedNavHtmlRef.current = navMatch[0] }
       const footerMatch = homePage.html.match(/<footer[\s\S]*?<\/footer>/i)
-      if (footerMatch) { footerJson = footerMatch[0]; sharedFooterHtmlRef.current = footerMatch[0] }
+      if (footerMatch && footerMatch[0] !== sharedFooterBaselineRef.current) { footerJson = footerMatch[0]; sharedFooterHtmlRef.current = footerMatch[0] }
     }
     try {
       const { error } = await supabase.rpc('save_inline_pages', {
@@ -3584,6 +3621,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         return saveState(messages, newPages)
       }
       latestPagesRef.current = newPages
+      if (navJson) sharedNavBaselineRef.current = navJson
+      if (footerJson) sharedFooterBaselineRef.current = footerJson
       return true
     } catch (e) {
       console.warn('[savePagesInline] unexpected, falling back to saveState:', e)
