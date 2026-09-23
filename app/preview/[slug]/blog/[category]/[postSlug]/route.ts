@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildBlogPostPage, pickRelatedPosts, type Post, type InjectPoints } from '../../../../../../lib/blog-serve'
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../../../../lib/design-system'
+import { fetchSiteConfigLite } from '../../../../../../lib/site-config-fetch'
 
 export const runtime = 'nodejs'
 // No 'force-dynamic': route is dynamic (params + DB) but the explicit Cache-Control
@@ -59,12 +60,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const { slug, postSlug } = await params
   const supabase = getSupabase()
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, site_config')
-    .eq('slug', slug)
-    .is('deleted_at', null)
-    .single()
+  // Lite fetch: only the home page keeps its html (nav/footer/font fallbacks) — never
+  // the full ~13MB site_config (see lib/site-config-fetch.ts).
+  const project = await fetchSiteConfigLite(supabase, slug, 'home')
 
   if (!project) return new Response('Not found', { status: 404 })
 
@@ -140,5 +138,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
   const megaPages = pages.filter(p => !!p.megaMenu).map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined, megaMenu: p.megaMenu as string | undefined }))
   const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock, megaPages, relatedPosts)
-  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=86400' } })
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400' } })
 }

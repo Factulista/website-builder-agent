@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildBlogListPage, type Post, type InjectPoints } from '../../../../lib/blog-serve'
+import { fetchSiteConfigLite } from '../../../../lib/site-config-fetch'
 
 export const runtime = 'nodejs'
 // Dynamic by nature (route params + DB read). We intentionally do NOT set
@@ -33,12 +34,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const currentPage = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10))
   const offset = (currentPage - 1) * PAGE_SIZE
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, site_config')
-    .eq('slug', slug)
-    .is('deleted_at', null)
-    .single()
+  // Lite fetch: only the home page keeps its html (nav/footer/font fallbacks) — never
+  // the full ~13MB site_config (see lib/site-config-fetch.ts).
+  const project = await fetchSiteConfigLite(supabase, slug, 'home')
 
   if (!project) return new Response('Not found', { status: 404 })
 
@@ -74,5 +72,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const blogSeoTitle = typeof config.blog_seo_title === 'string' ? config.blog_seo_title : undefined
   const blogSeoDescription = typeof config.blog_seo_description === 'string' ? config.blog_seo_description : undefined
   const html = buildBlogListPage((posts ?? []) as Post[], baseUrl, siteNav, siteFooter, siteStyle, lang, headerHtml, currentPage, totalPages, undefined, injectPoints, megaPages, blogSeoTitle, blogSeoDescription)
-  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=86400' } })
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400' } })
 }

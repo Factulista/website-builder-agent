@@ -801,7 +801,13 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   let config: SiteConfig
   let projectName: string
 
-  const rpc = await supabase.rpc('get_published_site', { p_slug: projectSlug }).maybeSingle()
+  // get_published_page returns html ONLY for the requested page (every other
+  // published page keeps just its metadata for nav/mega menus/knownSlugs) — ~100KB
+  // instead of all 47 pages' html (~6.6MB). Parsing that 6.6MB on every CDN
+  // revalidation was the main Fluid Active CPU cost. get_published_site is the
+  // previous-generation fallback if the new migration hasn't been run yet.
+  let rpc = await supabase.rpc('get_published_page', { p_slug: projectSlug, p_page: pageSlug }).maybeSingle()
+  if (rpc.error) rpc = await supabase.rpc('get_published_site', { p_slug: projectSlug }).maybeSingle()
 
   if (!rpc.error && rpc.data) {
     config = (rpc.data as { config: SiteConfig }).config
@@ -868,12 +874,12 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
     .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon, megaMenu: p.megaMenu }))
   return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
     status: 200,
-    // Cache published pages on CDN for 30s (s-maxage). Short enough that after
-    // clicking "Pubblica" the new version is live within 30 seconds max.
-    // stale-while-revalidate=86400 (1 day, matches the blog route): once stale,
-    // the CDN serves the cached copy instantly and revalidates in the background —
-    // crawlers/visitors that hit the page more than 30s apart (the common case)
-    // never pay a cold server-render, instead of only a 10s grace window.
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=86400' },
+    // Cache published pages on CDN for 10 minutes (s-maxage), then SWR for a day:
+    // once stale the CDN serves the cached copy instantly and revalidates in the
+    // background. Was 30s — with ~75 URLs crawled by Google/AI bots, nearly every
+    // crawler hit landed past the 30s window and triggered a full server render,
+    // which exhausted the Vercel Hobby Fluid Active CPU quota (Sep 2026). Trade-off:
+    // after "Pubblica" a change can take up to ~10 minutes to show on the live site.
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400' },
   })
 }

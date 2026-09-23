@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateSitemap, generateRobots, generateLlmsTxt, generateLlmsFullTxt } from '../../../lib/seo-files'
+import { fetchSiteConfigLite } from '../../../lib/site-config-fetch'
 
 export const runtime = 'nodejs'
 
@@ -30,12 +31,11 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, site_config, custom_domain')
-    .eq('slug', slug)
-    .is('deleted_at', null)
-    .single()
+  // Lite fetch (see lib/site-config-fetch.ts): favicon/robots/sitemap only need page
+  // metadata; llms*.txt read each page's html (descriptions, H1s, body text). Never the
+  // full ~13MB site_config — this route is hit by every browser/crawler (/favicon.ico).
+  const needsHtml = file === 'llms.txt' || file === 'llms-full.txt'
+  const project = await fetchSiteConfigLite(supabase, slug, needsHtml ? '*' : null)
 
   if (!project) return new Response('Not found', { status: 404 })
 
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
       .order('published_at', { ascending: false })
     const xml = generateSitemap(pages, baseUrl, slug, blogPosts ?? [], supportArticles ?? [])
     return new Response(xml, {
-      headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+      headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400' },
     })
   }
 
@@ -108,12 +108,12 @@ export async function GET(req: NextRequest) {
       ? generateLlmsFullTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro, (supportArticles as any[]) ?? [])
       : generateLlmsTxt(pages, baseUrl, siteName, siteDesc, (blogPosts as any[]) ?? [], llmsIntro, (supportArticles as any[]) ?? [])
     return new Response(llms, {
-      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400' },
     })
   }
 
   const robots = generateRobots(baseUrl, pages)
   return new Response(robots, {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400' },
   })
 }

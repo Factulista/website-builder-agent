@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildAyudaHubPage, normalizeCategoryLabel, type SupportCategory } from '../../../../lib/support-serve'
+import { fetchSiteConfigLite } from '../../../../lib/site-config-fetch'
 
 export const runtime = 'nodejs'
 
@@ -23,12 +24,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const { slug } = await params
   const supabase = getSupabase()
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, site_config')
-    .eq('slug', slug)
-    .is('deleted_at', null)
-    .single()
+  // Lite fetch: only the home page keeps its html (nav/footer/font fallbacks) — never
+  // the full ~13MB site_config (see lib/site-config-fetch.ts).
+  const project = await fetchSiteConfigLite(supabase, slug, 'home')
 
   if (!project) return new Response('Not found', { status: 404 })
 
@@ -70,5 +68,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const seoDescription = typeof config.ayuda_seo_description === 'string' ? config.ayuda_seo_description : undefined
 
   const html = buildAyudaHubPage(project.id, categories, baseUrl, siteNav, siteFooter, siteStyle, lang, faviconUrl, megaPages, seoTitle, seoDescription)
-  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=86400' } })
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400' } })
 }
