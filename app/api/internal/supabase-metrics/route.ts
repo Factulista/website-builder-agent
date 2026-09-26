@@ -33,6 +33,13 @@ export async function GET(req: NextRequest) {
   })
   if (!res.ok) return NextResponse.json({ error: `metrics HTTP ${res.status}`, body: (await res.text()).slice(0, 300) }, { status: 502 })
   const text = await res.text()
+  // ?raw=prefix1,prefix2 → raw exposition lines for those metric-name prefixes (debug)
+  const raw = req.nextUrl.searchParams.get('raw')
+  if (raw) {
+    const prefixes = raw.split(',').filter(Boolean)
+    const lines = text.split('\n').filter(l => !l.startsWith('#') && prefixes.some(pr => l.startsWith(pr)))
+    return NextResponse.json({ sampledAt: new Date().toISOString(), lines: lines.slice(0, 400) })
+  }
   const sums: Record<string, number> = {}
   const cpuByMode: Record<string, number> = {}
   const names = new Set<string>()
