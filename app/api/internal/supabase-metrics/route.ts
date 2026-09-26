@@ -27,6 +27,16 @@ export async function GET(req: NextRequest) {
   if (authErr) return authErr
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  // ?inventory=1 → names of the tables exposed via the REST API + storage buckets
+  // (names/visibility only, no row data) — to know what a project actually hosts.
+  if (req.nextUrl.searchParams.get('inventory') === '1') {
+    const h = { apikey: key, Authorization: `Bearer ${key}` }
+    const spec = await fetch(`${base}/rest/v1/`, { headers: h, cache: 'no-store' }).then(r => r.json()).catch(() => ({}))
+    const tables = Object.keys((spec as { paths?: Record<string, unknown> }).paths ?? {})
+      .filter(k => k !== '/' && !k.startsWith('/rpc/')).map(k => k.slice(1)).sort()
+    const buckets = await fetch(`${base}/storage/v1/bucket`, { headers: h, cache: 'no-store' }).then(r => r.json()).catch(() => [])
+    return NextResponse.json({ tables, buckets: Array.isArray(buckets) ? buckets.map((b: { name: string; public: boolean }) => ({ name: b.name, public: b.public })) : buckets })
+  }
   const res = await fetch(`${base}/customer/v1/privileged/metrics`, {
     headers: { Authorization: 'Basic ' + Buffer.from(`service_role:${key}`).toString('base64') },
     cache: 'no-store',
