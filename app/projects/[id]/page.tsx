@@ -23,7 +23,7 @@ import { applySeoMeta } from '../../../lib/seo/crawler-view'
 import { SEO_CHECKS, SEO_GROUPS, getCheckSource, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { patchSiteConfig } from '../../../lib/site-config-patch'
-import { readPages, writePages, loadEditorProject, savePagesDiff, baselineOf, type PagesBaseline } from '../../../lib/pages-store'
+import { readPages, writePages, loadEditorProject, savePagesDiff, baselineOf, pageFingerprint, type PagesBaseline } from '../../../lib/pages-store'
 import { createVersionDedup, loadKnownHtmlHashes, loadVersionPages } from '../../../lib/versions-store'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
@@ -3656,28 +3656,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   /**
    * Persist the draft pages. Normally sends only the pages changed since this tab's
    * baseline (pagesBaselineRef) — ~one page instead of all of them — and the server
-   * keeps pages another session added. When a diff isn't possible (stale view, first
-   * save of a legacy project) it falls back to a full write, with the collaborative
-   * merge: DB pages this tab never saw and didn't delete are kept.
+   * keeps pages another session added.
+   *
+   * When the server refuses the diff because this tab is out of date (another session
+   * or a recovery changed the stored pages), it must NOT write the tab's whole list —
+   * that would put back every stale page (2026-10-07 incident). It rebases instead:
+   * starts from the pages stored now and applies only what this tab changed since its
+   * baseline (edited/added pages, removals), then aligns the tab with the result.
+   * Without a baseline (first save of a legacy project): ours + DB-only pages.
    */
   const persistDraftPages = async (list: Page[], shared?: { nav?: string | null; footer?: string | null }): Promise<void> => {
     const diff = await savePagesDiff(supabase, id, 'draft', list, pagesBaselineRef.current, deletedSlugsRef.current, shared)
     if (diff) { pagesBaselineRef.current = diff.baseline; return }
-    let toWrite = list
-    try {
-      const dbPages = await readPages<Page>(supabase, id, 'draft')
-      const ours = new Set(list.map(p => p.slug))
-      const removed = new Set([...deletedSlugsRef.current, ...[...(pagesBaselineRef.current?.keys() ?? [])].filter(sl => !ours.has(sl))])
-      const extraPages = dbPages.filter(p => !ours.has(p.slug) && !removed.has(p.slug))
-      if (extraPages.length > 0) {
-        console.log('[persistDraftPages] keeping', extraPages.length, 'page(s) added by another session:', extraPages.map(p => p.slug))
-        toWrite = [...list, ...extraPages]
-      }
-    } catch (mergeErr) {
-      console.warn('[persistDraftPages] merge read failed (non-fatal):', mergeErr)
+    const dbPages = await readPages<Page>(supabase, id, 'draft')
+    const base = pagesBaselineRef.current
+    const ours = new Set(list.map(p => p.slug))
+    const removed = new Set([...deletedSlugsRef.current].filter(sl => !ours.has(sl)))
+    let merged: Page[]
+    if (base) {
+      for (const sl of base.keys()) if (!ours.has(sl)) removed.add(sl)
+      const changed = new Map(list.filter(p => base.get(p.slug) !== pageFingerprint(p)).map(p => [p.slug, p]))
+      merged = dbPages.filter(p => !removed.has(p.slug)).map(p => changed.get(p.slug) ?? p)
+      const stored = new Set(merged.map(p => p.slug))
+      for (const p of changed.values()) if (!stored.has(p.slug)) merged.push(p)
+      console.warn('[persistDraftPages] tab was out of date — rebased', changed.size, 'edited page(s) on the stored pages')
+    } else {
+      merged = [...list, ...dbPages.filter(p => !ours.has(p.slug) && !removed.has(p.slug))]
     }
-    await writePages(supabase, id, 'draft', toWrite, shared)
-    pagesBaselineRef.current = baselineOf(toWrite)
+    await writePages(supabase, id, 'draft', merged, shared)
+    pagesBaselineRef.current = baselineOf(merged)
+    if (base) {
+      // Align the tab with what is stored, so its stale pages never count as edits later.
+      const withBlocks = merged.map(p => (p.blocks ? p : { ...p, blocks: splitHtmlIntoBlocks(p.html) ?? undefined }))
+      latestPagesRef.current = withBlocks
+      setPages(withBlocks)
+    }
   }
 
   // Fast-path save for the INLINE EDITOR only (high-frequency content edits).
