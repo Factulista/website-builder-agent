@@ -157,9 +157,12 @@ async function runChecks(sb: Sb, userId: string, mode: 'config' | 'table', ids: 
   }
 
   if (mode === 'table') {
-    // Old builder tabs: save_inline_pages must land in the table too
-    await sb.rpc('save_inline_pages', { p_id: id, p_pages: [B] })
-    checks.legacySaveInTable = (await readPages(sb, id, 'draft')).map(p => p.slug).join() === 'precios'
+    // Old builds (no client marker) must be refused, not write
+    const before = (await readPages(sb, id, 'draft')).map(p => p.slug).join()
+    const legacy = await sb.rpc('save_inline_pages', { p_id: id, p_pages: [B] })
+    checks.legacySaveRefused = !!legacy.error && /client_outdated/.test(legacy.error.message)
+      && (await readPages(sb, id, 'draft')).map(p => p.slug).join() === before
+    await writePages(sb, id, 'draft', [B])
     // Rollback: arrays rebuilt in site_config, edits kept
     const back = await sb.rpc('pages_migrate_to_config', { p_id: id })
     const raw3 = await raw()

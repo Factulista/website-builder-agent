@@ -45,6 +45,14 @@ export function stripPageBlocks<T>(pages: T[]): T[] {
   })
 }
 
+/**
+ * Client marker required by the page-writing SQL functions (migration
+ * 20261008_client_guard.sql): builds that don't send an accepted value are refused
+ * ('client_outdated'), so a long-open tab running an old build can't overwrite pages.
+ * Bump together with _require_client() to retire builds.
+ */
+const PAGES_CLIENT = typeof window === 'undefined' ? 'server' : 'builder-3'
+
 /** PostgREST error for "this function doesn't exist (yet)". */
 function isMissingFunction(error: { code?: string; message?: string } | null): boolean {
   return !!error && (error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(error.message ?? ''))
@@ -101,6 +109,7 @@ export async function writePages(
     p_pages: clean,
     p_shared_nav: shared?.nav ?? null,
     p_shared_footer: shared?.footer ?? null,
+    p_client: PAGES_CLIENT,
   })
   if (!viaRpc.error) return
   if (!isMissingFunction(viaRpc.error)) throw new Error(`writePages(${state}) failed: ${viaRpc.error.message}`)
@@ -286,6 +295,7 @@ export async function savePagesDiff(
     p_deleted: [...deleted],
     p_shared_nav: shared?.nav ?? null,
     p_shared_footer: shared?.footer ?? null,
+    p_client: PAGES_CLIENT,
   })
   if (error) {
     if (isMissingFunction(error) || /pages_patch_stale/.test(error.message)) {
