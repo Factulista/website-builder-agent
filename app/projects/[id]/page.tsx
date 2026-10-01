@@ -24,6 +24,7 @@ import { SEO_CHECKS, SEO_GROUPS, getCheckSource, type CheckId } from '../../../l
 import type { Page } from '../../../lib/types'
 import { patchSiteConfig } from '../../../lib/site-config-patch'
 import { readPages, writePages, loadEditorProject, savePagesDiff, baselineOf, type PagesBaseline } from '../../../lib/pages-store'
+import { createVersionDedup, loadKnownHtmlHashes, loadVersionPages } from '../../../lib/versions-store'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
 import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
@@ -2462,6 +2463,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Draft pages as last persisted by this tab (slug → fingerprint): saves send only the
   // pages that differ from it (lib/pages-store savePagesDiff). null = unknown → full write.
   const pagesBaselineRef = useRef<PagesBaseline | null>(null)
+  // sha256 of page html already stored for versions (page_html_blobs) — html with a
+  // known hash isn't re-sent when creating a version (lib/versions-store).
+  const knownHtmlHashesRef = useRef<Set<string>>(new Set())
   const editIframeRef = useRef<HTMLIFrameElement>(null)
   const editBaseHtmlRef = useRef<string>('')
   // Same staleness-detection idea as editBaseHtmlRef, but for the raw-HTML code editor on a
@@ -3380,6 +3384,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       // Versions now live in the project_versions table — load the lightweight
       // list (no page HTML; that's fetched lazily on restore). Falls back to any
       // legacy config.versions for projects not yet migrated.
+      void loadKnownHtmlHashes(supabase, id).then(h => { knownHtmlHashesRef.current = h })
       void (async () => {
         const { data: vrows, error: vErr } = await supabase
           .from('project_versions')
@@ -3529,6 +3534,18 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const updated = [optimistic, ...versions].slice(0, 30)
     setVersions(updated)   // optimistic UI — list shows the new entry immediately
     try {
+      // Deduplicated storage: only html the DB doesn't have yet is sent/stored; the
+      // server prunes to 10 versions and drops unreferenced html (lib/versions-store).
+      const created = await createVersionDedup(supabase, id, summary, currentPages, knownHtmlHashesRef.current, 10)
+        .catch((e: unknown) => { console.error('[createVersion] dedup insert error:', e); return undefined })
+      if (created === undefined) return updated
+      if (created) {
+        setVersions(prev => prev.map(v => v.id === optimistic.id
+          ? { id: created.id, timestamp: created.created_at, summary }
+          : v))
+        return updated
+      }
+      // Legacy path (dedup functions not installed): full copy + prune.
       const { data, error } = await supabase
         .from('project_versions')
         .insert({ project_id: id, summary, pages: stripBlocksForSave(currentPages) })
@@ -6749,16 +6766,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                             // fetch the full snapshot for this version before restoring.
                             let restorePages = v.pages
                             if (!restorePages) {
-                              const { data, error } = await supabase
-                                .from('project_versions')
-                                .select('pages')
-                                .eq('id', v.id)
-                                .single()
-                              if (error || !data?.pages) {
+                              const loaded = await loadVersionPages<Page>(supabase, v.id).catch(() => null)
+                              if (!loaded || loaded.some(p => typeof p.html !== 'string')) {
                                 await alertDialog({ title: 'Errore', message: 'Impossibile caricare questa versione.', variant: 'danger' })
                                 return
                               }
-                              restorePages = data.pages as Page[]
+                              restorePages = loaded
                             }
                             if (!restorePages || restorePages.length === 0) return
                             // Snapshots are stored without the editor-only blocks cache

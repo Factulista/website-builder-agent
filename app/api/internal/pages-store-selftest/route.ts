@@ -14,6 +14,7 @@ import {
   readPages, readAllPages, readPage, writePages, updatePages, publishDrafts, copyAllPages, loadSiteWithPages,
   savePagesDiff, baselineOf,
 } from '../../../../lib/pages-store'
+import { createVersionDedup, loadVersionPages, loadKnownHtmlHashes, htmlHash } from '../../../../lib/versions-store'
 export const runtime = 'nodejs'
 
 type Sb = SupabaseClient
@@ -128,6 +129,31 @@ async function runChecks(sb: Sb, userId: string, mode: 'config' | 'table', ids: 
     checks.diffStaleDetected = r4 === null && (await readPage(sb, d.id, 'home', 'draft'))?.html === 'h1'
     // no baseline → null (caller does a full write)
     checks.diffNeedsBaseline = (await savePagesDiff(sb, d.id, 'draft', l3, null)) === null
+  }
+
+  // ── Deduplicated versions (20261007) — only in table mode, if installed ──
+  if (mode === 'table') {
+    const probe = await sb.rpc('version_blob_hashes', { p_id: id })
+    if (!probe.error) {
+      const v = await mk('v', null)
+      const blobCount = async () => (await sb.from('page_html_blobs').select('hash', { count: 'exact', head: true }).eq('project_id', v.id)).count ?? -1
+      const P = (slug: string, html: string) => ({ slug, name: slug, html, blocks: [1] })
+      const known = new Set<string>()
+      const v1pages = [P('home', 'H'.repeat(5000)), P('a', 'A'.repeat(5000)), P('b', 'B'.repeat(5000))]
+      const v1 = await createVersionDedup(sb, v.id, 'v1', v1pages, known, 3)
+      const v2 = await createVersionDedup(sb, v.id, 'v2', [P('home', 'H2'), v1pages[1], v1pages[2]], known, 3)
+      checks.versionDedup = !!v1 && !!v2 && (await blobCount()) === 4
+      const back = await loadVersionPages<{ slug: string; html: string; blocks?: unknown }>(sb, v1!.id)
+      checks.versionRoundTrip = !!back && back.map(p => `${p.slug}:${p.html.length}`).join() === 'home:5000,a:5000,b:5000' && back.every(p => !('blocks' in p))
+      // stale known-hash cache → server reports missing blobs → client resends html
+      const fakeKnown = new Set([await htmlHash('zzz')]) // claims 'zzz' is stored — it isn't
+      const stale = await createVersionDedup(sb, v.id, 'v3', [{ slug: 'z', html: 'zzz' }], fakeKnown, 3)
+      checks.versionStaleCache = !!stale && (await loadVersionPages<{ html: string }>(sb, stale!.id))?.[0]?.html === 'zzz'
+      // prune to 3 + GC: v1 dropped; its unique blob "H…" must be deleted
+      await createVersionDedup(sb, v.id, 'v4', [P('home', 'H2')], new Set(await loadKnownHtmlHashes(sb, v.id)), 3)
+      const left = (await sb.from('project_versions').select('summary').eq('project_id', v.id).order('created_at')).data?.map(r => r.summary).join()
+      checks.versionPruneGc = left === 'v2,v3,v4' && (await blobCount()) === 4
+    }
   }
 
   if (mode === 'table') {

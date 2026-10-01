@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { renderPublishedPageHtml, resolvePublishedRedirect, SNAPSHOT_MANIFEST_PATH, type PublishedManifest } from './preview'
 import { LITE_HOST, liteSnapshotPath, LITE_SNAPSHOT_SLUGS } from './site-config-fetch'
@@ -38,6 +39,8 @@ export type RegenerateResult = {
   hosts: string[]
   pages: number
   skippedRedirected: number
+  /** Rows whose body was identical to the stored one (not rewritten). */
+  unchanged: number
   removedStale: number
   durationMs: number
   error?: string
@@ -46,7 +49,7 @@ export type RegenerateResult = {
 export async function regeneratePublishedSnapshots(supabase: SupabaseClient, projectId: string): Promise<RegenerateResult> {
   const t0 = Date.now()
   const fail = (error: string, hosts: string[] = []): RegenerateResult =>
-    ({ ok: false, hosts, pages: 0, skippedRedirected: 0, removedStale: 0, durationMs: Date.now() - t0, error })
+    ({ ok: false, hosts, pages: 0, skippedRedirected: 0, unchanged: 0, removedStale: 0, durationMs: Date.now() - t0, error })
 
   const { data: project, error: pErr } = await supabase
     .from('projects')
@@ -55,7 +58,7 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
     .single()
   if (pErr || !project) return fail(`project not found: ${pErr?.message ?? ''}`)
   const hosts = publicHostsFor(project as { slug: string; custom_domain: string | null; custom_domain_status: string | null })
-  if (hosts.length === 0) return { ok: true, hosts, pages: 0, skippedRedirected: 0, removedStale: 0, durationMs: Date.now() - t0 }
+  if (hosts.length === 0) return { ok: true, hosts, pages: 0, skippedRedirected: 0, unchanged: 0, removedStale: 0, durationMs: Date.now() - t0 }
 
   // One full read of the published config per regeneration (not per request).
   const rpc = await readPublishedSite(supabase, project.slug)
@@ -65,8 +68,31 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
   const slugs = (config.published_pages ?? []).map(p => p.slug)
   const redirects = (config.redirects ?? []) as Array<{ from: string; to: string }>
 
-  let pages = 0, skippedRedirected = 0, removedStale = 0
+  let pages = 0, skippedRedirected = 0, removedStale = 0, unchanged = 0
   const now = new Date().toISOString()
+
+  // Only rows whose body actually changed are written (body_hash, migration
+  // 20261007): a regeneration after a small edit rewrites one or two pages instead of
+  // all ~5MB — every rewrite costs WAL + dead TOAST space. Without the column
+  // (migration not run yet) every row is written, as before.
+  const sha = (body: string) => createHash('sha256').update(body).digest('hex')
+  let hashColumn = true
+  const storedHashes = async (host: string): Promise<Map<string, string | null>> => {
+    if (!hashColumn) return new Map()
+    const r = await supabase.from('published_snapshots').select('path, body_hash').eq('project_slug', project.slug).eq('host', host)
+    if (r.error) { hashColumn = false; return new Map() }
+    return new Map((r.data ?? []).map(x => [x.path as string, (x.body_hash as string | null) ?? null]))
+  }
+  const onlyChanged = (rows: Array<Record<string, unknown>>, stored: Map<string, string | null>) => {
+    if (!hashColumn) return rows
+    const out: Array<Record<string, unknown>> = []
+    for (const r of rows) {
+      const h = sha(String(r.body))
+      if (stored.get(String(r.path)) === h) { unchanged++; continue }
+      out.push({ ...r, body_hash: h })
+    }
+    return out
+  }
   for (const host of hosts) {
     const rows: Array<Record<string, unknown>> = []
     for (const slug of slugs) {
@@ -79,10 +105,11 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
     const manifest: PublishedManifest = { projectName, pages: slugs, redirects }
     rows.push({ project_slug: project.slug, host, path: SNAPSHOT_MANIFEST_PATH, project_id: projectId, status: 200, content_type: 'application/json', body: JSON.stringify(manifest), rendered_at: now })
 
-    // Upsert in small chunks (~100KB/page) so no single request is huge.
-    for (let i = 0; i < rows.length; i += 8) {
+    // Upsert (changed rows only) in small chunks (~100KB/page) so no request is huge.
+    const toWrite = onlyChanged(rows, await storedHashes(host))
+    for (let i = 0; i < toWrite.length; i += 8) {
       const { error } = await supabase.from('published_snapshots')
-        .upsert(rows.slice(i, i + 8), { onConflict: 'project_slug,host,path' })
+        .upsert(toWrite.slice(i, i + 8), { onConflict: 'project_slug,host,path' })
       if (error) return fail(`upsert failed: ${error.message}`, hosts)
     }
     pages += rows.length - 1
@@ -100,15 +127,15 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
   }
 
   // Site shell rows for the blog / Ayuda / SEO-file routes (see LITE_HOST).
+  const storedShell = await storedHashes(LITE_HOST)
   for (const htmlSlug of LITE_SNAPSHOT_SLUGS) {
     const lite = await supabase.rpc('get_site_config_lite', { p_slug: project.slug, p_html_slug: htmlSlug }).maybeSingle()
     if (lite.error || !lite.data) return fail(`get_site_config_lite failed: ${lite.error?.message ?? 'no data'}`, hosts)
     const d = lite.data as { id: string; name: string | null; custom_domain: string | null; config: Record<string, unknown> }
     const body = JSON.stringify({ id: d.id, name: d.name, custom_domain: d.custom_domain, site_config: d.config ?? {} })
-    const { error } = await supabase.from('published_snapshots').upsert(
-      { project_slug: project.slug, host: LITE_HOST, path: liteSnapshotPath(htmlSlug), project_id: projectId, status: 200, content_type: 'application/json', body, rendered_at: now },
-      { onConflict: 'project_slug,host,path' },
-    )
+    const [row] = onlyChanged([{ project_slug: project.slug, host: LITE_HOST, path: liteSnapshotPath(htmlSlug), project_id: projectId, status: 200, content_type: 'application/json', body, rendered_at: now }], storedShell)
+    if (!row) continue
+    const { error } = await supabase.from('published_snapshots').upsert(row, { onConflict: 'project_slug,host,path' })
     if (error) return fail(`shell upsert failed: ${error.message}`, hosts)
   }
 
@@ -123,7 +150,7 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
   if (orphanErr) return fail(`orphan-host cleanup failed: ${orphanErr.message}`, hosts)
   removedStale += orphaned?.length ?? 0
 
-  return { ok: true, hosts, pages, skippedRedirected, removedStale, durationMs: Date.now() - t0 }
+  return { ok: true, hosts, pages, skippedRedirected, unchanged, removedStale, durationMs: Date.now() - t0 }
 }
 
 /** Service-role regeneration that never throws (for fire-after-write call sites). */
@@ -133,7 +160,7 @@ export async function regenerateAfterChange(projectId: string): Promise<Regenera
     const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
     return await regeneratePublishedSnapshots(sb, projectId)
   } catch (e) {
-    return { ok: false, hosts: [], pages: 0, skippedRedirected: 0, removedStale: 0, durationMs: 0, error: String(e) }
+    return { ok: false, hosts: [], pages: 0, skippedRedirected: 0, unchanged: 0, removedStale: 0, durationMs: 0, error: String(e) }
   }
 }
 
@@ -151,7 +178,7 @@ export function withSnapshotRegen<R extends Request>(handler: (req: R) => Promis
     if (!res.ok || !projectId) return res
     const r = await regenerateAfterChange(projectId)
     const headers = new Headers(res.headers)
-    headers.set('x-snapshots', r.ok ? `ok pages=${r.pages} ${r.durationMs}ms` : `error ${r.error ?? ''}`.slice(0, 200))
+    headers.set('x-snapshots', r.ok ? `ok pages=${r.pages} unchanged=${r.unchanged} ${r.durationMs}ms` : `error ${r.error ?? ''}`.slice(0, 200))
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
   }
 }
