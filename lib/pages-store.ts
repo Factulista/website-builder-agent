@@ -58,7 +58,7 @@ export async function readPages<T extends { slug: string } = StoredPage>(sb: Sup
   const { data, error } = await sb.from('projects').select(`p:site_config->${KEY[state]}`).eq('id', projectId).single()
   if (error) throw new Error(`readPages(${state}) failed: ${error.message}`)
   const list = (data as { p: unknown } | null)?.p
-  return Array.isArray(list) ? (list as T[]) : []
+  return Array.isArray(list) ? stripPageBlocks(list as T[]) : []
 }
 
 /** Draft + published in one round-trip (tools that edit both copies of a page). */
@@ -74,7 +74,7 @@ export async function readAllPages<T extends { slug: string } = StoredPage>(sb: 
     .eq('id', projectId).single()
   if (error) throw new Error(`readAllPages failed: ${error.message}`)
   const row = (data ?? {}) as { d?: unknown; p?: unknown }
-  return { draft: Array.isArray(row.d) ? (row.d as T[]) : [], published: Array.isArray(row.p) ? (row.p as T[]) : [] }
+  return { draft: Array.isArray(row.d) ? stripPageBlocks(row.d as T[]) : [], published: Array.isArray(row.p) ? stripPageBlocks(row.p as T[]) : [] }
 }
 
 /** One page by slug, or null. */
