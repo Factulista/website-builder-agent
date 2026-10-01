@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
         pages: pages?.length ?? 0,
         format: pages ? (pages.some(p => 'html_ref' in p) ? 'dedup' : 'legacy') : 'empty',
         metaBytes: JSON.stringify(v.pages ?? null).length,
+        refs: req.nextUrl.searchParams.get('refs') === '1' && pages ? Object.fromEntries(pages.map(p => [String(p.slug), String(p.html_ref ?? '').slice(0, 16)])) : undefined,
       }
     }),
     blobs: { count: blobs?.length ?? 0, htmlBytes: blobBytes },
