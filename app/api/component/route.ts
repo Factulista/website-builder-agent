@@ -3,6 +3,8 @@ import { runComponentAgent, extractComponentStyle } from '../../../lib/agents/co
 import { requireUserAndProject } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits } from '../../../lib/credits'
 
+import { patchSiteConfig } from '../../../lib/site-config-patch'
+
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
@@ -59,29 +61,14 @@ export async function POST(req: NextRequest) {
     // Extract the <style> block from the generated component and persist it.
     // Next time the user generates a component, the agent will reference this
     // style to maintain visual consistency across all components of the project.
-    //
-    // ⚠️  Race-condition guard: we must do a FRESH read immediately before the
-    // write so we don't overwrite any chat messages saved by a concurrent
-    // handleSend/saveState while the component agent was running.
-    // The read and write are as close together as possible (no await between them
-    // except the supabase round-trip itself) to minimise the window.
     const newComponentStyle = extractComponentStyle(result.html)
     if (newComponentStyle) {
-      // Fire-and-forget — don't block the response
+      // Fire-and-forget — don't block the response.
+      // Single-field update of context.canvasComponentStyle (lib/site-config-patch.ts):
+      // no full read-modify-write, so nothing saved concurrently can be overwritten.
       ;(async () => {
-        const { data: latest } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-        if (!latest?.site_config) return
-        const latestConfig = latest.site_config as Record<string, unknown>
-        const latestContext = (latestConfig.context as Record<string, unknown>) ?? {}
-        // Versions live in the project_versions table now — strip any legacy key so
-        // this write doesn't re-introduce the bloated versions array into site_config.
-        delete latestConfig.versions
-        await supabase.from('projects').update({
-          site_config: {
-            ...latestConfig,                                   // freshest possible snapshot
-            context: { ...latestContext, canvasComponentStyle: newComponentStyle },
-          },
-        }).eq('id', projectId)
+        const { error } = await patchSiteConfig(supabase, projectId, [{ path: ['context', 'canvasComponentStyle'], value: newComponentStyle }])
+        if (error) console.error('[component] style-memory save error:', error)
       })().catch(e => console.error('[component] style-memory save error:', e))
     }
 

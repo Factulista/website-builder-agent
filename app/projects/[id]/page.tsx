@@ -22,6 +22,7 @@ import { analyzeAllPages, getAggregateScore, scoreColor, formatCheckValue, type 
 import { applySeoMeta } from '../../../lib/seo/crawler-view'
 import { SEO_CHECKS, SEO_GROUPS, getCheckSource, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
+import { patchSiteConfig } from '../../../lib/site-config-patch'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
 import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
@@ -1504,6 +1505,23 @@ function mergeSharedCssIntoPage(html: string, sharedCss: string): string {
  * them doubled every page's size in the ~10MB site_config blob (Oct 2026 Supabase
  * memory/IO investigation).
  */
+/**
+ * Stable string form of a site_config value, to tell whether a tab changed it.
+ * Key-order independent: Postgres jsonb re-orders object keys on storage, so a plain
+ * JSON.stringify would flag an unchanged object as "changed" (and defeat the check).
+ */
+function snapSetting(v: unknown): string {
+  const norm = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(norm)
+    if (x && typeof x === 'object') {
+      return Object.fromEntries(Object.keys(x as Record<string, unknown>).sort()
+        .map(k => [k, norm((x as Record<string, unknown>)[k])]))
+    }
+    return x
+  }
+  return JSON.stringify(norm(v ?? null))
+}
+
 function stripBlocksForSave(pages: Page[]): Page[] {
   return pages.map(p => {
     if (p.blocks === undefined) return p
@@ -2459,6 +2477,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Precios/Recursos/Autónomos-panel regressions kept coming back this way).
   const sharedNavBaselineRef = useRef<string | null>(null)
   const sharedFooterBaselineRef = useRef<string | null>(null)
+  // Same idea for the settings buildSiteConfig mirrors from in-tab refs (favicon,
+  // blog header, inject points, sidebar banner, context, shared CSS): a full save only
+  // writes a setting if THIS tab changed it since load (or since its own last write) —
+  // otherwise a page save from a tab opened earlier reverted settings another person
+  // had changed in the meantime. Values are snapSetting() strings keyed by config key.
+  const settingsBaselineRef = useRef<Record<string, string>>({})
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -2857,25 +2881,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setBlogHeaderSaving('saving')
     const { data: { session: sc } } = await supabase.auth.getSession()
     if (!sc) { setBlogHeaderSaving('idle'); return }
-    // Merge blog_header_html into existing site_config
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existingConfig = (proj?.site_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: { ...existingConfig, blog_header_html: blogHeaderHtml },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    await patchSiteConfig(supabase, id, [{ path: ['blog_header_html'], value: blogHeaderHtml }])
+    settingsBaselineRef.current.blog_header_html = snapSetting(blogHeaderHtml)
     setBlogHeaderSaving('saved')
     setTimeout(() => setBlogHeaderSaving('idle'), 2000)
   }
 
   const saveInjectPoints = async (updated: Record<string, string>) => {
     setInjectPointsSaving('saving')
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existingConfig = (proj?.site_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: { ...existingConfig, inject_points: updated },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    await patchSiteConfig(supabase, id, [{ path: ['inject_points'], value: updated }])
+    settingsBaselineRef.current.inject_points = snapSetting(updated)
     setInjectPointsSaving('saved')
     setTimeout(() => setInjectPointsSaving('idle'), 2000)
   }
@@ -2884,12 +2899,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setBlogSidebarBannerSaving('saving')
     const { data: { session: sc } } = await supabase.auth.getSession()
     if (!sc) { setBlogSidebarBannerSaving('idle'); return }
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existingConfig = (proj?.site_config ?? {}) as Record<string, unknown>
-    const { error } = await supabase.from('projects').update({
-      site_config: { ...existingConfig, blog_sidebar_banner: { url, link } },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    const { error } = await patchSiteConfig(supabase, id, [{ path: ['blog_sidebar_banner'], value: { url, link } }])
+    if (!error) settingsBaselineRef.current.blog_sidebar_banner = snapSetting({ url, link })
     if (error) {
       console.error('[banner] save failed:', error)
       setBlogSidebarBannerSaving('idle')
@@ -2901,94 +2912,46 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const saveBrevoIntegration = async () => {
     setBrevoSaving('saving')
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
-    const existingIntegrations = (existing.integrations ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: {
-        ...existing,
-        integrations: {
-          ...existingIntegrations,
-          brevo: { apiKey: brevoApiKey.trim() }
-        }
-      },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    await patchSiteConfig(supabase, id, [{ path: ['integrations', 'brevo'], value: { apiKey: brevoApiKey.trim() } }])
     setBrevoSaving('saved')
     setTimeout(() => setBrevoSaving('idle'), 2000)
   }
 
   const saveContactFormConfig = async () => {
     setCfSaving('saving')
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
-    const existingComponents = (existing.components_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: {
-        ...existing,
-        components_config: {
-          ...existingComponents,
-          contact_form: {
-            admin_email:            cfAdminEmail.trim(),
-            confirm_message:        cfConfirmMsg.trim(),
-            confirm_email_message:  cfConfirmEmailMsg.trim(),
-            redirect_url:           cfRedirectUrl.trim(),
-            turnstile_site_key:     cfTurnstileSiteKey.trim(),
-          }
-        }
-      },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    await patchSiteConfig(supabase, id, [{ path: ['components_config', 'contact_form'], value: {
+      admin_email:            cfAdminEmail.trim(),
+      confirm_message:        cfConfirmMsg.trim(),
+      confirm_email_message:  cfConfirmEmailMsg.trim(),
+      redirect_url:           cfRedirectUrl.trim(),
+      turnstile_site_key:     cfTurnstileSiteKey.trim(),
+    } }])
     setCfSaving('saved')
     setTimeout(() => setCfSaving('idle'), 2000)
   }
 
   const saveCrmConfig = async () => {
     setCrmSaving('saving')
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
-    const existingComponents = (existing.components_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: {
-        ...existing,
-        components_config: {
-          ...existingComponents,
-          crm_form: {
-            admin_email:           crmAdminEmail.trim(),
-            confirm_message:       crmConfirmMsg.trim(),
-            confirm_email_message: crmConfirmEmailMsg.trim(),
-            redirect_url:          crmRedirectUrl.trim(),
-            turnstile_site_key:    crmTurnstileSiteKey.trim(),
-          }
-        }
-      },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    await patchSiteConfig(supabase, id, [{ path: ['components_config', 'crm_form'], value: {
+      admin_email:           crmAdminEmail.trim(),
+      confirm_message:       crmConfirmMsg.trim(),
+      confirm_email_message: crmConfirmEmailMsg.trim(),
+      redirect_url:          crmRedirectUrl.trim(),
+      turnstile_site_key:    crmTurnstileSiteKey.trim(),
+    } }])
     setCrmSaving('saved')
     setTimeout(() => setCrmSaving('idle'), 2000)
   }
 
   const saveSuggestConfig = async () => {
     setSuggestSaving('saving')
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const existing = (proj?.site_config ?? {}) as Record<string, unknown>
-    const existingComponents = (existing.components_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: {
-        ...existing,
-        components_config: {
-          ...existingComponents,
-          suggest_form: {
-            admin_email:           suggestAdminEmail.trim(),
-            confirm_message:       suggestConfirmMsg.trim(),
-            confirm_email_message: suggestConfirmEmailMsg.trim(),
-            redirect_url:          suggestRedirectUrl.trim(),
-            turnstile_site_key:    suggestTurnstileSiteKey.trim(),
-          }
-        }
-      },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    await patchSiteConfig(supabase, id, [{ path: ['components_config', 'suggest_form'], value: {
+      admin_email:           suggestAdminEmail.trim(),
+      confirm_message:       suggestConfirmMsg.trim(),
+      confirm_email_message: suggestConfirmEmailMsg.trim(),
+      redirect_url:          suggestRedirectUrl.trim(),
+      turnstile_site_key:    suggestTurnstileSiteKey.trim(),
+    } }])
     setSuggestSaving('saved')
     setTimeout(() => setSuggestSaving('idle'), 2000)
   }
@@ -3385,6 +3348,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (config?.media) setMediaMeta(config.media)
       if ((config as any)?.favicon_url) setFaviconUrl((config as any).favicon_url as string)
       setBlogHeaderHtml(config?.blog_header_html ?? '')
+      // Baselines for buildSiteConfig's "only write settings this tab changed" check —
+      // taken from the DB values BEFORE the in-memory migrations below.
+      settingsBaselineRef.current = {
+        favicon_url: snapSetting((config as Record<string, unknown> | null)?.favicon_url),
+        blog_header_html: snapSetting(config?.blog_header_html),
+        inject_points: snapSetting((config as Record<string, unknown> | null)?.inject_points),
+        blog_sidebar_banner: snapSetting(config?.blog_sidebar_banner),
+        context: snapSetting(config?.context),
+        shared_css: snapSetting((config as Record<string, unknown> | null)?.shared_css),
+      }
       // Load inject_points (migrate legacy blog_newsletter_html if present)
       const existingIp = ((config as any)?.inject_points ?? {}) as Record<string, string>
       const legacyNewsletter = (config as any)?.blog_newsletter_html as string | undefined
@@ -3438,13 +3411,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (navMatch || footerMatch) {
           if (navMatch) sharedNavHtmlRef.current = navMatch[0]
           if (footerMatch) sharedFooterHtmlRef.current = footerMatch[0]
-          supabase.from('projects').update({
-            site_config: {
-              ...(config ?? {}),
-              ...(navMatch ? { shared_nav_html: navMatch[0] } : {}),
-              ...(footerMatch ? { shared_footer_html: footerMatch[0] } : {}),
-            },
-          }).eq('id', id).then(() => console.log('[shared_nav/footer] migrated from home page'))
+          void patchSiteConfig(supabase, id, [
+            ...(navMatch ? [{ path: ['shared_nav_html'], value: navMatch[0] }] : []),
+            ...(footerMatch ? [{ path: ['shared_footer_html'], value: footerMatch[0] }] : []),
+          ]).then(() => console.log('[shared_nav/footer] migrated from home page'))
         }
       }
 
@@ -3457,9 +3427,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         const extractedCss = cssBlocks.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
         if (extractedCss) {
           sharedCssRef.current = extractedCss
-          supabase.from('projects').update({
-            site_config: { ...(config ?? {}), shared_css: extractedCss },
-          }).eq('id', id).then(() => console.log('[shared_css] migrated from home page'))
+          void patchSiteConfig(supabase, id, [{ path: ['shared_css'], value: extractedCss }])
+            .then(() => console.log('[shared_css] migrated from home page'))
+          settingsBaselineRef.current.shared_css = snapSetting(extractedCss)
         }
       }
       if ((config as any)?.designSystem) {
@@ -3481,11 +3451,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }
       // Auto-heal: if pages had accumulated <base> tags, save the cleaned HTML immediately
       if (wasDirty) {
-        const cleanConfig = { ...(config ?? {}), pages: stripBlocksForSave(loadedPages) }
-        await supabase.from('projects').update({
-          site_config: cleanConfig,
-          updated_at: new Date().toISOString(),
-        }).eq('id', id)
+        // Pages only, through the inline-save RPC (null nav/footer = keep DB values)
+        // instead of rewriting the whole loaded config — which could clobber settings
+        // saved by another tab between this load and this write.
+        const { error: healErr } = await supabase.rpc('save_inline_pages', { p_id: id, p_pages: stripBlocksForSave(loadedPages) })
+        if (healErr) console.warn('[load auto-heal] save_inline_pages failed:', healErr.message)
       }
 
       // Load SEO keywords — decompress from compact {k,v,d,i} format
@@ -3571,13 +3541,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const bsbLink = blogSidebarBannerLinkRef.current
     const ctx = projectContextRef.current
     const ip = injectPointsRef.current
-    if (fav) cfg.favicon_url = fav
-    if (bhh) cfg.blog_header_html = bhh
-    if (Object.keys(ip).length > 0) cfg.inject_points = ip
-    if (bsbUrl || bsbLink) cfg.blog_sidebar_banner = { url: bsbUrl, link: bsbLink }
-    if (ctx && Object.keys(ctx).length > 0) cfg.context = ctx
     const css = sharedCssRef.current
-    if (css) cfg.shared_css = css
+    // Mirror in-tab settings into the save ONLY if this tab changed them since load /
+    // its last write (see settingsBaselineRef) — `cfg` already holds base's fresh DB
+    // values, so untouched settings keep whatever another tab saved meanwhile.
+    const mirror = (key: string, include: boolean, value: unknown) => {
+      if (!include) return
+      const snap = snapSetting(value)
+      if (snap === settingsBaselineRef.current[key]) return
+      cfg[key] = value
+      settingsBaselineRef.current[key] = snap
+    }
+    mirror('favicon_url', !!fav, fav)
+    mirror('blog_header_html', !!bhh, bhh)
+    mirror('inject_points', Object.keys(ip).length > 0, ip)
+    mirror('blog_sidebar_banner', !!(bsbUrl || bsbLink), { url: bsbUrl, link: bsbLink })
+    mirror('context', !!ctx && Object.keys(ctx).length > 0, ctx)
+    mirror('shared_css', !!css, css)
 
     // ── Shared nav + footer: extract from home page, store as single source of truth.
     // At serve time (preview.ts) these are injected into every page, replacing
@@ -4487,15 +4467,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const saveFaviconUrl = async (url: string) => {
     setFaviconSaving('saving')
     try {
-      const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-      const existing = (proj?.site_config ?? {}) as Record<string, unknown>
-      const { error } = await supabase.from('projects').update({
-        site_config: { ...existing, favicon_url: url },
-        updated_at: new Date().toISOString(),
-      }).eq('id', id)
-      if (error) throw error
+      const { error } = await patchSiteConfig(supabase, id, [{ path: ['favicon_url'], value: url }])
+      if (error) throw new Error(error)
       setFaviconUrl(url)
       faviconUrlRef.current = url
+      settingsBaselineRef.current.favicon_url = snapSetting(url)
       setFaviconSaving('saved')
       setTimeout(() => setFaviconSaving('idle'), 2000)
     } catch (err) {
@@ -4509,8 +4485,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const updatedPages = applyDesignSystemToPages(ds, latestPagesRef.current)
     setPages(updatedPages)
     latestPagesRef.current = updatedPages
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
+    // Only shared_css is needed (to merge the DS block into it) — not the whole blob.
+    const { data: proj } = await supabase.from('projects').select('shared_css:site_config->shared_css').eq('id', id).single()
+    const currentConfig = { shared_css: (proj as { shared_css?: unknown } | null)?.shared_css } as Record<string, unknown>
 
     // Merge Design System CSS into shared_css (single source of truth) so blog posts
     // inherit it too. Uses the shared lib which strips ALL prior DS blocks with a
@@ -4519,10 +4496,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const existingSharedCss = (typeof currentConfig.shared_css === 'string' ? currentConfig.shared_css : '') as string
     const newSharedCss = syncSharedCssWithDesignSystem(existingSharedCss, ds as unknown as LibDesignSystem)
 
-    await supabase.from('projects').update({
-      site_config: { ...currentConfig, pages: updatedPages, designSystem: ds, shared_css: newSharedCss },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    // Pages through the inline-save RPC (null nav/footer = keep DB values); DS + CSS
+    // as one single-field patch. Keep the in-tab CSS ref/baseline in sync so a later
+    // full save doesn't write the pre-DS shared_css back over it.
+    const { error: pagesErr } = await supabase.rpc('save_inline_pages', { p_id: id, p_pages: stripBlocksForSave(updatedPages) })
+    if (pagesErr) {
+      console.warn('[saveDesignSystem] save_inline_pages failed, falling back to saveState:', pagesErr.message)
+      await saveState(messages, updatedPages)
+    }
+    await patchSiteConfig(supabase, id, [
+      { path: ['designSystem'], value: ds },
+      { path: ['shared_css'], value: newSharedCss },
+    ])
+    sharedCssRef.current = newSharedCss
+    settingsBaselineRef.current.shared_css = snapSetting(newSharedCss)
     setDesignSaving('saved')
     setTimeout(() => setDesignSaving('idle'), 2500)
   }
@@ -4586,12 +4573,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const saveDefaultOgImage = async (url: string) => {
     const finalUrl = url ? await resizeToOgFormat(url) : ''
     setDefaultOgImage(finalUrl)
-    const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
-    await supabase.from('projects').update({
-      site_config: { ...currentConfig, default_og_image: finalUrl },
-      updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    await patchSiteConfig(supabase, id, [{ path: ['default_og_image'], value: finalUrl }])
   }
 
   const updateMediaMeta = (path: string, field: keyof MediaMeta, value: string) => {
@@ -5286,10 +5268,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const msg = (result.steps as string[] | undefined)?.[0] ?? result.input?.summary ?? '⚠️ In che lingua vuoi il sito?'
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
-      await supabase.from('projects').update({
-        site_config: await buildSiteConfig(pages, finalMessages, mediaMeta),
-        updated_at: new Date().toISOString(),
-      }).eq('id', id)
+      // Messages only — pages/settings untouched here, so don't rewrite them
+      await patchSiteConfig(supabase, id, [{ path: ['messages'], value: finalMessages }])
       setLoading(false)
       return
     }
@@ -5300,10 +5280,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       // Salva la richiesta originale per combinarla con la risposta
       setPendingRequest(buildApiContent(effectiveInput, effectiveImages))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
-      await supabase.from('projects').update({
-        site_config: await buildSiteConfig(pages, finalMessages, mediaMeta),
-        updated_at: new Date().toISOString(),
-      }).eq('id', id)
+      // Messages only — pages/settings untouched here, so don't rewrite them
+      await patchSiteConfig(supabase, id, [{ path: ['messages'], value: finalMessages }])
       setLoading(false)
       return
     }
@@ -5313,10 +5291,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const msg = result.input?.summary ?? '📸 Carica 2-3 screenshot del sito di ispirazione per generare un template personalizzato.'
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
-      await supabase.from('projects').update({
-        site_config: await buildSiteConfig(pages, finalMessages, mediaMeta),
-        updated_at: new Date().toISOString(),
-      }).eq('id', id)
+      // Messages only — pages/settings untouched here, so don't rewrite them
+      await patchSiteConfig(supabase, id, [{ path: ['messages'], value: finalMessages }])
       setLoading(false)
       return
     }
@@ -5435,10 +5411,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         setMessages(prev => prev.map(m => m.id === assistantId
           ? { ...m, content: `⚠️ Nessuna modifica applicata — le istruzioni non hanno trovato il punto esatto nella pagina. Riprova con una descrizione più precisa, o clicca "Riprova" per un nuovo tentativo.`, failed: true, retryInput: retrySnapshot.input, retryImages: retrySnapshot.images }
           : m))
-        await supabase.from('projects').update({
-          site_config: await buildSiteConfig(pages, [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }], mediaMeta),
-          updated_at: new Date().toISOString(),
-        }).eq('id', id)
+        // Messages only — pages/settings untouched here, so don't rewrite them
+        await patchSiteConfig(supabase, id, [{ path: ['messages'], value: [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }] }])
         // Mark the run as html_changed: false so the back-office shows the right status
         if (result._runId && chatToken) {
           fetch(`/api/runs/${result._runId}`, {
@@ -5657,12 +5631,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     } else if (result.tool === 'update_blog_header') {
       const newHeaderHtml = result.input.html as string
       summary = `📝 ${result.input.summary ?? "fatto"}`
-      // Save blog_header_html to Supabase directly (merges into existing site_config)
-      const { data: existing } = await supabase.from('projects').select('site_config').eq('id', id).single()
-      const existingConfig = (existing?.site_config ?? {}) as Record<string, unknown>
-      await supabase.from('projects').update({
-        site_config: { ...existingConfig, blog_header_html: newHeaderHtml },
-      }).eq('id', id)
+      // Save blog_header_html directly (single-field update, see lib/site-config-patch.ts)
+      await patchSiteConfig(supabase, id, [{ path: ['blog_header_html'], value: newHeaderHtml }])
+      settingsBaselineRef.current.blog_header_html = snapSetting(newHeaderHtml)
       setBlogHeaderHtml(newHeaderHtml)
       // Switch to blog view so user sees the result
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: summary } : m))
@@ -5880,12 +5851,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setRedirectSaving(true)
     setRedirects(next)
     try {
-      const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-      const currentConfig = (proj?.site_config ?? {}) as Record<string, unknown>
-      await supabase.from('projects').update({
-        site_config: { ...currentConfig, redirects: next },
-        updated_at: new Date().toISOString(),
-      }).eq('id', id)
+      await patchSiteConfig(supabase, id, [{ path: ['redirects'], value: next }])
     } finally {
       setRedirectSaving(false)
     }
@@ -7769,13 +7735,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         if (error) {
                           // Fallback: safe jsonb_set via update (still better than select+overwrite)
                           console.warn('[saveKeywords] RPC failed, using fallback:', error.message)
-                          const { data: proj } = await supabase.from('projects').select('site_config').eq('id', id).single()
-                          if (proj?.site_config) {
-                            await supabase.from('projects').update({
-                              site_config: { ...(proj.site_config as object), keywords: compressed },
-                              updated_at: new Date().toISOString(),
-                            }).eq('id', id)
-                          }
+                          await patchSiteConfig(supabase, id, [{ path: ['keywords'], value: compressed }])
                         }
                       }
 

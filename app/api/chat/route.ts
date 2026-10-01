@@ -14,6 +14,7 @@ import { splitHtmlIntoBlocks, assembleBlocksToHtml, findBlockBySelector, editBlo
 import { runRulesLearner, quickLearnRules } from '../../../lib/agents/rules-learner'
 import { DEFAULT_FACTULISTA_RULES, formatRulesForAgent, type ProjectRules } from '../../../lib/agents/project-rules'
 import { extractDesignSystem, buildDesignSystemBlock, mergeDesignSystemIntoSharedCss } from '../../../lib/agents/design-extractor'
+import { patchSiteConfig } from '../../../lib/site-config-patch'
 
 type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
 function totalTokens(u: Usage): number {
@@ -251,11 +252,7 @@ export async function POST(req: NextRequest) {
         // Persist compacted memory in background (non-blocking)
         void (async () => {
           try {
-            const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-            const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? {}
-            await supabase.from('projects').update({
-              site_config: { ...freshConfig, sessionMemory: compacted },
-            }).eq('id', projectId)
+            await patchSiteConfig(supabase, projectId, [{ path: ['sessionMemory'], value: compacted }])
           } catch { /* non-critical */ }
         })()
       }
@@ -267,11 +264,10 @@ export async function POST(req: NextRequest) {
     if (!siteConfig.projectRules && (pages ?? []).length > 0) {
       // Fire-and-forget: learn and save rules in background
       runRulesLearner({ pages: pages ?? [], context })
-        .then(result => {
-          return supabase.from('projects').update({
-            site_config: { ...siteConfig, projectRules: result.rules },
-          }).eq('id', projectId)
-        })
+        // Single-field update: the old `{ ...siteConfig, projectRules }` write used the
+        // config read at REQUEST START, so when this slow learner finished after the
+        // client had saved the turn's edits, it wrote the pre-request pages back.
+        .then(result => patchSiteConfig(supabase, projectId, [{ path: ['projectRules'], value: result.rules }]))
         .catch(() => {/* non-blocking error */ })
       // Use quick-learned rules for this request (doesn't wait for full learn)
       const quickLearned = quickLearnRules((pages ?? []))
@@ -587,14 +583,14 @@ export async function POST(req: NextRequest) {
           const newSharedCss = mergeDesignSystemIntoSharedCss(freshSharedCss, dsBlock)
           const { cssVars: _vars, googleFonts: _fonts, ...dsToSave } = extracted
           Promise.resolve(
-            supabase.from('projects').select('site_config').eq('id', projectId).single()
+            supabase.from('projects').select('designSystem:site_config->designSystem').eq('id', projectId).single()
           ).then(async ({ data: fresh }) => {
-            const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
             // Re-check inside the async block — another request may have set DS meanwhile
-            if (freshConfig.designSystem) return
-            await supabase.from('projects').update({
-              site_config: { ...freshConfig, designSystem: dsToSave, shared_css: newSharedCss },
-            }).eq('id', projectId)
+            if ((fresh as { designSystem?: unknown } | null)?.designSystem) return
+            await patchSiteConfig(supabase, projectId, [
+              { path: ['designSystem'], value: dsToSave },
+              { path: ['shared_css'], value: newSharedCss },
+            ])
           }).catch(() => null)
         }
       }
@@ -662,16 +658,11 @@ export async function POST(req: NextRequest) {
         runSessionMemoryAgent(messages, sessionMemory, apiKey),
       ]).then(async ([updatedContext, updatedMemory]) => {
         if (!updatedContext && !updatedMemory) return
-        // Re-read fresh config to avoid lost-update race
-        const { data: fresh } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-        const freshConfig = (fresh?.site_config as Record<string, unknown>) ?? siteConfig
-        await supabase.from('projects').update({
-          site_config: {
-            ...freshConfig,
-            ...(updatedContext  ? { context: updatedContext }         : {}),
-            ...(updatedMemory   ? { sessionMemory: updatedMemory }    : {}),
-          },
-        }).eq('id', projectId)
+        // Single-field updates (no full read-modify-write, no lost-update race)
+        await patchSiteConfig(supabase, projectId, [
+          ...(updatedContext ? [{ path: ['context'], value: updatedContext }] : []),
+          ...(updatedMemory ? [{ path: ['sessionMemory'], value: updatedMemory }] : []),
+        ])
       }).catch(() => null)
 
       // Include _runId so the client can patch html_changed once it applies the edits
