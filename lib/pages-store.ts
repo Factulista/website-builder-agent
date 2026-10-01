@@ -226,3 +226,73 @@ export async function readPublishedPageConfig(sb: SupabaseClient, projectSlug: s
   const r = await sb.rpc('get_published_page', { p_slug: projectSlug, p_page: pageSlug }).maybeSingle()
   return { data: (r.data as PublishedRow | null) ?? null, error: r.error?.message ?? null }
 }
+
+// ── Diff saves (builder) ─────────────────────────────────────────────────────
+
+/** Slug → fingerprint of each page as last persisted by this client. */
+export type PagesBaseline = Map<string, string>
+
+/**
+ * Stable, key-order-independent fingerprint of a page (without `blocks`). Not cached
+ * by object identity on purpose: a page object mutated in place must still diff.
+ */
+export function pageFingerprint(page: { slug: string }): string {
+  const norm = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(norm)
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>
+      return Object.keys(o).sort().reduce<Record<string, unknown>>((acc, k) => { if (o[k] !== undefined) acc[k] = norm(o[k]); return acc }, {})
+    }
+    return v
+  }
+  const { blocks: _blocks, ...rest } = page as { slug: string; blocks?: unknown }
+  return JSON.stringify(norm(rest))
+}
+
+/** Baseline for a page list just read from / fully written to the DB. */
+export function baselineOf(pages: Array<{ slug: string }>): PagesBaseline {
+  return new Map(pages.map(p => [p.slug, pageFingerprint(p)]))
+}
+
+/**
+ * Persist `pages` by sending only what changed since `baseline` (pages_patch):
+ * changed/new page objects, the slug order, and the slugs removed (in the baseline
+ * but no longer in `pages`, plus `alsoDeleted`). Pages added meanwhile by another
+ * session are kept server-side. Returns the new baseline on success, or null when a
+ * diff save isn't possible (stale view, duplicate/empty slugs, function missing) —
+ * the caller then does a full write. Throws on other DB errors.
+ */
+export async function savePagesDiff(
+  sb: SupabaseClient,
+  projectId: string,
+  state: PageState,
+  pages: Array<{ slug: string }>,
+  baseline: PagesBaseline | null,
+  alsoDeleted: Iterable<string> = [],
+  shared?: { nav?: string | null; footer?: string | null },
+): Promise<{ baseline: PagesBaseline; changed: number } | null> {
+  if (!baseline) return null
+  const slugs = pages.map(p => p.slug)
+  if (slugs.some(s => typeof s !== 'string' || !s) || new Set(slugs).size !== slugs.length) return null
+  const current = new Set(slugs)
+  const changed = stripPageBlocks(pages.filter(p => baseline.get(p.slug) !== pageFingerprint(p)))
+  const deleted = new Set([...baseline.keys()].filter(s => !current.has(s)))
+  for (const s of alsoDeleted) if (!current.has(s)) deleted.add(s)
+  const { error } = await sb.rpc('pages_patch', {
+    p_id: projectId,
+    p_state: state,
+    p_order: slugs,
+    p_changed: changed,
+    p_deleted: [...deleted],
+    p_shared_nav: shared?.nav ?? null,
+    p_shared_footer: shared?.footer ?? null,
+  })
+  if (error) {
+    if (isMissingFunction(error) || /pages_patch_stale/.test(error.message)) {
+      console.warn('[pages-store] diff save not possible, full write needed:', error.message)
+      return null
+    }
+    throw new Error(`savePagesDiff(${state}) failed: ${error.message}`)
+  }
+  return { baseline: baselineOf(pages), changed: changed.length }
+}

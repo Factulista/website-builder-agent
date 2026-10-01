@@ -12,6 +12,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import {
   readPages, readAllPages, readPage, writePages, updatePages, publishDrafts, copyAllPages, loadSiteWithPages,
+  savePagesDiff, baselineOf,
 } from '../../../../lib/pages-store'
 export const runtime = 'nodejs'
 
@@ -90,6 +91,44 @@ async function runChecks(sb: Sb, userId: string, mode: 'config' | 'table', ids: 
 
   const c = await mk('c', null)
   checks.emptyIsEmpty = (await readPages(sb, c.id, 'draft')).length === 0
+
+  // ── Diff saves (phase 2.3) ──
+  {
+    const d = await mk('d', null)
+    const P = (slug: string, html: string, extra: Record<string, unknown> = {}) => ({ slug, name: slug, html, ...extra })
+    await writePages(sb, d.id, 'draft', [P('home', 'h0'), P('a', 'a0'), P('b', 'b0')])
+    let base = baselineOf(await readPages(sb, d.id, 'draft'))
+    const rowTimes = async () => mode === 'table'
+      ? Object.fromEntries(((await sb.from('site_pages').select('slug, updated_at').eq('project_id', d.id).eq('state', 'draft')).data ?? []).map(r => [r.slug, r.updated_at]))
+      : {}
+    const t0 = await rowTimes()
+    // edit one page, add one, reorder
+    const r1 = await savePagesDiff(sb, d.id, 'draft', [P('b', 'b0'), P('home', 'h1', { blocks: [1] }), P('a', 'a0'), P('c', 'c0')], base)
+    const l1 = await readPages(sb, d.id, 'draft')
+    checks.diffApplied = !!r1 && r1.changed === 2 && l1.map(p => `${p.slug}:${p.html}`).join() === 'b:b0,home:h1,a:a0,c:c0' && l1.every(p => !('blocks' in p))
+    if (mode === 'table') {
+      const t1 = await rowTimes()
+      checks.diffOnlyChangedRows = t1.a === t0.a && t1.b === t0.b && t1.home !== t0.home
+    }
+    base = r1!.baseline
+    // another session adds "x" (full write); our diff save must keep it
+    await writePages(sb, d.id, 'draft', [...l1, P('x', 'x0')])
+    const r2 = await savePagesDiff(sb, d.id, 'draft', [P('b', 'b1'), P('home', 'h1'), P('a', 'a0'), P('c', 'c0')], base)
+    const l2 = await readPages(sb, d.id, 'draft')
+    checks.diffKeepsOtherSession = !!r2 && l2.map(p => `${p.slug}:${p.html}`).join() === 'b:b1,home:h1,a:a0,c:c0,x:x0'
+    base = r2!.baseline
+    // delete "c" (in baseline, no longer in list) and rename "a" → "a2"
+    const r3 = await savePagesDiff(sb, d.id, 'draft', [P('b', 'b1'), P('home', 'h1'), P('a2', 'a0')], base)
+    const l3 = await readPages(sb, d.id, 'draft')
+    checks.diffDeleteRename = !!r3 && l3.map(p => p.slug).join() === 'b,home,a2,x'
+    base = r3!.baseline
+    // stale view: another session deleted "b", we still have it unchanged → null, nothing written
+    await writePages(sb, d.id, 'draft', l3.filter(p => p.slug !== 'b'))
+    const r4 = await savePagesDiff(sb, d.id, 'draft', [P('b', 'b1'), P('home', 'h2'), P('a2', 'a0')], base)
+    checks.diffStaleDetected = r4 === null && (await readPage(sb, d.id, 'home', 'draft'))?.html === 'h1'
+    // no baseline → null (caller does a full write)
+    checks.diffNeedsBaseline = (await savePagesDiff(sb, d.id, 'draft', l3, null)) === null
+  }
 
   if (mode === 'table') {
     // Old builder tabs: save_inline_pages must land in the table too

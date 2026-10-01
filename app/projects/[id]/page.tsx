@@ -23,7 +23,7 @@ import { applySeoMeta } from '../../../lib/seo/crawler-view'
 import { SEO_CHECKS, SEO_GROUPS, getCheckSource, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { patchSiteConfig } from '../../../lib/site-config-patch'
-import { readPages, writePages, loadEditorProject } from '../../../lib/pages-store'
+import { readPages, writePages, loadEditorProject, savePagesDiff, baselineOf, type PagesBaseline } from '../../../lib/pages-store'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
 import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
@@ -2459,6 +2459,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const selectedPostRef = useRef<BlogPost | null>(null)
   // Track slugs explicitly deleted in this session so the merge doesn't bring them back
   const deletedSlugsRef = useRef<Set<string>>(new Set())
+  // Draft pages as last persisted by this tab (slug → fingerprint): saves send only the
+  // pages that differ from it (lib/pages-store savePagesDiff). null = unknown → full write.
+  const pagesBaselineRef = useRef<PagesBaseline | null>(null)
   const editIframeRef = useRef<HTMLIFrameElement>(null)
   const editBaseHtmlRef = useRef<string>('')
   // Same staleness-detection idea as editBaseHtmlRef, but for the raw-HTML code editor on a
@@ -3316,6 +3319,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const config = project.site_config as { html?: string; pages?: Page[]; messages?: Message[]; versions?: Version[]; media?: Record<string, MediaMeta>; context?: { businessName?: string; businessType?: string; services?: string[]; language?: string; targetAudience?: string }; blog_header_html?: string; blog_sidebar_banner?: { url: string; link: string } } | null
       if (config?.context) setProjectContext(config.context)
       let loadedPages: Page[] = []
+      // What the DB holds right now — the diff baseline for this tab's saves.
+      pagesBaselineRef.current = Array.isArray(config?.pages) ? baselineOf(config.pages) : null
       if (config?.pages?.length) loadedPages = config.pages
       else if (config?.html) loadedPages = [{ slug: 'home', name: 'Home', html: config.html }]
       // Strip any editor artefacts left over from previous edit sessions before fix
@@ -3498,7 +3503,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         // Pages only, through the inline-save RPC (null nav/footer = keep DB values)
         // instead of rewriting the whole loaded config — which could clobber settings
         // saved by another tab between this load and this write.
-        await writePages(supabase, id, 'draft', loadedPages)
+        await persistDraftPages(loadedPages)
           .catch((healErr: unknown) => console.warn('[load auto-heal] page write failed:', healErr))
       }
 
@@ -3615,6 +3620,33 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return { sets, nav, footer, commit }
   }
 
+  /**
+   * Persist the draft pages. Normally sends only the pages changed since this tab's
+   * baseline (pagesBaselineRef) — ~one page instead of all of them — and the server
+   * keeps pages another session added. When a diff isn't possible (stale view, first
+   * save of a legacy project) it falls back to a full write, with the collaborative
+   * merge: DB pages this tab never saw and didn't delete are kept.
+   */
+  const persistDraftPages = async (list: Page[], shared?: { nav?: string | null; footer?: string | null }): Promise<void> => {
+    const diff = await savePagesDiff(supabase, id, 'draft', list, pagesBaselineRef.current, deletedSlugsRef.current, shared)
+    if (diff) { pagesBaselineRef.current = diff.baseline; return }
+    let toWrite = list
+    try {
+      const dbPages = await readPages<Page>(supabase, id, 'draft')
+      const ours = new Set(list.map(p => p.slug))
+      const removed = new Set([...deletedSlugsRef.current, ...[...(pagesBaselineRef.current?.keys() ?? [])].filter(sl => !ours.has(sl))])
+      const extraPages = dbPages.filter(p => !ours.has(p.slug) && !removed.has(p.slug))
+      if (extraPages.length > 0) {
+        console.log('[persistDraftPages] keeping', extraPages.length, 'page(s) added by another session:', extraPages.map(p => p.slug))
+        toWrite = [...list, ...extraPages]
+      }
+    } catch (mergeErr) {
+      console.warn('[persistDraftPages] merge read failed (non-fatal):', mergeErr)
+    }
+    await writePages(supabase, id, 'draft', toWrite, shared)
+    pagesBaselineRef.current = baselineOf(toWrite)
+  }
+
   // Fast-path save for the INLINE EDITOR only (high-frequency content edits).
   // Updates ONLY pages + shared nav/footer via the save_inline_pages RPC, which
   // uses jsonb_set inside Postgres — the full site_config never crosses the network
@@ -3639,7 +3671,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     try {
       try {
-        await writePages(supabase, id, 'draft', newPages, { nav: navJson, footer: footerJson })
+        await persistDraftPages(newPages, { nav: navJson, footer: footerJson })
       } catch (error) {
         console.warn('[savePagesInline] page write failed, falling back to saveState:', error)
         return saveState(messages, newPages)
@@ -3709,31 +3741,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     const med = newMedia ?? mediaMeta
 
-    // ── Collaborative merge ────────────────────────────────────────────────────
-    // Two users on the same account can work concurrently. Without merging,
-    // whoever saves last overwrites the other's new pages.
-    // Strategy: read current DB state → keep any pages that exist in DB but NOT
-    // in newPages (added by another session), except those explicitly deleted
-    // in this session (tracked in deletedSlugsRef).
-    let pagesToSave = newPages
-    try {
-      const dbPages = await readPages<Page>(supabase, id, 'draft')
-      if (Array.isArray(dbPages) && dbPages.length > 0) {
-        const ourSlugs = new Set(newPages.map(p => p.slug))
-        const deleted  = deletedSlugsRef.current
-        // Pages in DB that we've never seen in this session → preserve them
-        const extraPages = dbPages.filter(p => !ourSlugs.has(p.slug) && !deleted.has(p.slug))
-        if (extraPages.length > 0) {
-          console.log('[saveState] merging', extraPages.length, 'page(s) added by another session:', extraPages.map(p => p.slug))
-          pagesToSave = [...newPages, ...extraPages]
-        }
-      }
-    } catch (mergeErr) {
-      console.warn('[saveState] merge read failed (non-fatal):', mergeErr)
-    }
-    // ── End collaborative merge ────────────────────────────────────────────────
-
-    const { sets, nav, footer, commit } = buildSaveSets(pagesToSave, newMessages, med)
+    const { sets, nav, footer, commit } = buildSaveSets(newPages, newMessages, med)
 
     // Retry up to 3 times with exponential back-off (1s, 2s) so transient
     // Supabase timeouts don't silently lose messages. Pages and the other fields are
@@ -3745,7 +3753,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         if (!pagesDone) {
-          await writePages(supabase, id, 'draft', pagesToSave, { nav, footer })
+          await persistDraftPages(newPages, { nav, footer })
           pagesDone = true
         }
         const { error } = await patchSiteConfig(supabase, id, sets)
@@ -4521,7 +4529,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // as one single-field patch. Keep the in-tab CSS ref/baseline in sync so a later
     // full save doesn't write the pre-DS shared_css back over it.
     try {
-      await writePages(supabase, id, 'draft', updatedPages)
+      await persistDraftPages(updatedPages)
     } catch (pagesErr) {
       console.warn('[saveDesignSystem] page write failed, falling back to saveState:', pagesErr)
       await saveState(messages, updatedPages)
