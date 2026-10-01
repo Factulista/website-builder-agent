@@ -22,7 +22,11 @@ export function publicHostsFor(project: { slug: string; custom_domain?: string |
   const hosts: string[] = []
   const rootProject = process.env.ROOT_DOMAIN_PROJECT ?? ''
   if (rootProject && project.slug === rootProject) hosts.push(`www.${ROOT_DOMAIN}`)
-  if (project.custom_domain && project.custom_domain_status === 'verified') hosts.push(project.custom_domain)
+  // The bare root domain (factulista.com) always 301s to www in middleware, so it never
+  // reaches servePublished — rendering snapshots for it would be wasted work/storage.
+  if (project.custom_domain && project.custom_domain_status === 'verified' && project.custom_domain !== ROOT_DOMAIN) {
+    hosts.push(project.custom_domain)
+  }
   return [...new Set(hosts)]
 }
 

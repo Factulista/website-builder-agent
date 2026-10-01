@@ -868,7 +868,7 @@ async function serveFromSnapshots(supabase: SupabaseClient, projectSlug: string,
   })
   const snap = await read(pageSlug)
   if (snap) {
-    return new Response(snap.body, { status: snap.status, headers: { 'Content-Type': snap.content_type, 'Cache-Control': PUBLISHED_CACHE_CONTROL } })
+    return new Response(snap.body, { status: snap.status, headers: { 'Content-Type': snap.content_type, 'Cache-Control': PUBLISHED_CACHE_CONTROL, 'x-render': 'snapshot' } })
   }
   const manifestRow = await read(SNAPSHOT_MANIFEST_PATH)
   if (!manifestRow) return null
@@ -937,6 +937,6 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
     // Cache published pages on CDN for 10 minutes (s-maxage), then SWR for a day:
     // once stale the CDN serves the cached copy instantly and revalidates in the
     // background (Sep 2026 Fluid CPU incident — was 30s).
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': PUBLISHED_CACHE_CONTROL },
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': PUBLISHED_CACHE_CONTROL, 'x-render': 'live' },
   })
 }
