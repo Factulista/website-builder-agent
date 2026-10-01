@@ -43,7 +43,11 @@ async function handlePOST(req: NextRequest) {
     navDiffers: !!homeNav && homeNav !== cur.nav,
     footerDiffers: !!homeFooter && homeFooter !== cur.footer,
   }
-  if (body?.dryRun) return NextResponse.json({ dryRun: true, report })
+  if (body?.dryRun) return NextResponse.json({
+    dryRun: true, report,
+    currentNav_b64: Buffer.from(cur.nav ?? '').toString('base64'),
+    publishedHomeNav_b64: Buffer.from(homeNav ?? '').toString('base64'),
+  })
   await writePages(sb, projectId, 'draft', all.published)
   if (body?.sharedFromHome) {
     const sets = []
