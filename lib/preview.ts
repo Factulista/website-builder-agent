@@ -221,7 +221,7 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
   const preciosLine = '  ' + (preciosM ? preciosM[0] : '<a href="./precios">Precios</a>')
   const contactLine = contactM ? '  ' + contactM[0] : ''
 
-  const newInner = [autonomosBlock, detailsBlocks, preciosLine, recursosBlock, contactLine, ctas]
+  const newInner = [autonomosBlock, detailsBlocks, recursosBlock, preciosLine, contactLine, ctas]
     .filter(Boolean).join('\n')
 
   const start = match.index
@@ -275,7 +275,7 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   const ctas = [ghost, accent].filter(Boolean).map(c => '  ' + c).join('\n')
   const autonomosBlock = `  <details class="mobile-fn">\n    <summary>Autónomos</summary>\n${autonomosMobileLinks()}\n  </details>`
   const recursosBlock = `  <details class="mobile-fn">\n    <summary>Recursos</summary>\n    <a href="./blog">Blog</a>\n    <a href="./ayuda">Ayuda</a>\n  </details>`
-  const panel = `<div id="mobileMenu" class="mobile-menu">\n${autonomosBlock}\n${details}\n  <a href="./precios">Precios</a>\n${recursosBlock}\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
+  const panel = `<div id="mobileMenu" class="mobile-menu">\n${autonomosBlock}\n${details}\n${recursosBlock}\n  <a href="./precios">Precios</a>\n  <a href="#contact">Contacto</a>\n${ctas}\n</div>`
   if (/<\/nav>/i.test(html)) html = html.replace(/<\/nav>/i, `</nav>\n${panel}`)
   else if (/<\/header>/i.test(html)) html = html.replace(/<\/header>/i, `</header>\n${panel}`)
   else if (/<main[\s>]/i.test(html)) html = html.replace(/<main([\s>])/i, `${panel}\n<main$1`)
