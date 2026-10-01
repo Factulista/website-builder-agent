@@ -3300,7 +3300,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     const load = async () => {
       // site_config WITHOUT published_pages (~3.3MB the editor never reads) — lib/pages-store.
-      const project = await loadEditorProject(supabase, id)
+      // Throws (rather than falling back to possibly stale data) on DB errors.
+      const project = await loadEditorProject(supabase, id).catch((e: unknown) => {
+        console.error('[load] project load failed:', e)
+        setSaveError('⚠️ Caricamento non riuscito — ricarica la pagina')
+        return null
+      })
       if (!project) return
       setProjectName(project.name)
       setProjectSlug(project.slug)

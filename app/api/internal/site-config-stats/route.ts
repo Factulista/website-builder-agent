@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 export const runtime = 'nodejs'
 export async function GET(req: NextRequest) {
@@ -33,7 +34,10 @@ export async function GET(req: NextRequest) {
       fields: Object.keys(p).filter(k => k !== 'html' && k !== 'blocks').sort(),
       meta: Object.fromEntries(Object.entries(p).filter(([k]) => k !== 'html' && k !== 'blocks')),
     }))
-    return NextResponse.json({ pages: fp(config.pages), published_pages: fp(config.published_pages) })
+    // Through lib/pages-store, so this follows the project's storage (site_config or
+    // site_pages table) — the fingerprint must not change when the storage flips.
+    const all = await readAllPages(supabase, projectId)
+    return NextResponse.json({ pages: fp(all.draft), published_pages: fp(all.published) })
   }
   const keys = Object.entries(config)
     .map(([k, v]) => ({ key: k, bytes: JSON.stringify(v ?? null).length }))
