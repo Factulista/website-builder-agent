@@ -5,6 +5,7 @@ import { mergeRootVars } from './design-system'
 import { applySeoMeta } from './seo/crawler-view'
 import { resolveNfdIcon } from './components/index'
 import { injectSocialShareLinks } from './social-share'
+import { coalesce } from './request-coalesce'
 
 type Page = {
   slug: string
@@ -806,8 +807,13 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   // instead of all 47 pages' html (~6.6MB). Parsing that 6.6MB on every CDN
   // revalidation was the main Fluid Active CPU cost. get_published_site is the
   // previous-generation fallback if the new migration hasn't been run yet.
-  let rpc = await supabase.rpc('get_published_page', { p_slug: projectSlug, p_page: pageSlug }).maybeSingle()
-  if (rpc.error) rpc = await supabase.rpc('get_published_site', { p_slug: projectSlug }).maybeSingle()
+  // Concurrent identical requests share one DB round-trip, reused for 30s
+  // (lib/request-coalesce.ts); errors / missing data are not cached.
+  const rpc = await coalesce(`pub:${projectSlug}:${pageSlug}`, 30_000, async () => {
+    let r = await supabase.rpc('get_published_page', { p_slug: projectSlug, p_page: pageSlug }).maybeSingle()
+    if (r.error) r = await supabase.rpc('get_published_site', { p_slug: projectSlug }).maybeSingle()
+    return r
+  }, r => !r.error && !!r.data)
 
   if (!rpc.error && rpc.data) {
     config = (rpc.data as { config: SiteConfig }).config

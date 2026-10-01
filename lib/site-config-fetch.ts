@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { coalesce } from './request-coalesce'
 
 /**
  * Loads a project's site_config WITHOUT the multi-MB parts public serving never needs.
@@ -19,7 +20,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  */
 export type LiteProject = { id: string; name: string | null; custom_domain: string | null; site_config: Record<string, unknown> }
 
-export async function fetchSiteConfigLite(
+export function fetchSiteConfigLite(
+  supabase: SupabaseClient,
+  projectSlug: string,
+  htmlSlug: string | null,
+): Promise<LiteProject | null> {
+  // Concurrent identical reads share one DB round-trip; result reused for 30s
+  // (see lib/request-coalesce.ts). Not-found (null) is never cached.
+  return coalesce(`lite:${projectSlug}:${htmlSlug ?? ''}`, 30_000, () => fetchUncached(supabase, projectSlug, htmlSlug))
+}
+
+async function fetchUncached(
   supabase: SupabaseClient,
   projectSlug: string,
   htmlSlug: string | null,
