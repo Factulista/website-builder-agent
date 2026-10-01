@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { InjectPoints } from './blog-serve'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
 import { mergeRootVars } from './design-system'
@@ -789,26 +789,118 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
 }
 
 // Production: serves published_pages only (set when user clicks "Pubblica")
+export const PUBLISHED_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalidate=86400'
+
+/**
+ * Where a published path redirects to, or null: legacy `/x.html` → `/x` when page `x`
+ * exists, then user-managed 301s (SEO Optimizer → Strumenti). Shared by the live
+ * render and the snapshot fast path so both resolve redirects identically.
+ */
+export function resolvePublishedRedirect(
+  pageSlugs: string[],
+  redirects: Array<{ from: string; to: string }> | undefined,
+  pageSlug: string,
+  host: string,
+): string | null {
+  // Old URLs like /politica-cookies.html (indexed by Google before the migration to
+  // extensionless slugs) get a permanent redirect to the clean URL, if that page exists.
+  if (pageSlug.endsWith('.html')) {
+    const cleanSlug = pageSlug.slice(0, -5)
+    if (pageSlugs.includes(cleanSlug)) return `https://${host}/${cleanSlug}`
+  }
+  // Checked BEFORE the page lookup so old/removed URLs (e.g. /login moved to the
+  // app subdomain) send a clean 301 instead of a 404.
+  if (redirects?.length) {
+    const reqPath = pageSlug === 'home' ? '/' : `/${pageSlug}`
+    const norm = (s: string) => '/' + s.trim().replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+|\/+$/g, '')
+    const hit = redirects.find(r => r.from && norm(r.from) === norm(reqPath))
+    if (hit && hit.to) {
+      return /^https?:\/\//i.test(hit.to) ? hit.to : `https://${host}${hit.to.startsWith('/') ? '' : '/'}${hit.to}`
+    }
+  }
+  return null
+}
+
+/**
+ * Final html of one published page as served on `host`, or null if `pageSlug` isn't a
+ * published page. Pure and deterministic — the live render below and the pre-rendered
+ * snapshots (lib/published-snapshots.ts) both call this, so they are byte-identical.
+ */
+export function renderPublishedPageHtml(config: NonNullable<SiteConfig>, projectName: string, pageSlug: string, host: string): string | null {
+  const page = config.published_pages?.find(p => p.slug === pageSlug)
+  if (!page) return null
+  // Custom domain: base = https://{domain}/, siteUrl = https://{domain} (no trailing slash)
+  const base = `https://${host}/`
+  const siteUrl = `https://${host}`
+  const knownSlugs = ['blog', ...(config.published_pages ?? []).map(p => p.slug)]
+  const faviconUrl = config.favicon_url
+  // OG image: page-specific → else the site-wide default (so no page lacks og:image)
+  const ogImageUrl = page.og_image || (config as Record<string, unknown>)?.default_og_image as string | undefined
+  const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
+  const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
+  const megaPages = (config.published_pages ?? [])
+    .filter(p => !!p.megaMenu)
+    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon, megaMenu: p.megaMenu }))
+  return prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, config.shared_css, config.shared_nav_html, config.shared_footer_html, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages)
+}
+
+export type PublishedManifest = { projectName: string; pages: string[]; redirects: Array<{ from: string; to: string }> }
+export const SNAPSHOT_MANIFEST_PATH = '__manifest'
+
+/**
+ * Fast path: serve a published page from the pre-rendered snapshots table (written at
+ * publish time by lib/published-snapshots.ts) — one small indexed row, no site_config
+ * read at all. If the page has no snapshot, the routing manifest still answers
+ * redirects / 404 / "not published yet" without touching site_config (so scanners
+ * probing /wp-login.php & co. stay cheap). Returns null when snapshots don't cover the
+ * request (table missing, project never snapshotted, inconsistent row) → live render.
+ * Kill switch: env SNAPSHOTS_DISABLED=1, or simply deleting the rows.
+ */
+async function serveFromSnapshots(supabase: SupabaseClient, projectSlug: string, pageSlug: string, host: string): Promise<Response | null> {
+  if (process.env.SNAPSHOTS_DISABLED === '1') return null
+  type Row = { status: number; content_type: string; body: string }
+  const read = (path: string) => coalesce(`snap:${projectSlug}:${host}:${path}`, 30_000, async () => {
+    const { data, error } = await supabase.from('published_snapshots')
+      .select('status, content_type, body')
+      .eq('project_slug', projectSlug).eq('host', host).eq('path', path)
+      .maybeSingle()
+    return error ? null : (data as Row | null)
+  })
+  const snap = await read(pageSlug)
+  if (snap) {
+    return new Response(snap.body, { status: snap.status, headers: { 'Content-Type': snap.content_type, 'Cache-Control': PUBLISHED_CACHE_CONTROL } })
+  }
+  const manifestRow = await read(SNAPSHOT_MANIFEST_PATH)
+  if (!manifestRow) return null
+  let manifest: PublishedManifest
+  try { manifest = JSON.parse(manifestRow.body) as PublishedManifest } catch { return null }
+  const target = resolvePublishedRedirect(manifest.pages, manifest.redirects, pageSlug, host)
+  if (target) return new Response(null, { status: 301, headers: { Location: target } })
+  if (manifest.pages.length === 0) return errorPage(200, manifest.projectName, 'Il sito non è ancora stato pubblicato.')
+  if (!manifest.pages.includes(pageSlug)) return errorPage(404, '404', `La pagina "/${pageSlug}" non esiste.`)
+  return null // a published page without a snapshot row (should not happen) → live render
+}
+
+// Production: serves published_pages only (set when user clicks "Pubblica")
 export async function servePublished(projectSlug: string, pageSlug: string = 'home', customDomain: string) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Optimized path: RPC extracts ONLY the serving fields inside Postgres, returning
-  // a small payload (no draft pages / blocks / messages / media / keywords). This is
-  // the main egress optimization for public traffic. Falls back to a full select if
-  // the RPC migration hasn't been applied yet — so the deploy is always safe.
-  let config: SiteConfig
-  let projectName: string
+  // Pre-rendered snapshot first: no site_config read, no render (see serveFromSnapshots).
+  const fast = await serveFromSnapshots(supabase, projectSlug, pageSlug, customDomain)
+  if (fast) return fast
 
+  // ── Live render (fallback) ──
   // get_published_page returns html ONLY for the requested page (every other
   // published page keeps just its metadata for nav/mega menus/knownSlugs) — ~100KB
-  // instead of all 47 pages' html (~6.6MB). Parsing that 6.6MB on every CDN
-  // revalidation was the main Fluid Active CPU cost. get_published_site is the
+  // instead of all 47 pages' html (~6.6MB). get_published_site is the
   // previous-generation fallback if the new migration hasn't been run yet.
   // Concurrent identical requests share one DB round-trip, reused for 30s
   // (lib/request-coalesce.ts); errors / missing data are not cached.
+  let config: SiteConfig
+  let projectName: string
   const rpc = await coalesce(`pub:${projectSlug}:${pageSlug}`, 30_000, async () => {
     let r = await supabase.rpc('get_published_page', { p_slug: projectSlug, p_page: pageSlug }).maybeSingle()
     if (r.error) r = await supabase.rpc('get_published_site', { p_slug: projectSlug }).maybeSingle()
@@ -831,61 +923,20 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
     projectName = data.name ?? ''
   }
 
-  // ── Legacy .html URLs → clean slug (301) ──
-  // Old URLs like /politica-cookies.html (indexed by Google before the migration to
-  // extensionless slugs) get a permanent redirect to the clean URL, if that page exists.
-  if (pageSlug.endsWith('.html')) {
-    const cleanSlug = pageSlug.slice(0, -5)
-    const exists = config?.published_pages?.some(p => p.slug === cleanSlug)
-    if (exists) {
-      return new Response(null, { status: 301, headers: { Location: `https://${customDomain}/${cleanSlug}` } })
-    }
-  }
-
-  // ── User-managed 301 redirects (SEO Optimizer → Strumenti) ──
-  // Checked BEFORE the page lookup so old/removed URLs (e.g. /login moved to the
-  // app subdomain) send a clean 301 instead of a 404.
-  if (config?.redirects?.length) {
-    const reqPath = pageSlug === 'home' ? '/' : `/${pageSlug}`
-    const norm = (s: string) => '/' + s.trim().replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+|\/+$/g, '')
-    const hit = config.redirects.find(r => r.from && norm(r.from) === norm(reqPath))
-    if (hit && hit.to) {
-      const target = /^https?:\/\//i.test(hit.to) ? hit.to : `https://${customDomain}${hit.to.startsWith('/') ? '' : '/'}${hit.to}`
-      return new Response(null, { status: 301, headers: { Location: target } })
-    }
-  }
+  const target = resolvePublishedRedirect((config?.published_pages ?? []).map(p => p.slug), config?.redirects, pageSlug, customDomain)
+  if (target) return new Response(null, { status: 301, headers: { Location: target } })
 
   if (!config?.published_pages || config.published_pages.length === 0) {
     return errorPage(200, projectName, 'Il sito non è ancora stato pubblicato.')
   }
 
-  const page = config.published_pages.find(p => p.slug === pageSlug)
-  if (!page) return errorPage(404, '404', `La pagina "/${pageSlug}" non esiste.`)
-
-  // Custom domain: base = https://{domain}/, siteUrl = https://{domain} (no trailing slash)
-  const base = `https://${customDomain}/`
-  const siteUrl = `https://${customDomain}`
-  const knownSlugs = ['blog', ...(config.published_pages).map(p => p.slug)]
-  const faviconUrl = config.favicon_url
-  // OG image: page-specific → else the site-wide default (so no page lacks og:image)
-  const ogImageUrl = page.og_image || (config as Record<string, unknown>)?.default_og_image as string | undefined
-  const injectPoints = (config as Record<string, unknown>)?.inject_points as InjectPoints | undefined
-  const sharedCss = config.shared_css
-  const sharedNav = config.shared_nav_html
-  const sharedFooter = config.shared_footer_html
-
-  const siteName = (config?.context?.businessName as string | undefined) ?? projectName ?? ''
-  const megaPages = (config?.published_pages ?? [])
-    .filter(p => !!p.megaMenu)
-    .map(p => ({ slug: p.slug, name: p.name, menuLabel: p.menuLabel, megaMenuLabel: p.megaMenuLabel, megaMenuIcon: p.megaMenuIcon, megaMenu: p.megaMenu }))
-  return new Response(prepareHtml(page.html, base, siteUrl, false, knownSlugs, faviconUrl, ogImageUrl, injectPoints, sharedCss, sharedNav, sharedFooter, pageSlug, page.robots, page.og_title, siteName, (config as Record<string, unknown>)?.software as import('./seo/crawler-view').SoftwareInfo | undefined, megaPages), {
+  const html = renderPublishedPageHtml(config, projectName, pageSlug, customDomain)
+  if (html === null) return errorPage(404, '404', `La pagina "/${pageSlug}" non esiste.`)
+  return new Response(html, {
     status: 200,
     // Cache published pages on CDN for 10 minutes (s-maxage), then SWR for a day:
     // once stale the CDN serves the cached copy instantly and revalidates in the
-    // background. Was 30s — with ~75 URLs crawled by Google/AI bots, nearly every
-    // crawler hit landed past the 30s window and triggered a full server render,
-    // which exhausted the Vercel Hobby Fluid Active CPU quota (Sep 2026). Trade-off:
-    // after "Pubblica" a change can take up to ~10 minutes to show on the live site.
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400' },
+    // background (Sep 2026 Fluid CPU incident — was 30s).
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': PUBLISHED_CACHE_CONTROL },
   })
 }

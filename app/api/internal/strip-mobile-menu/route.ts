@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireInternalSecret } from '../../../../lib/api-auth'
+import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 export const runtime = 'nodejs'
 
 function getSupabase() {
@@ -21,7 +22,7 @@ function stripMobileMenu(html: string): { out: string; stripped: boolean } {
   return { out: html.slice(0, match.index) + html.slice(match.index + match[0].length), stripped: true }
 }
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const authErr = requireInternalSecret(req)
   if (authErr) return authErr
 
@@ -60,3 +61,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ message: 'mobile-menu stripped from pages', draftStripped, publishedStripped })
 }
+
+// Re-render the project's published snapshots after a successful change.
+export const POST = withSnapshotRegen(handlePOST)

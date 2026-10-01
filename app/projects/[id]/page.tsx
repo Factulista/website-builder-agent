@@ -1506,6 +1506,15 @@ function mergeSharedCssIntoPage(html: string, sharedCss: string): string {
  * memory/IO investigation).
  */
 /**
+ * site_config keys that end up in the published pages' html (servePublished /
+ * renderPublishedPageHtml). Changing one must re-render the published snapshots.
+ */
+const PUBLISHED_RENDER_KEYS = new Set([
+  'shared_nav_html', 'shared_footer_html', 'shared_css', 'favicon_url',
+  'default_og_image', 'inject_points', 'redirects', 'software', 'context',
+])
+
+/**
  * Stable string form of a site_config value, to tell whether a tab changed it.
  * Key-order independent: Postgres jsonb re-orders object keys on storage, so a plain
  * JSON.stringify would flag an unchanged object as "changed" (and defeat the check).
@@ -2483,6 +2492,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // otherwise a page save from a tab opened earlier reverted settings another person
   // had changed in the meantime. Values are snapSetting() strings keyed by config key.
   const settingsBaselineRef = useRef<Record<string, string>>({})
+  // Debounce for re-rendering the published snapshots after output-affecting changes.
+  const snapshotRegenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const activePage = pages.find(p => p.slug === activeSlug) || pages[0]
 
@@ -2877,11 +2888,41 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, selectedPost?.id])
 
+  // The public site serves pre-rendered snapshots (lib/published-snapshots.ts): after a
+  // change that affects the published html, ask the server to re-render them. Debounced
+  // so a burst of saves costs one regeneration; failures are non-fatal (the public site
+  // falls back to live rendering for anything missing, and the daily cron re-renders).
+  const scheduleSnapshotRegen = () => {
+    if (snapshotRegenTimer.current) clearTimeout(snapshotRegenTimer.current)
+    snapshotRegenTimer.current = setTimeout(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+        const res = await fetch('/api/snapshots/regenerate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ projectId: id }),
+          keepalive: true,
+        })
+        if (!res.ok) console.warn('[snapshots] regenerate failed:', res.status)
+      } catch (e) {
+        console.warn('[snapshots] regenerate error:', e)
+      }
+    }, 5000)
+  }
+
+  // patchSiteConfig + snapshot re-render when a published-output key changed.
+  const patchSettings = async (sets: Parameters<typeof patchSiteConfig>[2]) => {
+    const r = await patchSiteConfig(supabase, id, sets)
+    if (!r.error && sets.some(st => PUBLISHED_RENDER_KEYS.has(st.path[0]))) scheduleSnapshotRegen()
+    return r
+  }
+
   const saveBlogHeader = async () => {
     setBlogHeaderSaving('saving')
     const { data: { session: sc } } = await supabase.auth.getSession()
     if (!sc) { setBlogHeaderSaving('idle'); return }
-    await patchSiteConfig(supabase, id, [{ path: ['blog_header_html'], value: blogHeaderHtml }])
+    await patchSettings([{ path: ['blog_header_html'], value: blogHeaderHtml }])
     settingsBaselineRef.current.blog_header_html = snapSetting(blogHeaderHtml)
     setBlogHeaderSaving('saved')
     setTimeout(() => setBlogHeaderSaving('idle'), 2000)
@@ -2889,7 +2930,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const saveInjectPoints = async (updated: Record<string, string>) => {
     setInjectPointsSaving('saving')
-    await patchSiteConfig(supabase, id, [{ path: ['inject_points'], value: updated }])
+    await patchSettings([{ path: ['inject_points'], value: updated }])
     settingsBaselineRef.current.inject_points = snapSetting(updated)
     setInjectPointsSaving('saved')
     setTimeout(() => setInjectPointsSaving('idle'), 2000)
@@ -2899,7 +2940,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setBlogSidebarBannerSaving('saving')
     const { data: { session: sc } } = await supabase.auth.getSession()
     if (!sc) { setBlogSidebarBannerSaving('idle'); return }
-    const { error } = await patchSiteConfig(supabase, id, [{ path: ['blog_sidebar_banner'], value: { url, link } }])
+    const { error } = await patchSettings([{ path: ['blog_sidebar_banner'], value: { url, link } }])
     if (!error) settingsBaselineRef.current.blog_sidebar_banner = snapSetting({ url, link })
     if (error) {
       console.error('[banner] save failed:', error)
@@ -2912,14 +2953,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const saveBrevoIntegration = async () => {
     setBrevoSaving('saving')
-    await patchSiteConfig(supabase, id, [{ path: ['integrations', 'brevo'], value: { apiKey: brevoApiKey.trim() } }])
+    await patchSettings([{ path: ['integrations', 'brevo'], value: { apiKey: brevoApiKey.trim() } }])
     setBrevoSaving('saved')
     setTimeout(() => setBrevoSaving('idle'), 2000)
   }
 
   const saveContactFormConfig = async () => {
     setCfSaving('saving')
-    await patchSiteConfig(supabase, id, [{ path: ['components_config', 'contact_form'], value: {
+    await patchSettings([{ path: ['components_config', 'contact_form'], value: {
       admin_email:            cfAdminEmail.trim(),
       confirm_message:        cfConfirmMsg.trim(),
       confirm_email_message:  cfConfirmEmailMsg.trim(),
@@ -2932,7 +2973,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const saveCrmConfig = async () => {
     setCrmSaving('saving')
-    await patchSiteConfig(supabase, id, [{ path: ['components_config', 'crm_form'], value: {
+    await patchSettings([{ path: ['components_config', 'crm_form'], value: {
       admin_email:           crmAdminEmail.trim(),
       confirm_message:       crmConfirmMsg.trim(),
       confirm_email_message: crmConfirmEmailMsg.trim(),
@@ -2945,7 +2986,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   const saveSuggestConfig = async () => {
     setSuggestSaving('saving')
-    await patchSiteConfig(supabase, id, [{ path: ['components_config', 'suggest_form'], value: {
+    await patchSettings([{ path: ['components_config', 'suggest_form'], value: {
       admin_email:           suggestAdminEmail.trim(),
       confirm_message:       suggestConfirmMsg.trim(),
       confirm_email_message: suggestConfirmEmailMsg.trim(),
@@ -3411,7 +3452,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         if (navMatch || footerMatch) {
           if (navMatch) sharedNavHtmlRef.current = navMatch[0]
           if (footerMatch) sharedFooterHtmlRef.current = footerMatch[0]
-          void patchSiteConfig(supabase, id, [
+          void patchSettings([
             ...(navMatch ? [{ path: ['shared_nav_html'], value: navMatch[0] }] : []),
             ...(footerMatch ? [{ path: ['shared_footer_html'], value: footerMatch[0] }] : []),
           ]).then(() => console.log('[shared_nav/footer] migrated from home page'))
@@ -3427,7 +3468,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         const extractedCss = cssBlocks.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n')
         if (extractedCss) {
           sharedCssRef.current = extractedCss
-          void patchSiteConfig(supabase, id, [{ path: ['shared_css'], value: extractedCss }])
+          void patchSettings([{ path: ['shared_css'], value: extractedCss }])
             .then(() => console.log('[shared_css] migrated from home page'))
           settingsBaselineRef.current.shared_css = snapSetting(extractedCss)
         }
@@ -3551,6 +3592,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (snap === settingsBaselineRef.current[key]) return
       cfg[key] = value
       settingsBaselineRef.current[key] = snap
+      if (PUBLISHED_RENDER_KEYS.has(key)) scheduleSnapshotRegen()
     }
     mirror('favicon_url', !!fav, fav)
     mirror('blog_header_html', !!bhh, bhh)
@@ -3572,12 +3614,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         cfg.shared_nav_html = navMatch[0]
         sharedNavHtmlRef.current = navMatch[0]
         sharedNavBaselineRef.current = navMatch[0]
+        scheduleSnapshotRegen()
       }
       const footerMatch = homePage.html.match(/<footer[\s\S]*?<\/footer>/i)
       if (footerMatch && footerMatch[0] !== sharedFooterBaselineRef.current) {
         cfg.shared_footer_html = footerMatch[0]
         sharedFooterHtmlRef.current = footerMatch[0]
         sharedFooterBaselineRef.current = footerMatch[0]
+        scheduleSnapshotRegen()
       }
     }
 
@@ -3620,6 +3664,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       latestPagesRef.current = newPages
       if (navJson) sharedNavBaselineRef.current = navJson
       if (footerJson) sharedFooterBaselineRef.current = footerJson
+      if (navJson || footerJson) scheduleSnapshotRegen()
       return true
     } catch (e) {
       console.warn('[savePagesInline] unexpected, falling back to saveState:', e)
@@ -4467,7 +4512,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const saveFaviconUrl = async (url: string) => {
     setFaviconSaving('saving')
     try {
-      const { error } = await patchSiteConfig(supabase, id, [{ path: ['favicon_url'], value: url }])
+      const { error } = await patchSettings([{ path: ['favicon_url'], value: url }])
       if (error) throw new Error(error)
       setFaviconUrl(url)
       faviconUrlRef.current = url
@@ -4504,7 +4549,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       console.warn('[saveDesignSystem] save_inline_pages failed, falling back to saveState:', pagesErr.message)
       await saveState(messages, updatedPages)
     }
-    await patchSiteConfig(supabase, id, [
+    await patchSettings([
       { path: ['designSystem'], value: ds },
       { path: ['shared_css'], value: newSharedCss },
     ])
@@ -4573,7 +4618,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const saveDefaultOgImage = async (url: string) => {
     const finalUrl = url ? await resizeToOgFormat(url) : ''
     setDefaultOgImage(finalUrl)
-    await patchSiteConfig(supabase, id, [{ path: ['default_og_image'], value: finalUrl }])
+    await patchSettings([{ path: ['default_og_image'], value: finalUrl }])
   }
 
   const updateMediaMeta = (path: string, field: keyof MediaMeta, value: string) => {
@@ -5269,7 +5314,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       // Messages only — pages/settings untouched here, so don't rewrite them
-      await patchSiteConfig(supabase, id, [{ path: ['messages'], value: finalMessages }])
+      await patchSettings([{ path: ['messages'], value: finalMessages }])
       setLoading(false)
       return
     }
@@ -5281,7 +5326,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setPendingRequest(buildApiContent(effectiveInput, effectiveImages))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       // Messages only — pages/settings untouched here, so don't rewrite them
-      await patchSiteConfig(supabase, id, [{ path: ['messages'], value: finalMessages }])
+      await patchSettings([{ path: ['messages'], value: finalMessages }])
       setLoading(false)
       return
     }
@@ -5292,7 +5337,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: msg } : m))
       const finalMessages: Message[] = [...updatedMessages, { id: assistantId, role: 'assistant', content: msg }]
       // Messages only — pages/settings untouched here, so don't rewrite them
-      await patchSiteConfig(supabase, id, [{ path: ['messages'], value: finalMessages }])
+      await patchSettings([{ path: ['messages'], value: finalMessages }])
       setLoading(false)
       return
     }
@@ -5412,7 +5457,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           ? { ...m, content: `⚠️ Nessuna modifica applicata — le istruzioni non hanno trovato il punto esatto nella pagina. Riprova con una descrizione più precisa, o clicca "Riprova" per un nuovo tentativo.`, failed: true, retryInput: retrySnapshot.input, retryImages: retrySnapshot.images }
           : m))
         // Messages only — pages/settings untouched here, so don't rewrite them
-        await patchSiteConfig(supabase, id, [{ path: ['messages'], value: [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }] }])
+        await patchSettings([{ path: ['messages'], value: [...updatedMessages, { id: assistantId, role: 'assistant', content: '⚠️ Nessuna modifica applicata' }] }])
         // Mark the run as html_changed: false so the back-office shows the right status
         if (result._runId && chatToken) {
           fetch(`/api/runs/${result._runId}`, {
@@ -5632,7 +5677,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const newHeaderHtml = result.input.html as string
       summary = `📝 ${result.input.summary ?? "fatto"}`
       // Save blog_header_html directly (single-field update, see lib/site-config-patch.ts)
-      await patchSiteConfig(supabase, id, [{ path: ['blog_header_html'], value: newHeaderHtml }])
+      await patchSettings([{ path: ['blog_header_html'], value: newHeaderHtml }])
       settingsBaselineRef.current.blog_header_html = snapSetting(newHeaderHtml)
       setBlogHeaderHtml(newHeaderHtml)
       // Switch to blog view so user sees the result
@@ -5851,7 +5896,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     setRedirectSaving(true)
     setRedirects(next)
     try {
-      await patchSiteConfig(supabase, id, [{ path: ['redirects'], value: next }])
+      await patchSettings([{ path: ['redirects'], value: next }])
     } finally {
       setRedirectSaving(false)
     }
@@ -7735,7 +7780,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                         if (error) {
                           // Fallback: safe jsonb_set via update (still better than select+overwrite)
                           console.warn('[saveKeywords] RPC failed, using fallback:', error.message)
-                          await patchSiteConfig(supabase, id, [{ path: ['keywords'], value: compressed }])
+                          await patchSettings([{ path: ['keywords'], value: compressed }])
                         }
                       }
 

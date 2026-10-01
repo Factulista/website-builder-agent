@@ -15,6 +15,7 @@ import { runRulesLearner, quickLearnRules } from '../../../lib/agents/rules-lear
 import { DEFAULT_FACTULISTA_RULES, formatRulesForAgent, type ProjectRules } from '../../../lib/agents/project-rules'
 import { extractDesignSystem, buildDesignSystemBlock, mergeDesignSystemIntoSharedCss } from '../../../lib/agents/design-extractor'
 import { patchSiteConfig } from '../../../lib/site-config-patch'
+import { regenerateAfterChange } from '../../../lib/published-snapshots'
 
 type Usage = { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } | undefined
 function totalTokens(u: Usage): number {
@@ -591,6 +592,8 @@ export async function POST(req: NextRequest) {
               { path: ['designSystem'], value: dsToSave },
               { path: ['shared_css'], value: newSharedCss },
             ])
+            // shared_css ends up in the published html → re-render the snapshots
+            await regenerateAfterChange(projectId)
           }).catch(() => null)
         }
       }

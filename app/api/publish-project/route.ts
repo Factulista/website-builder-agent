@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { regenerateAfterChange } from '../../../lib/published-snapshots'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,6 +66,12 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // Re-render the published pages into published_snapshots (what the public site now
+    // serves — lib/published-snapshots.ts). Non-fatal: if it fails the site keeps
+    // serving via the live-render fallback, just without the speed/load benefit.
+    const snapshots = await regenerateAfterChange(projectId)
+    if (!snapshots.ok) console.error('[publish] snapshot regeneration failed (non-fatal):', snapshots.error)
+
     // Purge Vercel CDN cache so the published changes are live immediately
     // (without this, s-maxage=30 means users could see stale content for up to 30s)
     try {
@@ -85,7 +93,7 @@ export async function POST(req: NextRequest) {
       console.warn('[publish] CDN purge error (non-fatal):', purgeErr)
     }
 
-    return NextResponse.json({ success: true, publishedAt: new Date().toISOString() })
+    return NextResponse.json({ success: true, publishedAt: new Date().toISOString(), snapshots: { ok: snapshots.ok, pages: snapshots.pages } })
   } catch (err) {
     console.error(err)
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })

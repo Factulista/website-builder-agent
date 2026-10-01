@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireInternalSecret } from '../../../../lib/api-auth'
+import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 export const runtime = 'nodejs'
 
 function getSupabase() {
@@ -29,7 +30,7 @@ function fixSelfUrls(html: string, siteUrl: string, slug: string): string {
     .replace(/(<meta[^>]*property="og:url"[^>]*content=")[^"]*(")/i, `$1${self}$2`)
 }
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const authErr = requireInternalSecret(req)
   if (authErr) return authErr
 
@@ -90,3 +91,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ message: 'remap complete', result })
 }
+
+// Re-render the project's published snapshots after a successful change.
+export const POST = withSnapshotRegen(handlePOST)

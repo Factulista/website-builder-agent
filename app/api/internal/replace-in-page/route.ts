@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireInternalSecret } from '../../../../lib/api-auth'
+import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 
 export const runtime = 'nodejs'
 
@@ -14,7 +15,7 @@ function getSupabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const authErr = requireInternalSecret(req)
   if (authErr) return authErr
 
@@ -63,3 +64,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ message: `Sostituzioni applicate su "${slug}" (draft + live)`, applied })
 }
+
+// Re-render the project's published snapshots after a successful change.
+export const POST = withSnapshotRegen(handlePOST)
