@@ -95,6 +95,18 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
     if (delErr) return fail(`stale cleanup failed: ${delErr.message}`, hosts)
     removedStale += removed?.length ?? 0
   }
+
+  // Drop rows for hosts the project is no longer served on (custom domain removed,
+  // or the bare root domain which is never served directly).
+  const hostList = hosts.map(h => `"${h.replace(/"/g, '\\"')}"`).join(',')
+  const { data: orphaned, error: orphanErr } = await supabase.from('published_snapshots')
+    .delete()
+    .eq('project_slug', project.slug)
+    .not('host', 'in', `(${hostList})`)
+    .select('path')
+  if (orphanErr) return fail(`orphan-host cleanup failed: ${orphanErr.message}`, hosts)
+  removedStale += orphaned?.length ?? 0
+
   return { ok: true, hosts, pages, skippedRedirected, removedStale, durationMs: Date.now() - t0 }
 }
 
