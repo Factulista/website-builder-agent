@@ -3511,6 +3511,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         await persistDraftPages(loadedPages)
           .catch((healErr: unknown) => console.warn('[load auto-heal] page write failed:', healErr))
       }
+      // Diff baseline = the pages as this tab now holds them, AFTER the load-time
+      // normalisations above (editor-artefact cleanup, design-system CSS, home nav
+      // alignment). Those are not user edits: counting them made every page "changed",
+      // so a tab opened on stale data pushed all of them back (2026-10-07 incident).
+      // A page the user edits is still saved with its normalised html.
+      if (!wasDirty && Array.isArray(config?.pages)) pagesBaselineRef.current = baselineOf(loadedPages)
 
       // Load SEO keywords — decompress from compact {k,v,d,i} format
       const rawKws = (config as any)?.keywords ?? []
@@ -3816,7 +3822,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     // All attempts failed — show a visible warning so the user knows to retry
     console.error('[saveState] all attempts failed:', lastErr)
-    setSaveError('⚠️ Salvataggio non riuscito — riprova o ricarica la pagina')
+    setSaveError(/client_outdated/.test(lastErr ?? '')
+      ? '⚠️ Questa scheda usa una versione vecchia del builder: ricaricala (Cmd+Shift+R) prima di continuare'
+      : '⚠️ Salvataggio non riuscito — riprova o ricarica la pagina')
+    void reportClientError('saveState', lastErr)
     return false
   }
 

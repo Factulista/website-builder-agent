@@ -51,7 +51,7 @@ export function stripPageBlocks<T>(pages: T[]): T[] {
  * ('client_outdated'), so a long-open tab running an old build can't overwrite pages.
  * Bump together with _require_client() to retire builds.
  */
-const PAGES_CLIENT = typeof window === 'undefined' ? 'server' : 'builder-3'
+const PAGES_CLIENT = typeof window === 'undefined' ? 'server' : 'builder-4'
 
 /** PostgREST error for "this function doesn't exist (yet)". */
 function isMissingFunction(error: { code?: string; message?: string } | null): boolean {
