@@ -3528,22 +3528,40 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // NOT touch site_config, so it adds zero overhead to the hot save path).
   // Returns the updated lightweight list (no page HTML) for the history panel.
   // Fire-and-forget on the DB write so it never blocks the chat/edit flow.
-  const createVersion = async (summary: string, currentPages: Page[]): Promise<Version[]> => {
-    if (currentPages.length === 0) return versions
+  // Report a failure that would otherwise stay in the browser console to the server
+  // logs (/api/client-log) — version saves failed silently for weeks before.
+  const reportClientError = async (where: string, err: unknown) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      await fetch('/api/client-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ projectId: id, where, message: err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err) }),
+      })
+    } catch { /* best effort */ }
+  }
+
+  // Saves a version; resolves true only if it was really stored. Failures are shown
+  // (non-blocking banner) and reported to the server logs.
+  const saveVersion = async (summary: string, currentPages: Page[]): Promise<boolean> => {
+    if (currentPages.length === 0) return false
     const optimistic: Version = { id: `v_${Date.now()}`, timestamp: new Date().toISOString(), summary }
-    const updated = [optimistic, ...versions].slice(0, 30)
-    setVersions(updated)   // optimistic UI — list shows the new entry immediately
+    setVersions(prev => [optimistic, ...prev].slice(0, 30))   // optimistic UI
+    const fail = (err: unknown) => {
+      console.error('[createVersion] failed:', err)
+      setVersions(prev => prev.filter(v => v.id !== optimistic.id))
+      setSaveError('⚠️ Versione non salvata nella cronologia (le modifiche sono salve)')
+      void reportClientError('createVersion', err)
+      return false
+    }
     try {
       // Deduplicated storage: only html the DB doesn't have yet is sent/stored; the
       // server prunes to 10 versions and drops unreferenced html (lib/versions-store).
       const created = await createVersionDedup(supabase, id, summary, currentPages, knownHtmlHashesRef.current, 10)
-        .catch((e: unknown) => { console.error('[createVersion] dedup insert error:', e); return undefined })
-      if (created === undefined) return updated
       if (created) {
-        setVersions(prev => prev.map(v => v.id === optimistic.id
-          ? { id: created.id, timestamp: created.created_at, summary }
-          : v))
-        return updated
+        setVersions(prev => prev.map(v => v.id === optimistic.id ? { id: created.id, timestamp: created.created_at, summary } : v))
+        return true
       }
       // Legacy path (dedup functions not installed): full copy + prune.
       const { data, error } = await supabase
@@ -3551,23 +3569,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         .insert({ project_id: id, summary, pages: stripBlocksForSave(currentPages) })
         .select('id, summary, created_at')
         .single()
-      if (error) { console.error('[createVersion] insert error:', error.message); return updated }
-      // Replace the optimistic id with the real DB id (so restore can fetch it)
-      if (data) {
-        setVersions(prev => prev.map(v => v.id === optimistic.id
-          ? { id: data.id, timestamp: data.created_at, summary: data.summary }
-          : v))
-      }
-      // Prune old versions beyond the most-recent 30, server-side
+      if (error || !data) return fail(error ?? 'insert returned no row')
+      setVersions(prev => prev.map(v => v.id === optimistic.id ? { id: data.id, timestamp: data.created_at, summary: data.summary } : v))
       void supabase.rpc('prune_project_versions', { p_project_id: id, p_keep: 10 })
-        .then(({ error: pErr }: { error: { message: string } | null }) => {
-          if (pErr) console.warn('[createVersion] prune skipped:', pErr.message)
-        })
+      return true
     } catch (e) {
-      console.error('[createVersion] unexpected:', e)
+      return fail(e)
     }
-    return updated
   }
+
+  // Fire-and-forget form used by the edit flows (kept for its call sites).
+  const createVersion = async (summary: string, currentPages: Page[]): Promise<Version[]> => {
+    await saveVersion(summary, currentPages)
+    return versions
+  }
+
 
   /**
    * What a full builder save writes BESIDES the draft pages, as single-field patches
@@ -6781,8 +6797,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               const blocks = splitHtmlIntoBlocks(p.html)
                               return blocks ? { ...p, blocks } : p
                             })
-                            // Snapshot current state as a backup version first
-                            void createVersion('Backup prima del ripristino', pages)
+                            // Snapshot the current state FIRST and only restore if that backup
+                            // was really stored — otherwise a restore could not be undone.
+                            const backedUp = await saveVersion('Backup prima del ripristino', pages)
+                            if (!backedUp) {
+                              await alertDialog({ title: 'Ripristino annullato', message: 'Non è stato possibile salvare una copia dello stato attuale, quindi il ripristino è stato annullato per sicurezza. Riprova tra poco.', variant: 'danger' })
+                              return
+                            }
                             setPages(restorePages)
                             setActiveSlug(restorePages[0]?.slug || 'home')
                             await saveState(messages, restorePages)
