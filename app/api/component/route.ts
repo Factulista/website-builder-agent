@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { runComponentAgent, extractComponentStyle } from '../../../lib/agents/component-agent'
-import { requireUserAndProject } from '../../../lib/api-auth'
+import { requireUserAndProjectKeys } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits } from '../../../lib/credits'
 
 import { patchSiteConfig } from '../../../lib/site-config-patch'
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return Response.json({ error: 'API key non configurata' }, { status: 500 })
 
-    const { user, supabase, project } = await requireUserAndProject(req, projectId)
+    const { user, supabase, project } = await requireUserAndProjectKeys(req, projectId, ['context'])
     await precheckCredits(user.id, supabase)
 
     const siteConfig = (project?.site_config ?? {}) as Record<string, unknown>

@@ -241,16 +241,16 @@ export default function AgentDetailPage({ params }: { params: Promise<{ name: st
     try {
       const { data } = await supabase
         .from('projects')
-        .select('id, name, slug, site_config')
-        .not('site_config', 'is', null)
+        .select('id, name, slug, context:site_config->context')
+        .not('site_config->context', 'is', null)
         .order('updated_at', { ascending: false })
         .limit(30)
-      const mapped: ProjectCtx[] = ((data ?? []) as Array<{ id: string; name: string; slug: string; site_config: Record<string, unknown> | null }>)
+      const mapped: ProjectCtx[] = ((data ?? []) as Array<{ id: string; name: string; slug: string; context: unknown }>)
         .map(p => ({
           id: p.id,
           name: p.name,
           slug: p.slug,
-          context: p.site_config?.context != null ? (typeof p.site_config.context === 'string' ? p.site_config.context : JSON.stringify(p.site_config.context)) : null,
+          context: p.context != null ? (typeof p.context === 'string' ? p.context : JSON.stringify(p.context)) : null,
         }))
         .filter(p => p.context !== null)
       setProjectContexts(mapped)

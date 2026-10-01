@@ -3298,11 +3298,20 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   useEffect(() => {
     const load = async () => {
-      const { data: project } = await supabase
-        .from('projects')
-        .select('name, slug, site_config, custom_domain, custom_domain_status')
-        .eq('id', id)
-        .single()
+      // site_config WITHOUT published_pages (~3.3MB the editor never reads) via RPC;
+      // falls back to the full row if the function isn't deployed.
+      type LoadedProject = { name: string; slug: string; site_config: unknown; custom_domain: string | null; custom_domain_status: string | null }
+      let project: LoadedProject | null = null
+      const viaRpc = await supabase.rpc('get_builder_project', { p_id: id }).maybeSingle()
+      if (!viaRpc.error && viaRpc.data) project = viaRpc.data as LoadedProject
+      else {
+        const { data } = await supabase
+          .from('projects')
+          .select('name, slug, site_config, custom_domain, custom_domain_status')
+          .eq('id', id)
+          .single()
+        project = data as LoadedProject | null
+      }
       if (!project) return
       setProjectName(project.name)
       setProjectSlug(project.slug)

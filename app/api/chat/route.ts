@@ -6,7 +6,7 @@ import { getAgentConfigs, type DbAgentConfig } from '../../../lib/agents/db-conf
 import { applyDbOverrides, AGENT_CONFIGS } from '../../../lib/agents/config'
 import { startRun, completeRun, failRun, noActionRun } from '../../../lib/agents/run-logger'
 import { findComponentByKeywords } from '../../../lib/components/index'
-import { requireUserAndProject, jsonError, ApiError } from '../../../lib/api-auth'
+import { requireUserAndProjectKeys, jsonError, ApiError } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 import { detectLangFromText } from '../../../lib/agents/detect-lang'
 import { checkHtmlQuality, reconstructEditedHtml, formatReportForAgent, applyEditValidated } from '../../../lib/agents/html-quality'
@@ -213,7 +213,8 @@ export async function POST(req: NextRequest) {
     if (!apiKey) return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
 
     // Auth + ownership + credits pre-check
-    const { user, supabase, project } = await requireUserAndProject(req, projectId)
+    // Only the settings this route reads — never the multi-MB pages arrays.
+    const { user, supabase, project } = await requireUserAndProjectKeys(req, projectId, ['context', 'media', 'designSystem', 'shared_css', 'sessionMemory', 'projectRules', 'inject_points'])
     await precheckCredits(user.id, supabase)
 
     /** Fire-and-forget credit consumption from an LLM usage object. */

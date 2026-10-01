@@ -50,7 +50,7 @@ export default function BackOfficeLayout({ children }: { children: React.ReactNo
         // Fetch recent projects for sidebar
         const { data } = await supabase
           .from('projects')
-          .select('id, name, slug, created_at, updated_at, site_config')
+          .select('id, name, slug, created_at, updated_at')
           .is('deleted_at', null)
           .order('updated_at', { ascending: false, nullsFirst: false })
         setProjects(data ?? [])
