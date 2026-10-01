@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages, writePages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 export const runtime = 'nodejs'
 function getSupabase() {
@@ -24,22 +25,19 @@ export async function POST(req: NextRequest) {
   if (typeof value !== 'boolean') return NextResponse.json({ error: 'value (boolean) required' }, { status: 400 })
 
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-  if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
-
-  const config = (data.site_config ?? {}) as Record<string, unknown>
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(supabase, projectId) } catch { return NextResponse.json({ error: 'project not found' }, { status: 404 }) }
   const slugSet = new Set(slugs)
   const applyTo = (arr: Array<Record<string, unknown> & { slug: string }> | undefined) =>
     (arr ?? []).map(p => slugSet.has(p.slug) ? { ...p, inMenu: value } : p)
 
-  const pages = applyTo(config.pages as Array<Record<string, unknown> & { slug: string }> | undefined)
-  const published = applyTo(config.published_pages as Array<Record<string, unknown> & { slug: string }> | undefined)
+  const pages = applyTo(all.draft as Array<Record<string, unknown> & { slug: string }>)
+  const published = applyTo(all.published as Array<Record<string, unknown> & { slug: string }>)
 
-  const { error: saveErr } = await supabase.from('projects').update({
-    site_config: { ...config, pages, published_pages: published },
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId)
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  try {
+    await writePages(supabase, projectId, 'draft', pages)
+    await writePages(supabase, projectId, 'published', published)
+  } catch (e) { return NextResponse.json({ error: String(e) }, { status: 500 }) }
 
   return NextResponse.json({ message: `inMenu=${value} impostato su ${slugs.length} pagine (draft + published)` })
 }

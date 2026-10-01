@@ -10,8 +10,8 @@ export async function GET(req: NextRequest) {
   if (authErr) return authErr
   const projectId = req.nextUrl.searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
-  const { data, error } = await getSupabase().from('projects').select('site_config').eq('id', projectId).single()
+  const { data, error } = await getSupabase().from('projects').select('shared_nav_html:site_config->shared_nav_html').eq('id', projectId).single()
   if (error || !data) return NextResponse.json({ error: 'not found' }, { status: 404 })
-  const config = (data.site_config ?? {}) as Record<string, unknown>
+  const config = data as Record<string, unknown>
   return NextResponse.json({ shared_nav_html: config.shared_nav_html ?? null, length: ((config.shared_nav_html as string) ?? '').length })
 }

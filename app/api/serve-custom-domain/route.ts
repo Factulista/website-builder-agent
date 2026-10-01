@@ -5,6 +5,7 @@ import { generateSitemap, generateRobots, generateLlmsTxt, generateLlmsFullTxt }
 import { buildBlogPostPage as buildBlogPostPageFromLib, buildBlogListPage as buildBlogListPageFromLib, type Post as LibPost, type BlogSidebarBanner, type InjectPoints, escapeHtml, safeUrl, slugifySimple } from '../../../lib/blog-serve'
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../lib/design-system'
 import { buildAyudaHubPage, buildAyudaCategoryPage, buildAyudaArticlePage, normalizeCategoryLabel, type SupportArticle as SupportArticleType } from '../../../lib/support-serve'
+import { loadSiteWithPages } from '../../../lib/pages-store'
 
 export const runtime = 'nodejs'
 
@@ -44,14 +45,11 @@ export async function GET(req: NextRequest) {
 
   const supabase = getSupabase()
 
-  const { data: project, error } = await supabase
-    .from('projects')
-    .select('id, slug, site_config, custom_domain_status')
-    .eq('custom_domain', host)
-    .is('deleted_at', null)
-    .single()
+  // Published pages only (drafts dropped) — lib/pages-store.
+  const site = await loadSiteWithPages(supabase, { customDomain: host }, 'published', ['custom_domain_status'])
+  const project = site?.project
 
-  if (error || !project) {
+  if (!site || !project) {
     return new Response(
       '<!DOCTYPE html><html><body style="font-family:system-ui;padding:2rem;text-align:center;color:#1c1917;background:#faf9f7;"><h1>Dominio non configurato</h1><p>Questo dominio non è configurato correttamente.</p></body></html>',
       { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
@@ -66,7 +64,7 @@ export async function GET(req: NextRequest) {
   }
 
   const baseUrl = `https://${host}`
-  const siteConfig = (project.site_config ?? {}) as Record<string, unknown>
+  const siteConfig = site.config
   const publishedPages = (siteConfig.published_pages as Array<{ slug: string; name: string; html: string }>) ?? []
   const seoKeywords = (siteConfig.keywords as Array<{keyword:string}>)?.map(k => k.keyword) ?? []
   const siteContext = (siteConfig.context ?? {}) as Record<string, string>

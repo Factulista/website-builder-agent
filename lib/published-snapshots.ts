@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { renderPublishedPageHtml, resolvePublishedRedirect, SNAPSHOT_MANIFEST_PATH, type PublishedManifest } from './preview'
 import { LITE_HOST, liteSnapshotPath, LITE_SNAPSHOT_SLUGS } from './site-config-fetch'
+import { readPublishedSite } from './pages-store'
 
 /**
  * Pre-rendered published pages ("static publishing", point 1 of the Oct 2026
@@ -57,10 +58,10 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
   if (hosts.length === 0) return { ok: true, hosts, pages: 0, skippedRedirected: 0, removedStale: 0, durationMs: Date.now() - t0 }
 
   // One full read of the published config per regeneration (not per request).
-  const rpc = await supabase.rpc('get_published_site', { p_slug: project.slug }).maybeSingle()
-  if (rpc.error || !rpc.data) return fail(`get_published_site failed: ${rpc.error?.message ?? 'no data'}`, hosts)
-  const config = (rpc.data as { config: Parameters<typeof renderPublishedPageHtml>[0] }).config
-  const projectName = (rpc.data as { name: string | null }).name ?? ''
+  const rpc = await readPublishedSite(supabase, project.slug)
+  if (rpc.error || !rpc.data) return fail(`get_published_site failed: ${rpc.error ?? 'no data'}`, hosts)
+  const config = rpc.data.config as Parameters<typeof renderPublishedPageHtml>[0]
+  const projectName = rpc.data.name ?? ''
   const slugs = (config.published_pages ?? []).map(p => p.slug)
   const redirects = (config.redirects ?? []) as Array<{ from: string; to: string }>
 

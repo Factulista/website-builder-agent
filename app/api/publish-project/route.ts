@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { regenerateAfterChange } from '../../../lib/published-snapshots'
+import { publishDrafts } from '../../../lib/pages-store'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     const { data: project } = await supabase
       .from('projects')
-      .select('id, user_id, slug, site_config, custom_domain, custom_domain_status')
+      .select('id, user_id, slug, custom_domain, custom_domain_status')
       .eq('id', projectId)
       .eq('user_id', user.id)
       .single()
@@ -43,28 +44,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Devi configurare e verificare un dominio personalizzato prima di pubblicare' }, { status: 400 })
     }
 
-    const config = project.site_config as { pages?: unknown[]; messages?: unknown[]; published_pages?: unknown[] } | null
-    if (!config?.pages || config.pages.length === 0) {
-      return NextResponse.json({ error: 'Nessuna pagina da pubblicare' }, { status: 400 })
+    // published := drafts (without the editor-only blocks) — lib/pages-store.
+    try {
+      await publishDrafts(supabase, projectId)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return NextResponse.json({ error: msg }, { status: msg === 'Nessuna pagina da pubblicare' ? 400 : 500 })
     }
-
-    // Copy pages → published_pages, WITHOUT `blocks`. Blocks are the editor's per-section
-    // split of the html (regenerated from html whenever missing — see splitHtmlIntoBlocks);
-    // nothing reads them from published_pages, and copying them doubled each published
-    // page's size in site_config (Sep 2026 Vercel/Supabase load investigation).
-    const publishedPages = (config.pages as Array<Record<string, unknown>>).map(p => {
-      const { blocks: _blocks, ...rest } = p
-      return rest
-    })
-    const { error } = await supabase
-      .from('projects')
-      .update({
-        site_config: { ...config, published_pages: publishedPages },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', projectId)
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     // Re-render the published pages into published_snapshots (what the public site now
     // serves — lib/published-snapshots.ts). Non-fatal: if it fails the site keeps

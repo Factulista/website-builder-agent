@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 
 export const runtime = 'nodejs'
@@ -23,10 +24,12 @@ export async function GET(req: NextRequest) {
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-  if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
-
-  const config = (data.site_config ?? {}) as Record<string, unknown>
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(supabase, projectId) } catch { return NextResponse.json({ error: 'project not found' }, { status: 404 }) }
+  const { data: shared } = await supabase.from('projects')
+    .select('shared_nav_html:site_config->shared_nav_html, shared_footer_html:site_config->shared_footer_html, shared_css:site_config->shared_css')
+    .eq('id', projectId).single()
+  const config = { ...(shared ?? {}), pages: all.draft, published_pages: all.published } as Record<string, unknown>
   const pages = (config.pages as Array<{ slug: string; name?: string; html: string; blocks?: Array<{ html?: string }>; megaMenu?: string; megaMenuLabel?: string; megaMenuIcon?: string }>) ?? []
   const publishedPages = (config.published_pages as Array<{ slug: string; megaMenu?: string; megaMenuLabel?: string; megaMenuIcon?: string }>) ?? []
   const p = pages.find(x => x.slug === slug)

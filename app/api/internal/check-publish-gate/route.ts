@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readPages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import { compileSeo } from '../../../../lib/seo-compiler'
 
@@ -22,13 +23,12 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabase()
   const { data: project, error } = await supabase
     .from('projects')
-    .select('id, slug, custom_domain, custom_domain_status, site_config')
+    .select('id, slug, custom_domain, custom_domain_status')
     .eq('id', projectId)
     .single()
   if (error || !project) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  const config = (project.site_config ?? {}) as { pages?: Array<{ slug: string; name: string; html: string; robots?: { noindex?: boolean } }> }
-  const pages = config.pages ?? []
+  const pages = await readPages<{ slug: string; name: string; html: string; robots?: { noindex?: boolean } }>(supabase, projectId, 'draft')
 
   const isRootDomainProject = !!process.env.ROOT_DOMAIN_PROJECT && project.slug === process.env.ROOT_DOMAIN_PROJECT
   const domainGateBlocked = !isRootDomainProject && (!project.custom_domain || project.custom_domain_status !== 'verified')

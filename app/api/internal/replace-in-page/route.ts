@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages, writePages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 
@@ -27,10 +28,8 @@ async function handlePOST(req: NextRequest) {
   if (replacements.length === 0) return NextResponse.json({ error: 'no replacements' }, { status: 400 })
 
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-  if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
-
-  const config = (data.site_config ?? {}) as Record<string, unknown>
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(supabase, projectId) } catch { return NextResponse.json({ error: 'project not found' }, { status: 404 }) }
   const applied: Record<string, number> = {}
 
   const fixArr = (arr: Array<{ slug: string; html: string; blocks?: unknown }> | undefined) =>
@@ -50,17 +49,16 @@ async function handlePOST(req: NextRequest) {
       return pageChanged ? { ...p, html, blocks: undefined } : p
     })
 
-  const fixedPages = fixArr(config.pages as Array<{ slug: string; html: string }>)
-  const fixedPublished = fixArr(config.published_pages as Array<{ slug: string; html: string }>)
+  const fixedPages = fixArr(all.draft as Array<{ slug: string; html: string }>)
+  const fixedPublished = fixArr(all.published as Array<{ slug: string; html: string }>)
 
   const totalApplied = Object.values(applied).reduce((a, b) => a + b, 0)
   if (totalApplied === 0) return NextResponse.json({ message: 'Nessuna corrispondenza trovata', applied })
 
-  const { error: saveErr } = await supabase.from('projects').update({
-    site_config: { ...config, pages: fixedPages, published_pages: fixedPublished },
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId)
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  try {
+    await writePages(supabase, projectId, 'draft', fixedPages)
+    await writePages(supabase, projectId, 'published', fixedPublished)
+  } catch (e) { return NextResponse.json({ error: String(e) }, { status: 500 }) }
 
   return NextResponse.json({ message: `Sostituzioni applicate su "${slug}" (draft + live)`, applied })
 }

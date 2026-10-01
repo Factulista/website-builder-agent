@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages, writePages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 export const runtime = 'nodejs'
@@ -24,11 +25,10 @@ async function handlePOST(req: NextRequest) {
   if (slugs.length === 0) return NextResponse.json({ error: 'slugs required' }, { status: 400 })
 
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-  if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(supabase, projectId) } catch { return NextResponse.json({ error: 'project not found' }, { status: 404 }) }
 
-  const config = (data.site_config ?? {}) as Record<string, unknown>
-  const published = (config.published_pages as Array<{ slug: string }> | undefined) ?? []
+  const published = all.published
   const slugSet = new Set(slugs)
   const before = published.length
   const remaining = published.filter(p => !slugSet.has(p.slug))
@@ -38,11 +38,8 @@ async function handlePOST(req: NextRequest) {
     return NextResponse.json({ message: 'Nessuna delle slug indicate era pubblicata', removed: [] })
   }
 
-  const { error: saveErr } = await supabase.from('projects').update({
-    site_config: { ...config, published_pages: remaining },
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId)
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  try { await writePages(supabase, projectId, 'published', remaining) }
+  catch (e) { return NextResponse.json({ error: String(e) }, { status: 500 }) }
 
   return NextResponse.json({ message: `Rimosse ${removed.length} pagine da published_pages (${before} → ${remaining.length})`, removed })
 }

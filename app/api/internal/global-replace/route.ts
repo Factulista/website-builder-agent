@@ -7,6 +7,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages, writePages } from '../../../../lib/pages-store'
+import { patchSiteConfig, type SiteConfigSet } from '../../../../lib/site-config-patch'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 
@@ -27,10 +29,13 @@ async function handlePOST(req: NextRequest) {
   if (replacements.length === 0) return NextResponse.json({ error: 'no replacements' }, { status: 400 })
 
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(supabase, projectId) } catch { return NextResponse.json({ error: 'project not found' }, { status: 404 }) }
+  const { data, error } = await supabase.from('projects')
+    .select('shared_nav_html:site_config->shared_nav_html, shared_footer_html:site_config->shared_footer_html, shared_css:site_config->shared_css')
+    .eq('id', projectId).single()
   if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
-
-  const config = (data.site_config ?? {}) as Record<string, unknown>
+  const config = data as Record<string, unknown>
   const applied: Record<string, number> = {}
 
   const applyToStr = (s: string): { out: string; changed: boolean } => {
@@ -54,25 +59,26 @@ async function handlePOST(req: NextRequest) {
       return changed ? { ...p, html: out, blocks: undefined } : p
     })
 
-  const fixedPages = fixArr(config.pages as Array<{ slug: string; html: string }>)
-  const fixedPublished = fixArr(config.published_pages as Array<{ slug: string; html: string }>)
+  const fixedPages = fixArr(all.draft as Array<{ slug: string; html: string }>)
+  const fixedPublished = fixArr(all.published as Array<{ slug: string; html: string }>)
 
-  const newConfig: Record<string, unknown> = { ...config, pages: fixedPages, published_pages: fixedPublished }
+  const sharedSets: SiteConfigSet[] = []
   for (const field of ['shared_nav_html', 'shared_footer_html', 'shared_css']) {
     if (typeof config[field] === 'string') {
       const { out, changed } = applyToStr(config[field] as string)
-      if (changed) newConfig[field] = out
+      if (changed) sharedSets.push({ path: [field], value: out })
     }
   }
 
   const totalApplied = Object.values(applied).reduce((a, b) => a + b, 0)
   if (totalApplied === 0) return NextResponse.json({ message: 'Nessuna corrispondenza trovata', applied })
 
-  const { error: saveErr } = await supabase.from('projects').update({
-    site_config: newConfig,
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId)
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  try {
+    await writePages(supabase, projectId, 'draft', fixedPages)
+    await writePages(supabase, projectId, 'published', fixedPublished)
+    const { error: saveErr } = await patchSiteConfig(supabase, projectId, sharedSets)
+    if (saveErr) throw new Error(saveErr)
+  } catch (e) { return NextResponse.json({ error: String(e) }, { status: 500 }) }
 
   return NextResponse.json({ message: 'Sostituzioni globali applicate (draft + live + shared)', applied })
 }

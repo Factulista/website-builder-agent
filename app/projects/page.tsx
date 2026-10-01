@@ -10,6 +10,7 @@ import { confirmDialog } from '../../lib/dialog'
 import { Sidebar } from '../../components/Sidebar'
 import { useLanguage } from '../../lib/i18n/useLanguage'
 import { t } from '../../lib/i18n/translations'
+import { copyAllPages } from '../../lib/pages-store'
 
 type Page = { slug: string; name: string; html: string }
 type Project = {
@@ -210,15 +211,22 @@ export default function ProjectsPage() {
     let counter = 2
     while (existingSlugs.has(newSlug)) { newSlug = `${source.slug}-copia-${counter}`; counter++ }
 
-    // Fetch full site_config only for this one project to duplicate it
+    // Settings are copied with the row; pages (draft + published) through
+    // lib/pages-store, which owns where pages are stored.
     const { data: fullSource } = await supabase.from('projects').select('site_config').eq('id', id).single()
+    const settings = { ...((fullSource?.site_config ?? {}) as Record<string, unknown>) }
+    delete settings.pages
+    delete settings.published_pages
     const { data: created, error } = await supabase.from('projects').insert({
       name: `${source.name} (copia)`,
       slug: newSlug,
       user_id: session.user.id,
-      site_config: fullSource?.site_config ?? null,
+      site_config: fullSource?.site_config ? settings : null,
     }).select('id, name, slug, created_at, updated_at').single()
 
+    if (!error && created && fullSource?.site_config) {
+      await copyAllPages(supabase, id, created.id).catch(e => console.error('[duplicate] page copy failed:', e))
+    }
     if (!error && created) {
       setProjects(prev => [created as Project, ...prev])
     }

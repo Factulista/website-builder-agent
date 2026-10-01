@@ -31,25 +31,10 @@ export async function requireUser(req: NextRequest) {
   return { user, supabase }
 }
 
-/** Resolve user AND verify they own the given project. Throws 401/404. */
-export async function requireUserAndProject(req: NextRequest, projectId: string) {
-  if (!projectId) throw new ApiError(400, 'projectId richiesto')
-  const { user, supabase } = await requireUser(req)
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, user_id, slug, name, site_config')
-    .eq('id', projectId)
-    .eq('user_id', user.id)
-    .is('deleted_at', null)
-    .single()
-  if (!project) throw new ApiError(404, 'Progetto non trovato')
-  return { user, supabase, project }
-}
-
 /**
- * Same as requireUserAndProject, but reads ONLY the given top-level `site_config` keys
- * (PostgREST json-path select, e.g. `context:site_config->context`) and reassembles them
- * into a partial `site_config`. The full blob is ~7MB (draft + published pages); chat and
+ * Resolve user AND verify they own the given project (401/404), reading ONLY the
+ * given top-level `site_config` keys (PostgREST json-path select, e.g.
+ * `sc_context:site_config->context`), reassembled into a partial `site_config`. The full blob is ~7MB (draft + published pages); chat and
  * component only need a few small settings, so this avoids detoasting/shipping the whole
  * thing on every message (Oct 2026 Supabase load plan, phase 2.0).
  * Missing keys come back as null and are omitted from the result.
@@ -75,12 +60,12 @@ export async function requireUserAndProjectKeys(req: NextRequest, projectId: str
 }
 
 /**
- * Same ownership check as requireUserAndProject, WITHOUT pulling `site_config` —
+ * Same ownership check as requireUserAndProjectKeys, WITHOUT any `site_config` —
  * for routes that only need to verify the caller owns the project and never read
  * its content (e.g. generate-blog-post, which fetches an unrelated Anthropic
  * stream and only needs `user.id`). `site_config` can be several MB on an active
  * project; fetching and discarding it on every request is real, avoidable load
- * on the DB. Use `requireUserAndProject` instead whenever the route actually
+ * on the DB. Use `requireUserAndProjectKeys` instead whenever the route actually
  * reads `project.site_config`/`slug`/etc. afterward.
  */
 export async function requireUserAndProjectOwnership(req: NextRequest, projectId: string) {

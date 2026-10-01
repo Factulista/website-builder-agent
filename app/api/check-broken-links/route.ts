@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUserAndProject, getServiceSupabase, jsonError, ApiError } from '../../../lib/api-auth'
+import { requireUserAndProjectKeys, getServiceSupabase, jsonError, ApiError } from '../../../lib/api-auth'
+import { readPages } from '../../../lib/pages-store'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -91,9 +92,9 @@ async function checkUrl(url: string): Promise<{ url: string; status: number | st
 export async function GET(req: NextRequest) {
   try {
     const projectId = req.nextUrl.searchParams.get('projectId') ?? ''
-    const { project } = await requireUserAndProject(req, projectId)
+    const { project } = await requireUserAndProjectKeys(req, projectId, [])
 
-    // Fetch custom_domain and custom_domain_status (not included in requireUserAndProject's select)
+    // Fetch custom_domain and custom_domain_status (not included in requireUserAndProjectKeys' select)
     const supabase = getServiceSupabase()
     const { data: projectExtra } = await supabase
       .from('projects')
@@ -106,8 +107,7 @@ export async function GET(req: NextRequest) {
         ? (projectExtra.custom_domain as string | null)
         : null
 
-    const siteConfig = (project.site_config ?? {}) as { pages?: SitePage[] }
-    const pages: SitePage[] = siteConfig.pages ?? []
+    const pages = await readPages<SitePage>(supabase, projectId, 'draft')
 
     const baseUrl = getProjectPublicBaseUrl(project.slug, customDomain)
 

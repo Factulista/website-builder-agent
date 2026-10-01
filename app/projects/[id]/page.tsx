@@ -23,6 +23,7 @@ import { applySeoMeta } from '../../../lib/seo/crawler-view'
 import { SEO_CHECKS, SEO_GROUPS, getCheckSource, type CheckId } from '../../../lib/seo/checks'
 import type { Page } from '../../../lib/types'
 import { patchSiteConfig } from '../../../lib/site-config-patch'
+import { readPages, writePages, loadEditorProject } from '../../../lib/pages-store'
 import { BLOG_POST_CONTENT_CSS, buildBlogPostPage, type Post as BlogServePost } from '../../../lib/blog-serve'
 import { syncSharedCssWithDesignSystem, mergeRootVars, type DesignSystem as LibDesignSystem } from '../../../lib/design-system'
 import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
@@ -2468,7 +2469,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // into project_versions — the main source of DB bloat + Disk IO during inline edits.
   const lastInlineVersionRef = useRef<number>(0)
 
-  // Ref mirrors of "site-wide" state fields. Used by buildSiteConfig to avoid
+  // Ref mirrors of "site-wide" state fields. Used by buildSaveSets to avoid
   // stale closures when saveState is fired from async callbacks/timers.
   const faviconUrlRef = useRef<string>('')
   const blogHeaderHtmlRef = useRef<string>('')
@@ -2486,7 +2487,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Precios/Recursos/Autónomos-panel regressions kept coming back this way).
   const sharedNavBaselineRef = useRef<string | null>(null)
   const sharedFooterBaselineRef = useRef<string | null>(null)
-  // Same idea for the settings buildSiteConfig mirrors from in-tab refs (favicon,
+  // Same idea for the settings buildSaveSets mirrors from in-tab refs (favicon,
   // blog header, inject points, sidebar banner, context, shared CSS): a full save only
   // writes a setting if THIS tab changed it since load (or since its own last write) —
   // otherwise a page save from a tab opened earlier reverted settings another person
@@ -3298,20 +3299,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
   useEffect(() => {
     const load = async () => {
-      // site_config WITHOUT published_pages (~3.3MB the editor never reads) via RPC;
-      // falls back to the full row if the function isn't deployed.
-      type LoadedProject = { name: string; slug: string; site_config: unknown; custom_domain: string | null; custom_domain_status: string | null }
-      let project: LoadedProject | null = null
-      const viaRpc = await supabase.rpc('get_builder_project', { p_id: id }).maybeSingle()
-      if (!viaRpc.error && viaRpc.data) project = viaRpc.data as LoadedProject
-      else {
-        const { data } = await supabase
-          .from('projects')
-          .select('name, slug, site_config, custom_domain, custom_domain_status')
-          .eq('id', id)
-          .single()
-        project = data as LoadedProject | null
-      }
+      // site_config WITHOUT published_pages (~3.3MB the editor never reads) — lib/pages-store.
+      const project = await loadEditorProject(supabase, id)
       if (!project) return
       setProjectName(project.name)
       setProjectSlug(project.slug)
@@ -3398,7 +3387,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (config?.media) setMediaMeta(config.media)
       if ((config as any)?.favicon_url) setFaviconUrl((config as any).favicon_url as string)
       setBlogHeaderHtml(config?.blog_header_html ?? '')
-      // Baselines for buildSiteConfig's "only write settings this tab changed" check —
+      // Baselines for buildSaveSets's "only write settings this tab changed" check —
       // taken from the DB values BEFORE the in-memory migrations below.
       settingsBaselineRef.current = {
         favicon_url: snapSetting((config as Record<string, unknown> | null)?.favicon_url),
@@ -3504,8 +3493,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         // Pages only, through the inline-save RPC (null nav/footer = keep DB values)
         // instead of rewriting the whole loaded config — which could clobber settings
         // saved by another tab between this load and this write.
-        const { error: healErr } = await supabase.rpc('save_inline_pages', { p_id: id, p_pages: stripBlocksForSave(loadedPages) })
-        if (healErr) console.warn('[load auto-heal] save_inline_pages failed:', healErr.message)
+        await writePages(supabase, id, 'draft', loadedPages)
+          .catch((healErr: unknown) => console.warn('[load auto-heal] page write failed:', healErr))
       }
 
       // Load SEO keywords — decompress from compact {k,v,d,i} format
@@ -3554,36 +3543,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   /**
-   * Builds the full site_config by READ-MERGING with the current DB state.
-   * This preserves ANY top-level field we don't explicitly know about
-   * (e.g. published_pages, future fields, fields written by other endpoints).
-   * Critical: prevents data loss when saveState runs after pages are edited.
+   * What a full builder save writes BESIDES the draft pages, as single-field patches
+   * (update_site_config_paths): messages, media, the in-tab settings this tab changed,
+   * and the shared nav/footer derived from home. Nothing else in site_config is read
+   * or rewritten, so keys saved by other tabs/endpoints (published_pages, keywords,
+   * redirects…) are untouched by construction — no base read needed.
+   * `commit()` advances the in-tab baselines; call it only after the writes succeed.
    */
-  const buildSiteConfig = async (
+  const buildSaveSets = (
     newPages: Page[],
     newMessages: Message[],
     newMedia: Record<string, MediaMeta>,
-  ): Promise<Record<string, unknown>> => {
-    const { data: existing, error: readErr } = await supabase.from('projects').select('site_config').eq('id', id).single()
-    // CRITICAL data-loss guard: if the base read fails (e.g. DB timeout during an
-    // outage), DO NOT build a config from an empty base — that would write back
-    // { pages, messages, media } only, WIPING keywords, published_pages, favicon,
-    // context, and every other top-level key. This is exactly how the keywords +
-    // published_pages were lost during today's DB outage. Abort instead.
-    if (readErr || !existing?.site_config) {
-      throw new Error('buildSiteConfig: base read failed — aborting save to prevent wiping site_config keys')
-    }
-    const base = existing.site_config as Record<string, unknown>
-    const cfg: Record<string, unknown> = {
-      ...base,
-      pages: stripBlocksForSave(newPages),
-      messages: newMessages,
-      media: newMedia,
-    }
-    // Versions now live in the project_versions table — never persist them inside
-    // site_config (this is what was bloating the blob and burning Disk IO). Strip
-    // any legacy versions key so pre-migration projects get cleaned on next save.
-    delete cfg.versions
+  ) => {
+    const sets: Parameters<typeof patchSiteConfig>[2] = [
+      { path: ['messages'], value: newMessages },
+      { path: ['media'], value: newMedia },
+      // Versions live in project_versions — drop any legacy copy inside site_config.
+      { path: ['versions'], delete: true },
+    ]
+    const baselineUpdates: Record<string, string> = {}
+    let touchesPublished = false
     // Use ref mirrors to avoid stale closures on rapid state updates
     const fav = faviconUrlRef.current
     const bhh = blogHeaderHtmlRef.current
@@ -3592,16 +3571,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const ctx = projectContextRef.current
     const ip = injectPointsRef.current
     const css = sharedCssRef.current
-    // Mirror in-tab settings into the save ONLY if this tab changed them since load /
-    // its last write (see settingsBaselineRef) — `cfg` already holds base's fresh DB
-    // values, so untouched settings keep whatever another tab saved meanwhile.
+    // Write in-tab settings ONLY if this tab changed them since load / its last write
+    // (see settingsBaselineRef), so untouched settings keep whatever another tab saved.
     const mirror = (key: string, include: boolean, value: unknown) => {
       if (!include) return
       const snap = snapSetting(value)
       if (snap === settingsBaselineRef.current[key]) return
-      cfg[key] = value
-      settingsBaselineRef.current[key] = snap
-      if (PUBLISHED_RENDER_KEYS.has(key)) scheduleSnapshotRegen()
+      sets.push({ path: [key], value })
+      baselineUpdates[key] = snap
+      if (PUBLISHED_RENDER_KEYS.has(key)) touchesPublished = true
     }
     mirror('favicon_url', !!fav, fav)
     mirror('blog_header_html', !!bhh, bhh)
@@ -3610,31 +3588,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     mirror('context', !!ctx && Object.keys(ctx).length > 0, ctx)
     mirror('shared_css', !!css, css)
 
-    // ── Shared nav + footer: extract from home page, store as single source of truth.
-    // At serve time (preview.ts) these are injected into every page, replacing
-    // their per-page copies — so editing nav/footer on home propagates everywhere
-    // automatically without any per-page sync loop.
-    // Only written when the home copy differs from this tab's baseline (= edited in this
-    // session); otherwise `cfg` keeps base's current DB value — see sharedNavBaselineRef.
+    // ── Shared nav + footer: extracted from home, stored as single source of truth and
+    // injected into every page at serve time (preview.ts). Only sent when the home copy
+    // differs from this tab's baseline (= edited in this session) — see sharedNavBaselineRef.
+    let nav: string | null = null
+    let footer: string | null = null
     const homePage = newPages.find(p => p.slug === 'home') ?? newPages[0]
     if (homePage?.html) {
       const navMatch = homePage.html.match(/<nav[\s\S]*?<\/nav>/i)
-      if (navMatch && navMatch[0] !== sharedNavBaselineRef.current) {
-        cfg.shared_nav_html = navMatch[0]
-        sharedNavHtmlRef.current = navMatch[0]
-        sharedNavBaselineRef.current = navMatch[0]
-        scheduleSnapshotRegen()
-      }
+      if (navMatch && navMatch[0] !== sharedNavBaselineRef.current) nav = navMatch[0]
       const footerMatch = homePage.html.match(/<footer[\s\S]*?<\/footer>/i)
-      if (footerMatch && footerMatch[0] !== sharedFooterBaselineRef.current) {
-        cfg.shared_footer_html = footerMatch[0]
-        sharedFooterHtmlRef.current = footerMatch[0]
-        sharedFooterBaselineRef.current = footerMatch[0]
-        scheduleSnapshotRegen()
-      }
+      if (footerMatch && footerMatch[0] !== sharedFooterBaselineRef.current) footer = footerMatch[0]
     }
 
-    return cfg
+    const commit = () => {
+      Object.assign(settingsBaselineRef.current, baselineUpdates)
+      if (nav) { sharedNavHtmlRef.current = nav; sharedNavBaselineRef.current = nav }
+      if (footer) { sharedFooterHtmlRef.current = footer; sharedFooterBaselineRef.current = footer }
+      if (touchesPublished || nav || footer) scheduleSnapshotRegen()
+    }
+    return { sets, nav, footer, commit }
   }
 
   // Fast-path save for the INLINE EDITOR only (high-frequency content edits).
@@ -3648,7 +3621,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // Falls back to saveState if the RPC isn't deployed or errors.
   const savePagesInline = async (newPages: Page[]): Promise<boolean> => {
     if (!Array.isArray(newPages) || newPages.length === 0) return false
-    // Re-derive shared nav/footer from home (mirrors buildSiteConfig's logic): sent only
+    // Re-derive shared nav/footer from home (mirrors buildSaveSets' logic): sent only
     // when edited in this session; null makes the RPC keep the DB's current value.
     const homePage = newPages.find(p => p.slug === 'home') ?? newPages[0]
     let navJson: string | null = null
@@ -3660,14 +3633,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       if (footerMatch && footerMatch[0] !== sharedFooterBaselineRef.current) { footerJson = footerMatch[0]; sharedFooterHtmlRef.current = footerMatch[0] }
     }
     try {
-      const { error } = await supabase.rpc('save_inline_pages', {
-        p_id: id,
-        p_pages: stripBlocksForSave(newPages),
-        p_shared_nav: navJson,
-        p_shared_footer: footerJson,
-      })
-      if (error) {
-        console.warn('[savePagesInline] RPC failed, falling back to saveState:', error.message)
+      try {
+        await writePages(supabase, id, 'draft', newPages, { nav: navJson, footer: footerJson })
+      } catch (error) {
+        console.warn('[savePagesInline] page write failed, falling back to saveState:', error)
         return saveState(messages, newPages)
       }
       latestPagesRef.current = newPages
@@ -3743,12 +3712,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // in this session (tracked in deletedSlugsRef).
     let pagesToSave = newPages
     try {
-      const { data: fresh } = await supabase
-        .from('projects')
-        .select('site_config')
-        .eq('id', id)
-        .single()
-      const dbPages = ((fresh?.site_config as Record<string, unknown>)?.pages ?? []) as Page[]
+      const dbPages = await readPages<Page>(supabase, id, 'draft')
       if (Array.isArray(dbPages) && dbPages.length > 0) {
         const ourSlugs = new Set(newPages.map(p => p.slug))
         const deleted  = deletedSlugsRef.current
@@ -3764,32 +3728,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
     // ── End collaborative merge ────────────────────────────────────────────────
 
-    let merged: Record<string, unknown>
-    try {
-      merged = await buildSiteConfig(pagesToSave, newMessages, med)
-    } catch (e) {
-      // Base read failed (DB unreachable) — abort WITHOUT writing, so we never
-      // overwrite site_config with a stripped object that drops keywords/published_pages.
-      console.error('[saveState] buildSiteConfig failed — aborting to prevent data loss:', e)
-      setSaveError('⚠️ Salvataggio non riuscito (database non raggiungibile) — riprova tra poco')
-      return false
-    }
+    const { sets, nav, footer, commit } = buildSaveSets(pagesToSave, newMessages, med)
 
     // Retry up to 3 times with exponential back-off (1s, 2s) so transient
-    // Supabase timeouts don't silently lose messages.
+    // Supabase timeouts don't silently lose messages. Pages and the other fields are
+    // two targeted writes (lib/pages-store + update_site_config_paths); neither reads
+    // or rewrites the rest of site_config, so a failure can never wipe other keys.
     const MAX_ATTEMPTS = 3
     let lastErr: string | null = null
+    let pagesDone = false
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const { error } = await supabase.from('projects').update({
-        site_config: merged,
-        updated_at: new Date().toISOString(),
-      }).eq('id', id)
-      if (!error) {
+      try {
+        if (!pagesDone) {
+          await writePages(supabase, id, 'draft', pagesToSave, { nav, footer })
+          pagesDone = true
+        }
+        const { error } = await patchSiteConfig(supabase, id, sets)
+        if (error) throw new Error(error)
+        commit()
         if (attempt > 1) console.log(`[saveState] ok on attempt ${attempt}`)
         console.log('[saveState] ok', newPages.length, 'pages,', newMessages.length, 'msgs')
         return true
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : String(e)
       }
-      lastErr = error.message
       console.error(`[saveState] supabase error (attempt ${attempt}/${MAX_ATTEMPTS}):`, lastErr)
       if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, attempt * 1000))
     }
@@ -4553,9 +4515,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     // Pages through the inline-save RPC (null nav/footer = keep DB values); DS + CSS
     // as one single-field patch. Keep the in-tab CSS ref/baseline in sync so a later
     // full save doesn't write the pre-DS shared_css back over it.
-    const { error: pagesErr } = await supabase.rpc('save_inline_pages', { p_id: id, p_pages: stripBlocksForSave(updatedPages) })
-    if (pagesErr) {
-      console.warn('[saveDesignSystem] save_inline_pages failed, falling back to saveState:', pagesErr.message)
+    try {
+      await writePages(supabase, id, 'draft', updatedPages)
+    } catch (pagesErr) {
+      console.warn('[saveDesignSystem] page write failed, falling back to saveState:', pagesErr)
       await saveState(messages, updatedPages)
     }
     await patchSettings([

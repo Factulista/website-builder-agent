@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { patchSiteConfig } from '../../../../lib/site-config-patch'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 export const runtime = 'nodejs'
@@ -19,9 +20,9 @@ export async function GET(req: NextRequest) {
   const projectId = req.nextUrl.searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+  const { data, error } = await supabase.from('projects').select('shared_css:site_config->shared_css').eq('id', projectId).single()
   if (error || !data) return NextResponse.json({ error: 'not found' }, { status: 404 })
-  const cfg = (data.site_config ?? {}) as Record<string, unknown>
+  const cfg = (data ?? {}) as Record<string, unknown>
   const css = (cfg.shared_css as string | undefined) ?? ''
   // Find btn-accent-nav rule
   const m = css.match(/\.btn-accent-nav[\s\S]*?border-radius:[^;]+;/)
@@ -41,9 +42,9 @@ async function handlePOST(req: NextRequest) {
   const replacements = (body?.replacements as Array<{ from: string; to: string }>) ?? []
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
+  const { data, error } = await supabase.from('projects').select('shared_css:site_config->shared_css').eq('id', projectId).single()
   if (error || !data) return NextResponse.json({ error: 'not found' }, { status: 404 })
-  const cfg = (data.site_config ?? {}) as Record<string, unknown>
+  const cfg = (data ?? {}) as Record<string, unknown>
   let css = (cfg.shared_css as string | undefined) ?? ''
   const applied: Record<string, number> = {}
   for (const r of replacements) {
@@ -51,11 +52,8 @@ async function handlePOST(req: NextRequest) {
     if (count > 0) { css = css.split(r.from).join(r.to); applied[r.from.slice(0, 40)] = count }
   }
   if (Object.keys(applied).length === 0) return NextResponse.json({ message: 'no matches', applied })
-  const { error: saveErr } = await supabase.from('projects').update({
-    site_config: { ...cfg, shared_css: css },
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId)
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  const { error: saveErr } = await patchSiteConfig(supabase, projectId, [{ path: ['shared_css'], value: css }])
+  if (saveErr) return NextResponse.json({ error: saveErr }, { status: 500 })
   return NextResponse.json({ message: 'shared_css updated', applied })
 }
 

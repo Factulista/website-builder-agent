@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages, writePages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import { withSnapshotRegen } from '../../../../lib/published-snapshots'
 export const runtime = 'nodejs'
@@ -25,10 +26,8 @@ async function handlePOST(req: NextRequest) {
     return NextResponse.json({ error: 'projectId and assignments required' }, { status: 400 })
   }
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('site_config').eq('id', projectId).single()
-  if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
-
-  const cfg = (data.site_config ?? {}) as Record<string, unknown>
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(supabase, projectId) } catch { return NextResponse.json({ error: 'project not found' }, { status: 404 }) }
   const assignMap = new Map(assignments.map(a => [a.slug, a]))
 
   const applyToList = (list: Array<Record<string, unknown>>) =>
@@ -51,17 +50,15 @@ async function handlePOST(req: NextRequest) {
       return updated
     })
 
-  const pages = applyToList((cfg.pages as Array<Record<string, unknown>>) ?? [])
-  const published = applyToList((cfg.published_pages as Array<Record<string, unknown>>) ?? [])
+  const pages = applyToList(all.draft as Array<Record<string, unknown>>) as Array<Record<string, unknown> & { slug: string }>
+  const published = applyToList(all.published as Array<Record<string, unknown>>) as Array<Record<string, unknown> & { slug: string }>
 
   const applied = assignments.filter(a => [...pages, ...published].some(p => p.slug === a.slug)).map(a => a.slug)
 
-  const { error: saveErr } = await supabase.from('projects').update({
-    site_config: { ...cfg, pages, published_pages: published },
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId)
-
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  try {
+    await writePages(supabase, projectId, 'draft', pages)
+    await writePages(supabase, projectId, 'published', published)
+  } catch (e) { return NextResponse.json({ error: String(e) }, { status: 500 }) }
   return NextResponse.json({ message: 'mega menu assignments updated', applied })
 }
 

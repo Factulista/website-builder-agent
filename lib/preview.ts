@@ -6,6 +6,7 @@ import { applySeoMeta } from './seo/crawler-view'
 import { resolveNfdIcon } from './components/index'
 import { injectSocialShareLinks } from './social-share'
 import { coalesce } from './request-coalesce'
+import { loadSiteWithPages, readPublishedPageConfig, readPublishedSite } from './pages-store'
 
 type Page = {
   slug: string
@@ -697,16 +698,12 @@ export async function servePreview(projectSlug: string, pageSlug: string = 'home
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('site_config, name')
-    .eq('slug', projectSlug)
-    .is('deleted_at', null)
-    .single()
+  // Drafts only (published pages dropped) — lib/pages-store.
+  const site = await loadSiteWithPages(supabase, { slug: projectSlug }, 'draft')
+  if (!site) return errorPage(404, '404', 'Sito non trovato')
+  const data = { name: site.project.name as string }
 
-  if (error || !data) return errorPage(404, '404', 'Sito non trovato')
-
-  const config = data.site_config as SiteConfig
+  const config = site.config as SiteConfig
 
   // ── User-managed 301 redirects (SEO Optimizer → Strumenti) ──
   // Checked BEFORE the page lookup so old/removed slugs send a clean 301 instead
@@ -902,8 +899,8 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
   let config: SiteConfig
   let projectName: string
   const rpc = await coalesce(`pub:${projectSlug}:${pageSlug}`, 30_000, async () => {
-    let r = await supabase.rpc('get_published_page', { p_slug: projectSlug, p_page: pageSlug }).maybeSingle()
-    if (r.error) r = await supabase.rpc('get_published_site', { p_slug: projectSlug }).maybeSingle()
+    let r = await readPublishedPageConfig(supabase, projectSlug, pageSlug)
+    if (r.error) r = await readPublishedSite(supabase, projectSlug)
     return r
   }, r => !r.error && !!r.data)
 
@@ -912,15 +909,10 @@ export async function servePublished(projectSlug: string, pageSlug: string = 'ho
     projectName = (rpc.data as { name: string }).name ?? ''
   } else {
     // Fallback: full select (pre-migration, or RPC unavailable)
-    const { data, error } = await supabase
-      .from('projects')
-      .select('site_config, name')
-      .eq('slug', projectSlug)
-      .is('deleted_at', null)
-      .single()
-    if (error || !data) return errorPage(404, '404', 'Sito non trovato')
-    config = data.site_config as SiteConfig
-    projectName = data.name ?? ''
+    const site = await loadSiteWithPages(supabase, { slug: projectSlug }, 'published')
+    if (!site) return errorPage(404, '404', 'Sito non trovato')
+    config = site.config as SiteConfig
+    projectName = site.project.name ?? ''
   }
 
   const target = resolvePublishedRedirect((config?.published_pages ?? []).map(p => p.slug), config?.redirects, pageSlug, customDomain)

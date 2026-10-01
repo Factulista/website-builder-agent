@@ -5,7 +5,8 @@ import { buildContextPrompt, type ProjectContext } from '../../../lib/agents/mem
 import { getCheck } from '../../../lib/seo/checks'
 import type { CheckId } from '../../../lib/seo/checks'
 import type { CheckResult } from '../../../lib/seo/analyzer'
-import { requireUserAndProject, ApiError } from '../../../lib/api-auth'
+import { requireUserAndProjectKeys, ApiError } from '../../../lib/api-auth'
+import { writePages } from '../../../lib/pages-store'
 import { precheckCredits, consumeCredits, CreditsError, AnthropicBillingError } from '../../../lib/credits'
 
 /** Shared per-request token counter, mutated by callSeoAgent. */
@@ -582,9 +583,9 @@ export async function POST(req: NextRequest) {
       if (!apiKey) { emitError('ANTHROPIC_API_KEY non configurata'); return }
 
       // Auth + ownership + credits pre-check
-      let authCtx: Awaited<ReturnType<typeof requireUserAndProject>>
+      let authCtx: Awaited<ReturnType<typeof requireUserAndProjectKeys>>
       try {
-        authCtx = await requireUserAndProject(req, projectId)
+        authCtx = await requireUserAndProjectKeys(req, projectId, ['context'])
         await precheckCredits(authCtx.user.id, authCtx.supabase)
       } catch (authErr) {
         if (authErr instanceof CreditsError) {
@@ -828,26 +829,9 @@ Lingua: ${resolvedLang}. Rispondi SOLO con il JSON puro, senza markdown, senza b
           summary: `✅ ${check.label} ottimizzato`,
         })
       } else {
-        // Regular page: persist updated HTML via the save_inline_pages RPC, which
-        // jsonb_set's only the `pages` key inside Postgres — no full-blob read/write.
-        // SEO fixes never touch nav/footer, so passing null keeps them unchanged.
-        // Falls back to select+update if the RPC isn't deployed.
-        const { error: rpcErr } = await supabase.rpc('save_inline_pages', {
-          p_id: projectId,
-          p_pages: updatedPages,
-        })
-        if (rpcErr) {
-          const { data: currentProject } = await supabase
-            .from('projects')
-            .select('site_config')
-            .eq('id', projectId)
-            .single()
-          const currentConfig = (currentProject?.site_config ?? {}) as Record<string, unknown>
-          await supabase.from('projects').update({
-            site_config: { ...currentConfig, pages: updatedPages },
-            updated_at: new Date().toISOString(),
-          }).eq('id', projectId)
-        }
+        // Regular page: persist the updated drafts (lib/pages-store — pages only, nav/
+        // footer and every other site_config key untouched).
+        await writePages(supabase, projectId, 'draft', updatedPages)
 
         emitDone({ tool: 'seo_fix', checkId, updatedPages, summary: `✅ ${check.label} ottimizzato` })
       }

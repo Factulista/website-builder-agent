@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages, writePages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 
 export const runtime = 'nodejs'
@@ -23,12 +24,10 @@ export async function POST(req: NextRequest) {
   if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 })
 
   const supabase = getSupabase()
-  const { data, error } = await supabase.from('projects').select('id, site_config').eq('id', projectId).single()
-  if (error || !data) return NextResponse.json({ error: 'project not found' }, { status: 404 })
-
-  const config = (data.site_config ?? {}) as Record<string, unknown>
-  const pages = (config.pages as Array<{ slug: string; html: string }>) ?? []
-  const published = (config.published_pages as Array<{ slug: string; html: string }>) ?? []
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(supabase, projectId) } catch { return NextResponse.json({ error: 'project not found' }, { status: 404 }) }
+  const pages = all.draft as Array<{ slug: string; html: string }>
+  const published = all.published as Array<{ slug: string; html: string }>
 
   const pub = published.find(p => p.slug === slug)
   if (!pub) return NextResponse.json({ error: `Nessuna versione pubblicata per "${slug}"` }, { status: 404 })
@@ -39,8 +38,8 @@ export async function POST(req: NextRequest) {
     ? pages.map(p => p.slug === slug ? { ...p, html: pub.html } : p)
     : [...pages, { slug, name: slug, html: pub.html }]
 
-  const { error: saveErr } = await supabase.rpc('save_inline_pages', { p_id: projectId, p_pages: newPages })
-  if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 })
+  try { await writePages(supabase, projectId, 'draft', newPages) }
+  catch (e) { return NextResponse.json({ error: String(e) }, { status: 500 }) }
 
   return NextResponse.json({
     message: `Pagina "${slug}" ripristinata dalla versione pubblicata`,

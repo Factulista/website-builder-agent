@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readAllPages } from '../../../../lib/pages-store'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 export const runtime = 'nodejs'
 function getSupabase() {
@@ -13,9 +14,9 @@ export async function GET(req: NextRequest) {
   const projectId = req.nextUrl.searchParams.get('projectId')
   const slug = req.nextUrl.searchParams.get('slug')
   if (!projectId || !slug) return NextResponse.json({ error: 'projectId and slug required' }, { status: 400 })
-  const { data, error } = await getSupabase().from('projects').select('site_config').eq('id', projectId).single()
-  if (error || !data) return NextResponse.json({ error: 'not found' }, { status: 404 })
-  const config = (data.site_config ?? {}) as Record<string, unknown>
+  let all: Awaited<ReturnType<typeof readAllPages>>
+  try { all = await readAllPages(getSupabase(), projectId) } catch { return NextResponse.json({ error: 'not found' }, { status: 404 }) }
+  const config = { pages: all.draft, published_pages: all.published } as Record<string, unknown>
   const strip = (p: Record<string, unknown> | undefined) => {
     if (!p) return null
     const { html: _html, blocks: _blocks, ...rest } = p
