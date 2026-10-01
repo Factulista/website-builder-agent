@@ -41,7 +41,7 @@ DECLARE
   h text;
   missing text[] := '{}';
 BEGIN
-  FOR e IN SELECT t.e FROM jsonb_array_elements(COALESCE(p_pages, '[]'::jsonb)) WITH ORDINALITY AS t(e, o) ORDER BY t.o LOOP
+  FOR e IN SELECT t.e FROM jsonb_array_elements((CASE WHEN jsonb_typeof(p_pages) = 'array' THEN p_pages ELSE '[]'::jsonb END)) WITH ORDINALITY AS t(e, o) ORDER BY t.o LOOP
     e := e - 'blocks';
     IF jsonb_typeof(e->'html') = 'string' THEN
       h := _html_hash(e->>'html');
@@ -70,7 +70,7 @@ AS $$
                 THEN (t.e - 'html_ref') || jsonb_build_object('html', b.html)
                 ELSE t.e END
            ORDER BY t.o), '[]'::jsonb)
-    FROM jsonb_array_elements(COALESCE(p_pages, '[]'::jsonb)) WITH ORDINALITY AS t(e, o)
+    FROM jsonb_array_elements((CASE WHEN jsonb_typeof(p_pages) = 'array' THEN p_pages ELSE '[]'::jsonb END)) WITH ORDINALITY AS t(e, o)
     LEFT JOIN page_html_blobs b ON b.project_id = p_id AND b.hash = t.e->>'html_ref'
 $$;
 
@@ -85,7 +85,7 @@ BEGIN
   DELETE FROM page_html_blobs b
    WHERE b.project_id = p_id
      AND NOT EXISTS (
-       SELECT 1 FROM project_versions v CROSS JOIN LATERAL jsonb_array_elements(v.pages) e
+       SELECT 1 FROM project_versions v CROSS JOIN LATERAL jsonb_array_elements((CASE WHEN jsonb_typeof(v.pages) = 'array' THEN v.pages ELSE '[]'::jsonb END)) e
         WHERE v.project_id = p_id AND e->>'html_ref' = b.hash);
   GET DIAGNOSTICS n = ROW_COUNT;
   RETURN n;
@@ -142,7 +142,8 @@ DECLARE
   packed jsonb;
 BEGIN
   FOR r IN SELECT id, project_id, pages FROM project_versions
-            WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(pages) e WHERE jsonb_typeof(e->'html') = 'string')
+            WHERE jsonb_typeof(pages) = 'array'  -- some legacy rows hold a json null
+              AND EXISTS (SELECT 1 FROM jsonb_array_elements(pages) e WHERE jsonb_typeof(e->'html') = 'string')
   LOOP
     SELECT COALESCE(jsonb_agg(t.e - 'blocks' ORDER BY t.o), '[]'::jsonb) INTO orig
       FROM jsonb_array_elements(r.pages) WITH ORDINALITY AS t(e, o);
