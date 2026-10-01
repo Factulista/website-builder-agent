@@ -158,9 +158,6 @@ $$;
 -- ── Snapshot regeneration: write only changed rows ──
 ALTER TABLE public.published_snapshots ADD COLUMN IF NOT EXISTS body_hash text;
 
--- ── Old backups (data verified many times since; the 2026-10-06 one is kept) ──
-DROP TABLE IF EXISTS backups.site_config_20260924;
-DROP TABLE IF EXISTS backups.site_config_20261001;
 
 -- ── Grants ──
 REVOKE ALL ON FUNCTION public._version_pack(uuid, jsonb) FROM PUBLIC, anon;
@@ -178,5 +175,8 @@ GRANT EXECUTE ON FUNCTION public.version_get(uuid) TO authenticated, service_rol
 GRANT EXECUTE ON FUNCTION public.version_blob_hashes(uuid) TO authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.page_html_blobs TO authenticated, service_role;
 
+-- Old backups (run separately; data verified many times since, 2026-10-06 kept):
+--   DROP TABLE IF EXISTS backups.site_config_20260924;
+--   DROP TABLE IF EXISTS backups.site_config_20261001;
 -- AFTER this script, run SEPARATELY (VACUUM can't run inside a script/transaction):
 --   VACUUM FULL public.project_versions, public.projects, public.published_snapshots;
