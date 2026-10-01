@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { runComponentAgent, extractComponentStyle } from '../../../lib/agents/component-agent'
-import { requireUserAndProjectKeys } from '../../../lib/api-auth'
+import { requireUserAndProjectKeys, jsonError, ApiError } from '../../../lib/api-auth'
 import { precheckCredits, consumeCredits } from '../../../lib/credits'
 
 import { patchSiteConfig } from '../../../lib/site-config-patch'
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
       hasStyleMemory: !!previousComponentStyle,
     })
   } catch (err) {
+    if (err instanceof ApiError) return jsonError(err)
     console.error('[component-agent] error:', err)
     return Response.json({ error: String(err) }, { status: 500 })
   }
