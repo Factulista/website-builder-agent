@@ -1495,6 +1495,23 @@ function mergeSharedCssIntoPage(html: string, sharedCss: string): string {
   return /<\/head>/i.test(stripped) ? stripped.replace(/<\/head>/i, `${styleTag}\n</head>`) : styleTag + stripped
 }
 
+/**
+ * Drop the editor-only `blocks` cache from pages before persisting them anywhere
+ * (site_config.pages, save_inline_pages, project_versions). Blocks are a per-section
+ * split of the html, regenerated from it on load (splitHtmlIntoBlocks) and server-side
+ * by the chat route when missing; their ids are random and never referenced after a
+ * reload (everything addresses blocks by their html-derived `selector`). Persisting
+ * them doubled every page's size in the ~10MB site_config blob (Oct 2026 Supabase
+ * memory/IO investigation).
+ */
+function stripBlocksForSave(pages: Page[]): Page[] {
+  return pages.map(p => {
+    if (p.blocks === undefined) return p
+    const { blocks: _blocks, ...rest } = p
+    return rest as Page
+  })
+}
+
 function stripEditorArtifacts(html: string): string {
   if (typeof window === 'undefined' || !html) return html
   // ALWAYS remove orphaned/empty <script type="application/ld+json"> OPEN tags that
@@ -3464,7 +3481,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }
       // Auto-heal: if pages had accumulated <base> tags, save the cleaned HTML immediately
       if (wasDirty) {
-        const cleanConfig = { ...(config ?? {}), pages: loadedPages }
+        const cleanConfig = { ...(config ?? {}), pages: stripBlocksForSave(loadedPages) }
         await supabase.from('projects').update({
           site_config: cleanConfig,
           updated_at: new Date().toISOString(),
@@ -3495,7 +3512,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     try {
       const { data, error } = await supabase
         .from('project_versions')
-        .insert({ project_id: id, summary, pages: currentPages })
+        .insert({ project_id: id, summary, pages: stripBlocksForSave(currentPages) })
         .select('id, summary, created_at')
         .single()
       if (error) { console.error('[createVersion] insert error:', error.message); return updated }
@@ -3539,7 +3556,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const base = existing.site_config as Record<string, unknown>
     const cfg: Record<string, unknown> = {
       ...base,
-      pages: newPages,
+      pages: stripBlocksForSave(newPages),
       messages: newMessages,
       media: newMedia,
     }
@@ -3612,7 +3629,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     try {
       const { error } = await supabase.rpc('save_inline_pages', {
         p_id: id,
-        p_pages: newPages,
+        p_pages: stripBlocksForSave(newPages),
         p_shared_nav: navJson,
         p_shared_footer: footerJson,
       })
@@ -6748,6 +6765,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                               restorePages = data.pages as Page[]
                             }
                             if (!restorePages || restorePages.length === 0) return
+                            // Snapshots are stored without the editor-only blocks cache
+                            // (stripBlocksForSave) — re-split them like the load path does.
+                            restorePages = restorePages.map(p => {
+                              if (p.blocks) return p
+                              const blocks = splitHtmlIntoBlocks(p.html)
+                              return blocks ? { ...p, blocks } : p
+                            })
                             // Snapshot current state as a backup version first
                             void createVersion('Backup prima del ripristino', pages)
                             setPages(restorePages)
