@@ -29,7 +29,9 @@ export async function GET(req: NextRequest) {
   const { data: shared } = await supabase.from('projects')
     .select('shared_nav_html:site_config->shared_nav_html, shared_footer_html:site_config->shared_footer_html, shared_css:site_config->shared_css')
     .eq('id', projectId).single()
-  const config = { ...(shared ?? {}), pages: all.draft, published_pages: all.published } as Record<string, unknown>
+  // ?state=published → inspect the published copy instead of the draft
+  const usePub = req.nextUrl.searchParams.get('state') === 'published'
+  const config = { ...(shared ?? {}), pages: usePub ? all.published : all.draft, published_pages: all.published } as Record<string, unknown>
   const pages = (config.pages as Array<{ slug: string; name?: string; html: string; blocks?: Array<{ html?: string }>; megaMenu?: string; megaMenuLabel?: string; megaMenuIcon?: string }>) ?? []
   const publishedPages = (config.published_pages as Array<{ slug: string; megaMenu?: string; megaMenuLabel?: string; megaMenuIcon?: string }>) ?? []
   const p = pages.find(x => x.slug === slug)
