@@ -36,7 +36,7 @@ LANGUAGE plpgsql
 SET search_path = public
 AS $$
 DECLARE
-  out jsonb := '[]'::jsonb;
+  packed_pages jsonb := '[]'::jsonb;
   e jsonb;
   h text;
   missing text[] := '{}';
@@ -50,12 +50,12 @@ BEGIN
     ELSIF e ? 'html_ref' AND NOT EXISTS (SELECT 1 FROM page_html_blobs WHERE project_id = p_id AND hash = e->>'html_ref') THEN
       missing := missing || (e->>'html_ref');
     END IF;
-    out := out || jsonb_build_array(e);
+    packed_pages := packed_pages || jsonb_build_array(e);
   END LOOP;
   IF cardinality(missing) > 0 THEN
     RAISE EXCEPTION 'version_missing_blobs: %', array_to_string(missing, ',');
   END IF;
-  RETURN out;
+  RETURN packed_pages;
 END;
 $$;
 
