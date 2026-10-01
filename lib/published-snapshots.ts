@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { renderPublishedPageHtml, resolvePublishedRedirect, SNAPSHOT_MANIFEST_PATH, type PublishedManifest } from './preview'
+import { LITE_HOST, liteSnapshotPath, LITE_SNAPSHOT_SLUGS } from './site-config-fetch'
 
 /**
  * Pre-rendered published pages ("static publishing", point 1 of the Oct 2026
@@ -16,6 +17,7 @@ import { renderPublishedPageHtml, resolvePublishedRedirect, SNAPSHOT_MANIFEST_PA
  */
 
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'factulista.com'
+
 
 /** Hosts a project is publicly served on (base href / canonical depend on the host). */
 export function publicHostsFor(project: { slug: string; custom_domain?: string | null; custom_domain_status?: string | null }): string[] {
@@ -96,9 +98,22 @@ export async function regeneratePublishedSnapshots(supabase: SupabaseClient, pro
     removedStale += removed?.length ?? 0
   }
 
+  // Site shell rows for the blog / Ayuda / SEO-file routes (see LITE_HOST).
+  for (const htmlSlug of LITE_SNAPSHOT_SLUGS) {
+    const lite = await supabase.rpc('get_site_config_lite', { p_slug: project.slug, p_html_slug: htmlSlug }).maybeSingle()
+    if (lite.error || !lite.data) return fail(`get_site_config_lite failed: ${lite.error?.message ?? 'no data'}`, hosts)
+    const d = lite.data as { id: string; name: string | null; custom_domain: string | null; config: Record<string, unknown> }
+    const body = JSON.stringify({ id: d.id, name: d.name, custom_domain: d.custom_domain, site_config: d.config ?? {} })
+    const { error } = await supabase.from('published_snapshots').upsert(
+      { project_slug: project.slug, host: LITE_HOST, path: liteSnapshotPath(htmlSlug), project_id: projectId, status: 200, content_type: 'application/json', body, rendered_at: now },
+      { onConflict: 'project_slug,host,path' },
+    )
+    if (error) return fail(`shell upsert failed: ${error.message}`, hosts)
+  }
+
   // Drop rows for hosts the project is no longer served on (custom domain removed,
-  // or the bare root domain which is never served directly).
-  const hostList = hosts.map(h => `"${h.replace(/"/g, '\\"')}"`).join(',')
+  // or the bare root domain which is never served directly). The shell rows stay.
+  const hostList = [...hosts, LITE_HOST].map(h => `"${h.replace(/"/g, '\\"')}"`).join(',')
   const { data: orphaned, error: orphanErr } = await supabase.from('published_snapshots')
     .delete()
     .eq('project_slug', project.slug)

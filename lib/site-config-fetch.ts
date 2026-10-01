@@ -2,6 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { coalesce } from './request-coalesce'
 
 /**
+ * Host-independent "site shell" rows: the exact LiteProject that fetchSiteConfigLite
+ * returns (via the get_site_config_lite RPC) for the two variants the public blog /
+ * Ayuda / sitemap / robots / favicon routes use — htmlSlug 'home' and null — so those
+ * routes read a ~200KB row instead of making Postgres decompress the whole site_config.
+ * (Blog posts / Ayuda articles themselves are still read live from their own tables.)
+ */
+export const LITE_HOST = '_lite'
+export const liteSnapshotPath = (htmlSlug: string | null) => `__lite:${htmlSlug ?? ''}`
+export const LITE_SNAPSHOT_SLUGS: Array<string | null> = ['home', null]
+
+/**
  * Loads a project's site_config WITHOUT the multi-MB parts public serving never needs.
  *
  * Why: site_config holds every page twice (draft `pages` + `published_pages`, each with
@@ -18,6 +29,7 @@ import { coalesce } from './request-coalesce'
  * Falls back to the full select if the RPC isn't deployed yet (migration not run), so a
  * deploy of this code is always safe — it just doesn't save anything until the SQL runs.
  */
+
 export type LiteProject = { id: string; name: string | null; custom_domain: string | null; site_config: Record<string, unknown> }
 
 export function fetchSiteConfigLite(
@@ -35,6 +47,16 @@ async function fetchUncached(
   projectSlug: string,
   htmlSlug: string | null,
 ): Promise<LiteProject | null> {
+  // Pre-rendered site shell (written by lib/published-snapshots.ts) when available.
+  if (process.env.SNAPSHOTS_DISABLED !== '1' && LITE_SNAPSHOT_SLUGS.includes(htmlSlug)) {
+    const { data, error } = await supabase.from('published_snapshots')
+      .select('body')
+      .eq('project_slug', projectSlug).eq('host', LITE_HOST).eq('path', liteSnapshotPath(htmlSlug))
+      .maybeSingle()
+    if (!error && data?.body) {
+      try { return JSON.parse(data.body as string) as LiteProject } catch { /* fall through to the RPC */ }
+    }
+  }
   const rpc = await supabase.rpc('get_site_config_lite', { p_slug: projectSlug, p_html_slug: htmlSlug }).maybeSingle()
   if (!rpc.error && rpc.data) {
     const d = rpc.data as { id: string; name: string | null; custom_domain: string | null; config: Record<string, unknown> }

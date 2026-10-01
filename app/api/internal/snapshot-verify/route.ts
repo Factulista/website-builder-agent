@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createHash } from 'crypto'
 import { requireInternalSecret } from '../../../../lib/api-auth'
 import { renderPublishedPageHtml } from '../../../../lib/preview'
+import { LITE_HOST, liteSnapshotPath, LITE_SNAPSHOT_SLUGS } from '../../../../lib/site-config-fetch'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
@@ -43,11 +44,22 @@ export async function GET(req: NextRequest) {
       mismatches.push({ slug, generator: sha(a), live: sha(b), ...(st !== undefined ? { stored: sha(st) } : {}) })
     }
   }
+  // Site shell rows vs a fresh get_site_config_lite (what the blog/Ayuda/SEO routes used before)
+  const shell: Array<{ variant: string; stored: boolean; equal: boolean }> = []
+  for (const htmlSlug of LITE_SNAPSHOT_SLUGS) {
+    const row = await sb.from('published_snapshots').select('body').eq('project_slug', projectSlug).eq('host', LITE_HOST).eq('path', liteSnapshotPath(htmlSlug)).maybeSingle()
+    const live = await sb.rpc('get_site_config_lite', { p_slug: projectSlug, p_html_slug: htmlSlug }).maybeSingle()
+    const d = live.data as { id: string; name: string | null; custom_domain: string | null; config: Record<string, unknown> } | null
+    const fresh = d ? JSON.stringify({ id: d.id, name: d.name, custom_domain: d.custom_domain, site_config: d.config ?? {} }) : null
+    shell.push({ variant: htmlSlug ?? '(null)', stored: !!row.data, equal: !!row.data && row.data.body === fresh })
+  }
+
   return NextResponse.json({
+    shell,
     pages: slugs.length,
     storedSnapshots: storedBy.size,
     storedTableReadable: !stored.error,
     mismatches,
-    pass: mismatches.length === 0,
+    pass: mismatches.length === 0 && shell.every(x => !x.stored || x.equal),
   })
 }
