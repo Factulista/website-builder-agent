@@ -1,0 +1,43 @@
+# Nightly backup of the website/builder Supabase database (project xjtnbpqmkobyqfhdknhm).
+# Needed before moving that project to the Supabase Free plan, which has no automatic
+# backups. Requires the repository secret SUPABASE_DB_URL = the "Session pooler"
+# connection string (Supabase → Project Settings → Database → Connection string),
+# password included. Dumps are kept as private workflow artifacts for 30 days.
+name: db-backup
+
+on:
+  schedule:
+    - cron: '30 2 * * *'   # every night at 02:30 UTC
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Dump database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          test -n "$DB_URL" || { echo "Secret SUPABASE_DB_URL is missing"; exit 1; }
+          STAMP=$(date -u +%Y-%m-%d)
+          # Data + schema of the app schemas; Supabase-managed internals are excluded.
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --format=custom --no-owner --no-privileges \
+            --schema=public --schema=auth --schema=storage --schema=backups \
+            --file="factulista-site-$STAMP.dump"
+          ls -lh factulista-site-$STAMP.dump
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+
+      - name: Store backup (private artifact, 30 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: factulista-site-db-${{ env.STAMP }}
+          path: factulista-site-*.dump
+          retention-days: 30
