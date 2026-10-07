@@ -28,6 +28,15 @@ jobs:
         run: |
           test -n "$DB_URL" || { echo "Secret SUPABASE_DB_URL is missing"; exit 1; }
           STAMP=$(date -u +%Y-%m-%d)
+          # GitHub runners have no IPv6: a "direct connection" string (db.<ref>.supabase.co,
+          # IPv6-only) is rewritten to the IPv4 session pooler of the same project.
+          if [[ "$DB_URL" =~ ^postgres(ql)?://([^:]+):(.+)@db\.([a-z0-9]+)\.supabase\.co(:[0-9]+)?/([^?]+) ]]; then
+            PASS="${BASH_REMATCH[3]}"; REF="${BASH_REMATCH[4]}"; DBN="${BASH_REMATCH[6]}"
+            for H in aws-0-eu-west-1 aws-1-eu-west-1; do
+              CAND="postgresql://postgres.$REF:$PASS@$H.pooler.supabase.com:5432/$DBN"
+              if /usr/lib/postgresql/17/bin/psql "$CAND" -Atc 'select 1' >/dev/null 2>&1; then DB_URL="$CAND"; echo "Using session pooler $H"; break; fi
+            done
+          fi
           # Data + schema of the app schemas; Supabase-managed internals are excluded.
           /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --format=custom --no-owner --no-privileges \
             --schema=public --schema=auth --schema=storage --schema=backups \
