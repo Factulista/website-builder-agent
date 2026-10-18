@@ -71,3 +71,63 @@ export const FUNC_MEGA_CSS = `${P}{width:720px!important;max-width:min(95vw,720p
   `@media(max-width:720px){${P} .fct-mega-grid{grid-template-columns:1fr 1fr!important;}}` +
   `@media(max-width:640px){${P}{width:auto!important;max-width:none!important;padding:16px 12px 0!important;border-radius:12px 12px 0 0!important;}${P} .fct-mega-grid{grid-template-columns:1fr!important;gap:14px!important;}}` +
   `@media(prefers-reduced-motion:reduce){${P} .fct-mega-link{transition:none!important;}}`
+
+// ── Comparativas: 2-column compact list with letter avatars ──────────────────
+
+type CompItem = { slug: string; name: string; letter: string; tone: string }
+const COMPARATIVAS: CompItem[] = [
+  { slug: 'programa-de-facturacion-alternativo-a-la-aplicacion-verifactu-de-la-aeat', name: 'Aplicación VeriFactu AEAT', letter: 'A', tone: 'blue' },
+  { slug: 'programa-de-facturacion-alternativo-a-a3factura', name: 'a3factura', letter: 'a3', tone: 'orange' },
+  { slug: 'programa-de-facturacion-alternativo-a-facturas-billin', name: 'Billin', letter: 'B', tone: 'green' },
+  { slug: 'programa-de-facturacion-alternativo-a-contasimple', name: 'Contasimple', letter: 'C', tone: 'purple' },
+  { slug: 'programa-de-facturacion-alternativo-a-factusol', name: 'Factusol', letter: 'F', tone: 'yellow' },
+  { slug: 'programa-de-facturacion-alternativo-a-holded', name: 'Holded', letter: 'H', tone: 'pink' },
+  { slug: 'programa-de-facturacion-alternativo-a-quipu', name: 'Quipu', letter: 'Q', tone: 'teal' },
+  { slug: 'programa-de-facturacion-alternativo-a-sage-active', name: 'Sage Active', letter: 'S', tone: 'grey' },
+]
+
+type LabelledPage = MegaPageLike & { megaMenuLabel?: string; menuLabel?: string; name?: string }
+
+/** Inner HTML for the Comparativas panel: known competitors in fixed order, then any other page of the group. */
+export function buildComparativasMega(megaPages: LabelledPage[]): string | null {
+  const bySlug = new Map(megaPages.map(p => [p.slug, p]))
+  const known = new Set(COMPARATIVAS.map(c => c.slug))
+  const items: CompItem[] = COMPARATIVAS.filter(c => bySlug.has(c.slug))
+  for (const p of megaPages) {
+    if (known.has(p.slug)) continue
+    const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name ?? p.slug
+    const name = raw.includes('|') ? raw.split('|').pop()!.trim() : raw
+    items.push({ slug: p.slug, name, letter: name.charAt(0).toUpperCase(), tone: 'grey' })
+  }
+  if (!items.length) return null
+  const rows = Math.ceil(items.length / 2)
+  const links = items.map(i =>
+    `<a class="fct-mega-link fct-mega-link--icon" role="menuitem" href="./${i.slug}"><span class="fct-mega-icon fct-mega-icon--letter fct-mega-icon--${i.tone}" aria-hidden="true">${i.letter}</span><span class="fct-mega-name">${i.name}</span></a>`
+  ).join('')
+  return `<span class="fct-mega-grid fct-mega-grid--two" style="grid-template-rows:repeat(${rows},auto)">${links}</span>`
+}
+
+/** Layout override for a mega-menu group, or null to keep the default flat list. */
+export function buildMegaLayout(groupKey: string, megaPages: LabelledPage[]): { html: string; layout: string } | null {
+  if (groupKey === 'funcionalidades') { const html = buildFuncionalidadesMega(megaPages); return html ? { html, layout: 'fct-mega' } : null }
+  if (groupKey === 'comparativas') { const html = buildComparativasMega(megaPages); return html ? { html, layout: 'fct-mega-two' } : null }
+  return null
+}
+
+const Q = '.comp-nfd-panel[data-layout="fct-mega-two"]'
+
+export const COMP_MEGA_CSS = `${Q}{width:560px!important;max-width:min(95vw,560px)!important;padding:16px!important;border-radius:16px!important;background:#fff!important;box-shadow:0 12px 40px rgba(20,20,20,.12),0 2px 6px rgba(20,20,20,.05)!important;font-family:'Space Grotesk',system-ui,-apple-system,sans-serif!important;box-sizing:border-box!important;}` +
+  `.comp-nfd[data-open="true"] ${Q}{display:block!important;}` +
+  `${Q} *{box-sizing:border-box!important;}` +
+  `${Q} .fct-mega-grid--two{display:grid!important;grid-template-columns:1fr 1fr!important;grid-auto-flow:column!important;gap:2px 12px!important;}` +
+  `${Q} .fct-mega-link--icon{display:flex!important;align-items:center!important;gap:12px!important;padding:10px!important;border-radius:10px!important;text-decoration:none!important;transition:background-color .15s ease!important;}` +
+  `${Q} .fct-mega-link--icon:hover{background:#f5f5f4!important;}${Q} .fct-mega-link--icon:focus-visible{outline:2px solid #111!important;outline-offset:1px!important;}` +
+  `${Q} .fct-mega-icon{width:32px!important;height:32px!important;border-radius:50%!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;line-height:1!important;flex-shrink:0!important;}` +
+  `${Q} .fct-mega-icon--letter{font-size:13px!important;font-weight:600!important;color:#2b2b2b!important;}` +
+  `${Q} .fct-mega-icon--blue{background:#e6eefc!important;}${Q} .fct-mega-icon--green{background:#e3f5ea!important;}${Q} .fct-mega-icon--yellow{background:#fdf3d6!important;}${Q} .fct-mega-icon--pink{background:#fbe7ef!important;}${Q} .fct-mega-icon--purple{background:#eeeafc!important;}${Q} .fct-mega-icon--orange{background:#fdebdc!important;}${Q} .fct-mega-icon--teal{background:#dff4f3!important;}${Q} .fct-mega-icon--grey{background:#efefed!important;}` +
+  `${Q} .fct-mega-name{display:block!important;font-size:14px!important;font-weight:500!important;color:#2b2b2b!important;line-height:1.3!important;white-space:nowrap!important;}` +
+  `@media(max-width:640px){${Q}{width:auto!important;max-width:none!important;padding:12px!important;border-radius:12px 12px 0 0!important;}${Q} .fct-mega-grid--two{grid-template-columns:1fr!important;grid-template-rows:none!important;grid-auto-flow:row!important;}}` +
+  `@media(prefers-reduced-motion:reduce){${Q} .fct-mega-link--icon{transition:none!important;}}`
+
+/** All mega-menu layout CSS (inject once wherever MEGA_MENU_CSS goes). */
+export const MEGA_LAYOUT_CSS = FUNC_MEGA_CSS + COMP_MEGA_CSS
