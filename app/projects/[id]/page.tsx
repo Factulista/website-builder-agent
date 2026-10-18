@@ -31,6 +31,7 @@ import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
 import { compileSeo, formatSeoReport } from '../../../lib/seo-compiler'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById, resolveNfdIcon } from '../../../lib/components/index'
+import { buildFuncionalidadesMega, FUNC_MEGA_CSS } from '../../../lib/mega-funcionalidades'
 
 /** Format HTML with indentation for the code editor. Also fixes &quot; inside style attributes. */
 function prettifyHtml(raw: string): string {
@@ -1724,6 +1725,8 @@ function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPag
     const iconSvg = resolveNfdIcon(p.megaMenuIcon ?? '')
     return `<a href="./${p.slug}" class="comp-nfd-item" role="menuitem"><span class="comp-nfd-icon" aria-hidden="true">${iconSvg}</span><span class="comp-nfd-label">${label}</span></a>`
   }).join('\n      ')
+  // Funcionalidades: categorised 3-column layout (see lib/mega-funcionalidades.ts).
+  const funcMega = groupKey === 'funcionalidades' ? buildFuncionalidadesMega(megaPages) : null
 
   // Collect every dropdown panel with its opening tag, id, group tag and item hrefs.
   // We map panel→group by matching EXISTING item hrefs against this group's page
@@ -1776,11 +1779,13 @@ function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPag
   newOpen = /data-count=/.test(newOpen)
     ? newOpen.replace(/data-count="[^"]*"/, `data-count="${megaPages.length}"`)
     : newOpen.replace(/>$/, ` data-count="${megaPages.length}">`)
+  newOpen = newOpen.replace(/\sdata-layout="[^"]*"/, '')
+  if (funcMega) newOpen = newOpen.replace(/>$/, ` data-layout="fct-mega">`)
 
   const bodyStart = target.index + target.tag.length
   const closeIdx = html.indexOf('</div>', bodyStart)
   if (closeIdx === -1) return html
-  html = html.slice(0, target.index) + newOpen + `\n      ${items}\n  ` + html.slice(closeIdx)
+  html = html.slice(0, target.index) + newOpen + `\n      ${funcMega ?? items}\n  ` + html.slice(closeIdx)
 
   // Fix the trigger label and tag the parent <li>, keyed by the panel id
   // (aria-controls). Capitalised group key = the human label ('Alternativas').
@@ -2004,7 +2009,7 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
   // Canonical header/footer CSS + global layout fix — injected just before </head>
   // (AFTER page styles) so the shared frame wins in cascade. Mirrors lib/preview.ts.
   const frameCss = sharedCss ? buildSharedFrameCss(sharedNav ?? '', sharedFooter ?? '', sharedCss) : ''
-  const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}`
+  const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}${FUNC_MEGA_CSS}`
   const frameTag = `<style data-fact-editor id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style data-fact-editor id="nfd-frame-css">${frameCss}</style>` : ''}\n<style data-fact-editor id="nfd-mega-menu-fix">${megaMenuFix}</style>`
   if (/<\/body>/i.test(clean)) {
     return clean
