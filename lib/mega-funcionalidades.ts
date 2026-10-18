@@ -154,9 +154,13 @@ export function rebuildRecursosPanel(html: string): string {
     const closeIdx = html.indexOf('</div>', bodyStart)
     if (closeIdx === -1) continue
     const body = html.slice(bodyStart, closeIdx)
-    if (!/href="\.\/blog"/.test(body)) continue
+    // Blog/help pages store absolute hrefs (https://host/blog), site pages relative ones (./blog):
+    // keep whatever prefix the stored panel uses.
+    const hm = body.match(/href="((?:\.\/|https?:\/\/[^"]*\/))blog"/)
+    if (!hm && !/\sid="nfd-recursos"/.test(open)) continue
+    const prefix = hm ? hm[1] : './'
     const links = RECURSOS.map(i =>
-      `<a class="fct-mega-link fct-mega-link--icon" role="menuitem" href="./${i.slug}"><span class="fct-mega-icon fct-mega-icon--${i.tone}" aria-hidden="true">${i.icon}</span><span class="fct-mega-text"><span class="fct-mega-name">${i.name}</span><span class="fct-mega-desc">${i.desc}</span></span></a>`
+      `<a class="fct-mega-link fct-mega-link--icon" role="menuitem" href="${prefix}${i.slug}"><span class="fct-mega-icon fct-mega-icon--${i.tone}" aria-hidden="true">${i.icon}</span><span class="fct-mega-text"><span class="fct-mega-name">${i.name}</span><span class="fct-mega-desc">${i.desc}</span></span></a>`
     ).join('')
     let newOpen = open.replace(/\sdata-layout="[^"]*"/, '').replace(/\sdata-count="[^"]*"/, '')
     newOpen = newOpen.replace(/>$/, ` data-count="${RECURSOS.length}" data-layout="fct-mega-single">`)
