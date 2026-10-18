@@ -83,7 +83,7 @@ const COMPARATIVAS: CompItem[] = [
   { slug: 'programa-de-facturacion-alternativo-a-factusol', name: 'Factusol', letter: 'F', tone: 'yellow' },
   { slug: 'programa-de-facturacion-alternativo-a-holded', name: 'Holded', letter: 'H', tone: 'pink' },
   { slug: 'programa-de-facturacion-alternativo-a-quipu', name: 'Quipu', letter: 'Q', tone: 'teal' },
-  { slug: 'programa-de-facturacion-alternativo-a-sage-active', name: 'Sage Active', letter: 'S', tone: 'grey' },
+  { slug: 'programa-de-facturacion-alternativo-a-sage', name: 'Sage Active', letter: 'S', tone: 'grey' },
 ]
 
 type LabelledPage = MegaPageLike & { megaMenuLabel?: string; menuLabel?: string; name?: string }
