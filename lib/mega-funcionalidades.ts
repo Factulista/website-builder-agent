@@ -130,4 +130,51 @@ export const COMP_MEGA_CSS = `${Q}{width:560px!important;max-width:min(95vw,560p
   `@media(prefers-reduced-motion:reduce){${Q} .fct-mega-link--icon{transition:none!important;}}`
 
 /** All mega-menu layout CSS (inject once wherever MEGA_MENU_CSS goes). */
-export const MEGA_LAYOUT_CSS = FUNC_MEGA_CSS + COMP_MEGA_CSS
+export const MEGA_LAYOUT_CSS = () => FUNC_MEGA_CSS + COMP_MEGA_CSS + RES_MEGA_CSS
+
+// ── Recursos: single-column list with icon + description ────────────────────
+// Static panel (no page group): rebuilt at serve time by rebuildRecursosPanel().
+
+type ResItem = { slug: string; name: string; desc: string; icon: string; tone: string }
+const RECURSOS: ResItem[] = [
+  { slug: 'blog', name: 'Blog', desc: 'Guías sobre VeriFactu, impuestos y facturación', icon: '📚', tone: 'blue' },
+  { slug: 'ayuda', name: 'Ayuda', desc: 'Resuelve tus dudas sobre cómo usar Factulista', icon: '💬', tone: 'green' },
+  // Enable once the page exists (today /migracion-a-factulista is a 404):
+  // { slug: 'migracion-a-factulista', name: 'Migración a Factulista', desc: 'Cámbiate desde tu programa actual sin empezar de cero', icon: '🔄', tone: 'yellow' },
+]
+
+/** Replaces the content of the Recursos panel (the untagged panel linking ./blog). */
+export function rebuildRecursosPanel(html: string): string {
+  const openRe = /<div class="comp-nfd-panel"[^>]*>/g
+  let m: RegExpExecArray | null
+  while ((m = openRe.exec(html)) !== null) {
+    const open = m[0]
+    if (/data-mega-group=/.test(open)) continue
+    const bodyStart = m.index + open.length
+    const closeIdx = html.indexOf('</div>', bodyStart)
+    if (closeIdx === -1) continue
+    const body = html.slice(bodyStart, closeIdx)
+    if (!/href="\.\/blog"/.test(body)) continue
+    const links = RECURSOS.map(i =>
+      `<a class="fct-mega-link fct-mega-link--icon" role="menuitem" href="./${i.slug}"><span class="fct-mega-icon fct-mega-icon--${i.tone}" aria-hidden="true">${i.icon}</span><span class="fct-mega-text"><span class="fct-mega-name">${i.name}</span><span class="fct-mega-desc">${i.desc}</span></span></a>`
+    ).join('')
+    let newOpen = open.replace(/\sdata-layout="[^"]*"/, '').replace(/\sdata-count="[^"]*"/, '')
+    newOpen = newOpen.replace(/>$/, ` data-count="${RECURSOS.length}" data-layout="fct-mega-single">`)
+    return html.slice(0, m.index) + newOpen + links + html.slice(closeIdx)
+  }
+  return html
+}
+
+const R = '.comp-nfd-panel[data-layout="fct-mega-single"]'
+export const RES_MEGA_CSS = `${R}{width:340px!important;max-width:min(95vw,340px)!important;padding:12px!important;border-radius:16px!important;background:#fff!important;box-shadow:0 12px 40px rgba(20,20,20,.12),0 2px 6px rgba(20,20,20,.05)!important;font-family:'Space Grotesk',system-ui,-apple-system,sans-serif!important;box-sizing:border-box!important;}` +
+  `.comp-nfd[data-open="true"] ${R}{display:flex!important;flex-direction:column!important;gap:2px!important;}` +
+  `${R} *{box-sizing:border-box!important;}` +
+  `${R} .fct-mega-link--icon{display:flex!important;align-items:flex-start!important;gap:12px!important;padding:10px!important;border-radius:10px!important;text-decoration:none!important;white-space:normal!important;transition:background-color .15s ease!important;}` +
+  `${R} .fct-mega-link--icon:hover{background:#f5f5f4!important;}${R} .fct-mega-link--icon:focus-visible{outline:2px solid #111!important;outline-offset:1px!important;}` +
+  `${R} .fct-mega-icon{width:32px!important;height:32px!important;border-radius:50%!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;font-size:16px!important;line-height:1!important;flex-shrink:0!important;}` +
+  `${R} .fct-mega-icon--blue{background:#e6eefc!important;}${R} .fct-mega-icon--green{background:#e3f5ea!important;}${R} .fct-mega-icon--yellow{background:#fdf3d6!important;}` +
+  `${R} .fct-mega-text{display:block!important;min-width:0!important;}` +
+  `${R} .fct-mega-name{display:block!important;font-size:14px!important;font-weight:500!important;color:#2b2b2b!important;line-height:1.3!important;}` +
+  `${R} .fct-mega-desc{display:block!important;font-size:12.5px!important;font-weight:400!important;color:#8a8a8a!important;line-height:1.4!important;margin-top:2px!important;}` +
+  `@media(max-width:640px){${R}{width:auto!important;max-width:none!important;border-radius:12px 12px 0 0!important;}}` +
+  `@media(prefers-reduced-motion:reduce){${R} .fct-mega-link--icon{transition:none!important;}}`

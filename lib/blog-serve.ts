@@ -1,12 +1,12 @@
 import { FRAME_GLOBAL_FIX } from './shared-frame'
 import { resolveNfdIcon } from './components/index'
-import { buildMegaLayout, MEGA_LAYOUT_CSS } from './mega-funcionalidades'
+import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS } from './mega-funcionalidades'
 import { injectSocialShareLinks } from './social-share'
 import { autonomosMobileLinks } from './preview'
 
 export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string; megaMenu?: string }
 
-export const MEGA_MENU_CSS = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}${MEGA_LAYOUT_CSS}`
+export const MEGA_MENU_CSS = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}${MEGA_LAYOUT_CSS()}`
 
 function megaLabel(p: MegaPage): string {
   const raw = p.megaMenuLabel ?? p.menuLabel ?? p.name
@@ -220,7 +220,7 @@ export function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): 
   const ordered = [...groups.entries()].sort((a, b) => overlap(b[1]) - overlap(a[1]))
   let out = html
   for (const [key, groupPages] of ordered) out = rebuildMegaMenuPanel(out, key, groupPages)
-  return out
+  return rebuildRecursosPanel(out)
 }
 
 /**

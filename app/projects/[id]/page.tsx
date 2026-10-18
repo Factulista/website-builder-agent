@@ -31,7 +31,7 @@ import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
 import { compileSeo, formatSeoReport } from '../../../lib/seo-compiler'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById, resolveNfdIcon } from '../../../lib/components/index'
-import { buildMegaLayout, MEGA_LAYOUT_CSS } from '../../../lib/mega-funcionalidades'
+import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS } from '../../../lib/mega-funcionalidades'
 
 /** Format HTML with indentation for the code editor. Also fixes &quot; inside style attributes. */
 function prettifyHtml(raw: string): string {
@@ -1863,7 +1863,7 @@ function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string 
   const ordered = [...groups.entries()].sort((a, b) => overlap(b[1]) - overlap(a[1]))
   let out = html
   for (const [key, groupPages] of ordered) out = rebuildMegaMenuPanel(out, key, groupPages)
-  return out
+  return rebuildRecursosPanel(out)
 }
 
 /**
@@ -2009,7 +2009,7 @@ function injectBase(html: string, projectSlug: string, sharedNav?: string, share
   // Canonical header/footer CSS + global layout fix — injected just before </head>
   // (AFTER page styles) so the shared frame wins in cascade. Mirrors lib/preview.ts.
   const frameCss = sharedCss ? buildSharedFrameCss(sharedNav ?? '', sharedFooter ?? '', sharedCss) : ''
-  const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}${MEGA_LAYOUT_CSS}`
+  const megaMenuFix = `.comp-nfd-trigger{color:#737373!important;font-size:16px!important;font-weight:500!important;}.comp-nfd-panel{max-width:min(95vw,780px)!important;}.comp-nfd[data-open="true"] .comp-nfd-panel,.comp-nfd-panel[data-count]{grid-template-columns:1fr!important;}.comp-nfd-item{color:#737373!important;white-space:nowrap!important;font-weight:500!important;text-decoration:none!important;display:flex!important;align-items:center!important;gap:10px!important;padding:10px 14px!important;border-radius:8px!important;}.comp-nfd-item:hover{background:#f5f5f5!important;}.comp-nfd-label{color:#737373!important;font-size:14px!important;}.comp-nfd-icon{color:#111!important;opacity:0.75!important;flex-shrink:0!important;width:20px!important;height:20px!important;display:flex!important;align-items:center!important;justify-content:center!important;}.comp-nfd-icon svg{width:20px!important;height:20px!important;}.footer-links a:hover{color:#fbbf24!important;}.nav-links{gap:18px!important;}${MEGA_LAYOUT_CSS()}`
   const frameTag = `<style data-fact-editor id="nfd-frame-fix">${FRAME_GLOBAL_FIX}</style>${frameCss ? `\n<style data-fact-editor id="nfd-frame-css">${frameCss}</style>` : ''}\n<style data-fact-editor id="nfd-mega-menu-fix">${megaMenuFix}</style>`
   if (/<\/body>/i.test(clean)) {
     return clean
