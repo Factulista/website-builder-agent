@@ -139,8 +139,7 @@ type ResItem = { slug: string; name: string; desc: string; icon: string; tone: s
 const RECURSOS: ResItem[] = [
   { slug: 'blog', name: 'Blog', desc: 'Guías sobre VeriFactu, impuestos y facturación', icon: '📚', tone: 'blue' },
   { slug: 'ayuda', name: 'Ayuda', desc: 'Resuelve tus dudas sobre cómo usar Factulista', icon: '💬', tone: 'green' },
-  // Enable once the page exists (today /migracion-a-factulista is a 404):
-  // { slug: 'migracion-a-factulista', name: 'Migración a Factulista', desc: 'Cámbiate desde tu programa actual sin empezar de cero', icon: '🔄', tone: 'yellow' },
+  { slug: 'migrar-a-factulista', name: 'Migración a Factulista', desc: 'Cámbiate desde tu programa actual sin empezar de cero', icon: '🔄', tone: 'yellow' },
 ]
 
 /** Replaces the content of the Recursos panel (the untagged panel linking ./blog). */
