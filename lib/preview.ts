@@ -4,7 +4,7 @@ import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from './shared-frame'
 import { mergeRootVars } from './design-system'
 import { applySeoMeta } from './seo/crawler-view'
 import { resolveNfdIcon } from './components/index'
-import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS } from './mega-funcionalidades'
+import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS, ensureAsesoriasNav, megaGroupLabel } from './mega-funcionalidades'
 import { injectSocialShareLinks } from './social-share'
 import { coalesce } from './request-coalesce'
 import { loadSiteWithPages, readPublishedPageConfig, readPublishedSite } from './pages-store'
@@ -195,13 +195,13 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(p)
   }
-  const orderKeys = ['funcionalidades', 'comparativas']
+  const orderKeys = ['asesorias', 'funcionalidades', 'comparativas']
   const sortedGroups = [...groups.entries()].sort(
     (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
   )
 
   const detailsBlocks = sortedGroups.map(([group, pages]) => {
-    const label = group.charAt(0).toUpperCase() + group.slice(1)
+    const label = megaGroupLabel(group)
     const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
     return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
   }).join('\n')
@@ -259,12 +259,12 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(p)
   }
-  const orderKeys = ['funcionalidades', 'comparativas']
+  const orderKeys = ['asesorias', 'funcionalidades', 'comparativas']
   const sorted = [...groups.entries()].sort(
     (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
   )
   const details = sorted.map(([group, pages]) => {
-    const label = group.charAt(0).toUpperCase() + group.slice(1)
+    const label = megaGroupLabel(group)
     const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
     return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
   }).join('\n')
@@ -422,7 +422,7 @@ ${cols}
  */
 function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
-  const groupLabel = groupKey.charAt(0).toUpperCase() + groupKey.slice(1)
+  const groupLabel = megaGroupLabel(groupKey)
   const groupSlugs = new Set(megaPages.map(p => p.slug))
   const items = megaPages.map(p => {
     const label = megaLabel(p)
@@ -551,6 +551,7 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // Rebuild every mega-menu dropdown a site has, not just one: group the pages
   // by their own megaMenu value (e.g. 'funcionalidades', 'alternativas', or any
   // future group) and rebuild each dropdown from its own assigned pages.
+  if (megaPages && megaPages.length > 0) html = ensureAsesoriasNav(html, megaPages)
   if (megaPages && megaPages.length > 0) {
     const megaGroups = new Map<string, MegaPage[]>()
     for (const p of megaPages) {

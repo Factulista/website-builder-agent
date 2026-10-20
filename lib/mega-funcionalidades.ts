@@ -111,6 +111,7 @@ export function buildComparativasMega(megaPages: LabelledPage[]): string | null 
 export function buildMegaLayout(groupKey: string, megaPages: LabelledPage[]): { html: string; layout: string } | null {
   if (groupKey === 'funcionalidades') { const html = buildFuncionalidadesMega(megaPages); return html ? { html, layout: 'fct-mega' } : null }
   if (groupKey === 'comparativas') { const html = buildComparativasMega(megaPages); return html ? { html, layout: 'fct-mega-two' } : null }
+  if (groupKey === 'asesorias') { const html = buildAsesoriasMega(megaPages); return html ? { html, layout: 'fct-mega-single' } : null }
   return null
 }
 
@@ -179,5 +180,58 @@ export const RES_MEGA_CSS = `${R}{width:340px!important;max-width:min(95vw,340px
   `${R} .fct-mega-text{display:block!important;min-width:0!important;}` +
   `${R} .fct-mega-name{display:block!important;font-size:14px!important;font-weight:500!important;color:#2b2b2b!important;line-height:1.3!important;}` +
   `${R} .fct-mega-desc{display:block!important;font-size:12.5px!important;font-weight:400!important;color:#8a8a8a!important;line-height:1.4!important;margin-top:2px!important;}` +
+  `${R} .fct-mega-foot{display:block!important;border-top:1px solid #ececec!important;margin-top:6px!important;padding:12px 10px 4px!important;text-align:center!important;}${R} .fct-mega-foot a{font-size:14px!important;font-weight:500!important;color:#555!important;text-decoration:none!important;}${R} .fct-mega-foot a:hover{color:#111!important;}` +
   `@media(max-width:640px){${R}{width:auto!important;max-width:none!important;border-radius:12px 12px 0 0!important;}}` +
   `@media(prefers-reduced-motion:reduce){${R} .fct-mega-link--icon{transition:none!important;}}`
+
+// ── Asesorías: dropdown injected only when the group has pages ──────────────
+// Pages with megaMenu='asesorias' (drafts in the builder/preview, published pages
+// on the live site). The <li> is inserted at render time before Funcionalidades,
+// so the live nav shows it only once the pages are published.
+
+const GROUP_LABELS: Record<string, string> = { asesorias: 'Asesorías' }
+/** Human label for a mega-menu group key (accents where needed). */
+export function megaGroupLabel(key: string): string {
+  return GROUP_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1)
+}
+
+const ASES_HUB = 'asesorias'
+const ASESORIAS: ResItem[] = [
+  { slug: 'programa-de-facturacion-para-clientes-de-asesorias', name: 'Factulista para tus clientes', desc: 'El programa de facturación VeriFactu para los autónomos y pymes que asesoras', icon: '🧾', tone: 'yellow' },
+  { slug: 'software-de-gestion-para-asesorias', name: 'Factulista Despacho', desc: 'Gestiona tu asesoría: clientes, documentos, tareas y plazos fiscales', icon: '🗂️', tone: 'blue' },
+]
+
+function buildAsesoriasMega(megaPages: MegaPageLike[]): string | null {
+  const have = new Set(megaPages.map(p => p.slug))
+  const items = ASESORIAS.filter(i => have.has(i.slug))
+  if (!items.length) return null
+  const links = items.map(i =>
+    `<a class="fct-mega-link fct-mega-link--icon" role="menuitem" href="./${i.slug}"><span class="fct-mega-icon fct-mega-icon--${i.tone}" aria-hidden="true">${i.icon}</span><span class="fct-mega-text"><span class="fct-mega-name">${i.name}</span><span class="fct-mega-desc">${i.desc}</span></span></a>`
+  ).join('')
+  const foot = have.has(ASES_HUB) ? `<span class="fct-mega-foot"><a href="./${ASES_HUB}" role="menuitem">Ver Factulista para asesorías →</a></span>` : ''
+  return links + foot
+}
+
+/** Inserts the Asesorías dropdown skeleton (before Funcionalidades) when the group has pages. */
+export function ensureAsesoriasNav(html: string, megaPages: Array<MegaPageLike & { megaMenu?: string }>): string {
+  if (!megaPages.some(p => p.megaMenu === 'asesorias')) return html
+  if (/id="nfd-asesorias"/.test(html) || /data-mega-group="asesorias"/.test(html)) return html
+  const chevron = '<svg class="comp-nfd-chevron" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 3.5 5 7 8.5 3.5"></polyline></svg>'
+  const script = '<script>(function(){var li=document.currentScript.parentElement;var btn=li.querySelector(".comp-nfd-trigger");var t=null;function open(v){li.setAttribute("data-open",v?"true":"false");btn.setAttribute("aria-expanded",String(v));}open(false);btn.addEventListener("click",function(e){e.stopPropagation();clearTimeout(t);var href=btn.getAttribute("data-href");if(href&&window.matchMedia("(min-width:641px)").matches){window.location.href=href;}else{open(li.getAttribute("data-open")!=="true");}});li.addEventListener("mouseenter",function(){if(window.matchMedia("(min-width:641px)").matches){clearTimeout(t);open(true);}});li.addEventListener("mouseleave",function(){if(window.matchMedia("(min-width:641px)").matches){t=setTimeout(function(){open(false);},180);}});document.addEventListener("click",function(e){if(!li.contains(e.target)){clearTimeout(t);open(false);}});document.addEventListener("keydown",function(e){if(e.key==="Escape"){clearTimeout(t);open(false);}});})();</script>'
+  const li = `<li class="comp-nfd" data-comp="nav-feature-dropdown" data-open="false" data-mega-group="asesorias"><button type="button" class="comp-nfd-trigger" data-href="./${ASES_HUB}" aria-expanded="false" aria-controls="nfd-asesorias" aria-haspopup="menu">Asesorías${chevron}</button><div class="comp-nfd-panel" id="nfd-asesorias" role="menu" data-mega-group="asesorias"></div>${script}</li>`
+  // Anchor: the <li> holding the Funcionalidades trigger (fallback: Comparativas, Recursos, end of the first nav <ul>).
+  const triggerIdx = (() => {
+    for (const re of [/<button[^>]*class="comp-nfd-trigger"[^>]*>\s*Funcionalidades/, /<button[^>]*class="comp-nfd-trigger"[^>]*>\s*Comparativas/, /<button[^>]*class="comp-nfd-trigger"[^>]*>\s*Recursos/]) {
+      const m = re.exec(html); if (m) return m.index
+    }
+    return -1
+  })()
+  if (triggerIdx !== -1) {
+    const liStart = html.lastIndexOf('<li', triggerIdx)
+    if (liStart !== -1) return html.slice(0, liStart) + li + html.slice(liStart)
+  }
+  const navStart = html.search(/<nav[\s>]/i)
+  if (navStart === -1) return html
+  const ulEnd = html.indexOf('</ul>', navStart)
+  return ulEnd === -1 ? html : html.slice(0, ulEnd) + li + html.slice(ulEnd)
+}

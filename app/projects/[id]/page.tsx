@@ -31,7 +31,7 @@ import { splitHtmlIntoBlocks } from '../../../lib/agents/block-splitter'
 import { compileSeo, formatSeoReport } from '../../../lib/seo-compiler'
 import { buildSharedFrameCss, FRAME_GLOBAL_FIX } from '../../../lib/shared-frame'
 import { renderComponentById, resolveNfdIcon } from '../../../lib/components/index'
-import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS } from '../../../lib/mega-funcionalidades'
+import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS, ensureAsesoriasNav, megaGroupLabel } from '../../../lib/mega-funcionalidades'
 
 /** Format HTML with indentation for the code editor. Also fixes &quot; inside style attributes. */
 function prettifyHtml(raw: string): string {
@@ -1718,7 +1718,7 @@ function megaLabel(p: MegaPage): string {
 /** See the identical function in lib/preview.ts for the multi-dropdown rationale. */
 function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
-  const groupLabel = groupKey.charAt(0).toUpperCase() + groupKey.slice(1)
+  const groupLabel = megaGroupLabel(groupKey)
   const groupSlugs = new Set(megaPages.map(p => p.slug))
   const items = megaPages.map(p => {
     const label = megaLabel(p)
@@ -1821,12 +1821,12 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)!.push(p)
   }
-  const orderKeys = ['funcionalidades', 'comparativas']
+  const orderKeys = ['asesorias', 'funcionalidades', 'comparativas']
   const sortedGroups = [...groups.entries()].sort(
     (a, b) => (orderKeys.indexOf(a[0]) + 1 || 99) - (orderKeys.indexOf(b[0]) + 1 || 99)
   )
   const detailsBlocks = sortedGroups.map(([group, pages]) => {
-    const label = group.charAt(0).toUpperCase() + group.slice(1)
+    const label = megaGroupLabel(group)
     const links = pages.map(p => `    <a href="./${p.slug}">${megaLabel(p)}</a>`).join('\n')
     return `  <details class="mobile-fn">\n    <summary>${label}</summary>\n${links}\n  </details>`
   }).join('\n')
@@ -1845,6 +1845,7 @@ function rebuildMobileMenu(html: string, megaPages: MegaPage[]): string {
 /** Groups megaPages by their own megaMenu value and rebuilds each dropdown. */
 function rebuildAllMegaMenuPanels(html: string, megaPages?: MegaPage[]): string {
   if (!megaPages || megaPages.length === 0) return html
+  html = ensureAsesoriasNav(html, megaPages)
   const groups = new Map<string, MegaPage[]>()
   for (const p of megaPages) {
     const key = p.megaMenu || 'funcionalidades'
