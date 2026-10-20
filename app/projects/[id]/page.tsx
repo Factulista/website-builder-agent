@@ -1718,6 +1718,9 @@ function megaLabel(p: MegaPage): string {
 /** See the identical function in lib/preview.ts for the multi-dropdown rationale. */
 function rebuildMegaMenuPanel(html: string, groupKey: string, megaPages: MegaPage[]): string {
   if (!megaPages.length) return html
+  // Injected groups (Asesorías) only ever fill their own tagged panel — never claim
+  // another dropdown (e.g. Recursos) through the untagged-panel fallback below.
+  if (groupKey === 'asesorias' && !/data-mega-group="asesorias"/.test(html)) return html
   const groupLabel = megaGroupLabel(groupKey)
   const groupSlugs = new Set(megaPages.map(p => p.slug))
   const items = megaPages.map(p => {

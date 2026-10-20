@@ -208,7 +208,7 @@ function buildAsesoriasMega(megaPages: MegaPageLike[]): string | null {
   const links = items.map(i =>
     `<a class="fct-mega-link fct-mega-link--icon" role="menuitem" href="./${i.slug}"><span class="fct-mega-icon fct-mega-icon--${i.tone}" aria-hidden="true">${i.icon}</span><span class="fct-mega-text"><span class="fct-mega-name">${i.name}</span><span class="fct-mega-desc">${i.desc}</span></span></a>`
   ).join('')
-  const foot = have.has(ASES_HUB) ? `<span class="fct-mega-foot"><a href="./${ASES_HUB}" role="menuitem">Ver Factulista para asesorías →</a></span>` : ''
+  const foot = `<span class="fct-mega-foot"><a href="./${ASES_HUB}" role="menuitem">Ver Factulista para asesorías →</a></span>`
   return links + foot
 }
 
