@@ -214,7 +214,8 @@ function buildAsesoriasMega(megaPages: MegaPageLike[]): string | null {
 
 /** Inserts the Asesorías dropdown skeleton (before Funcionalidades) when the group has pages. */
 export function ensureAsesoriasNav(html: string, megaPages: Array<MegaPageLike & { megaMenu?: string }>): string {
-  if (!megaPages.some(p => p.megaMenu === 'asesorias')) return html
+  // Needs at least one of the two product pages (the hub alone doesn't make a dropdown).
+  if (!megaPages.some(p => p.megaMenu === 'asesorias' && ASESORIAS.some(a => a.slug === p.slug))) return html
   if (/id="nfd-asesorias"/.test(html) || /data-mega-group="asesorias"/.test(html)) return html
   const chevron = '<svg class="comp-nfd-chevron" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1.5 3.5 5 7 8.5 3.5"></polyline></svg>'
   const script = '<script>(function(){var li=document.currentScript.parentElement;var btn=li.querySelector(".comp-nfd-trigger");var t=null;function open(v){li.setAttribute("data-open",v?"true":"false");btn.setAttribute("aria-expanded",String(v));}open(false);btn.addEventListener("click",function(e){e.stopPropagation();clearTimeout(t);var href=btn.getAttribute("data-href");if(href&&window.matchMedia("(min-width:641px)").matches){window.location.href=href;}else{open(li.getAttribute("data-open")!=="true");}});li.addEventListener("mouseenter",function(){if(window.matchMedia("(min-width:641px)").matches){clearTimeout(t);open(true);}});li.addEventListener("mouseleave",function(){if(window.matchMedia("(min-width:641px)").matches){t=setTimeout(function(){open(false);},180);}});document.addEventListener("click",function(e){if(!li.contains(e.target)){clearTimeout(t);open(false);}});document.addEventListener("keydown",function(e){if(e.key==="Escape"){clearTimeout(t);open(false);}});})();</script>'

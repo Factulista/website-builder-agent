@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { filterMegaPagesForLive } from '../../../../../../lib/live-mega-pages'
 import { buildBlogPostPage, pickRelatedPosts, type Post, type InjectPoints } from '../../../../../../lib/blog-serve'
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../../../../lib/design-system'
 import { fetchSiteConfigLite } from '../../../../../../lib/site-config-fetch'
@@ -136,7 +137,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const faviconUrl = typeof config.favicon_url === 'string' ? config.favicon_url : undefined
   const originalHost = _req.headers.get('x-original-host')
   const baseUrl = originalHost ? `https://${originalHost}` : `/preview/${slug}`
-  const megaPages = pages.filter(p => !!p.megaMenu).map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined, megaMenu: p.megaMenu as string | undefined }))
+  const megaPages = await filterMegaPagesForLive(supabase, slug, _req, pages.filter(p => !!p.megaMenu).map(p => ({ slug: p.slug as string, name: p.name as string, menuLabel: p.menuLabel as string | undefined, megaMenuLabel: p.megaMenuLabel as string | undefined, megaMenuIcon: p.megaMenuIcon as string | undefined, megaMenu: p.megaMenu as string | undefined })))
   const html = buildBlogPostPage(post as Post, baseUrl, siteNav, siteFooter, siteStyle, lang, sidebarBanner, faviconUrl, injectPoints, dsBlock, megaPages, relatedPosts)
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=86400' } })
 }
