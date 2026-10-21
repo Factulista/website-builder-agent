@@ -3,6 +3,7 @@ import { resolveNfdIcon } from './components/index'
 import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS, ensureAsesoriasNav, megaGroupLabel } from './mega-funcionalidades'
 import { injectSocialShareLinks } from './social-share'
 import { autonomosMobileLinks } from './preview'
+import { stripLegacyHamburgerScripts } from './legacy-scripts'
 
 export type MegaPage = { slug: string; name: string; menuLabel?: string; megaMenuLabel?: string; megaMenuIcon?: string; megaMenu?: string }
 
@@ -158,7 +159,7 @@ export function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   // See preview.ts's ensureMobileNav for why: an older, unmarked toggle script
   // baked into some pages double-toggles the 'open' class alongside ours, so the
   // drawer silently fails to open on those pages.
-  html = html.replace(/<script(?![^>]*data-mm-toggle)[^>]*>(?:(?!<\/script>)[\s\S])*?hamburgerBtn[\s\S]*?<\/script>/gi, '')
+  html = stripLegacyHamburgerScripts(html)
 
   const groups = new Map<string, MegaPage[]>()
   for (const p of megaPages) {

@@ -7,6 +7,7 @@ import { resolveNfdIcon } from './components/index'
 import { buildMegaLayout, rebuildRecursosPanel, MEGA_LAYOUT_CSS, ensureAsesoriasNav, megaGroupLabel } from './mega-funcionalidades'
 import { injectSocialShareLinks } from './social-share'
 import { coalesce } from './request-coalesce'
+import { stripLegacyHamburgerScripts } from './legacy-scripts'
 import { loadSiteWithPages, readPublishedPageConfig, readPublishedSite } from './pages-store'
 
 type Page = {
@@ -248,9 +249,9 @@ function ensureMobileNav(html: string, megaPages: MegaPage[]): string {
   // their own inline toggle script from whatever template generated them — left in
   // place, it double-toggles the 'open' class alongside the canonical script below
   // (one listener adds it, the other immediately removes it on the same click), so
-  // the drawer silently fails to open. Anything referencing hamburgerBtn that isn't
-  // OUR marked script gets removed before we inject the one true copy.
-  html = html.replace(/<script(?![^>]*data-mm-toggle)[^>]*>(?:(?!<\/script>)[\s\S])*?hamburgerBtn[\s\S]*?<\/script>/gi, '')
+  // the drawer silently fails to open. Only the IIFE referencing hamburgerBtn is cut
+  // (lib/legacy-scripts.ts): FAQ/tab code sharing the same block must survive.
+  html = stripLegacyHamburgerScripts(html)
 
   // 2. Build the canonical panel from megaPages (same on every page).
   const groups = new Map<string, MegaPage[]>()
