@@ -3,6 +3,7 @@ import { filterMegaPagesForLive } from '../../../../../lib/live-mega-pages'
 import { buildBlogPostPage, pickRelatedPosts, type Post, type InjectPoints } from '../../../../../lib/blog-serve'
 import { buildBlogDsBlock, stripDesignSystemBlocks, type DesignSystem } from '../../../../../lib/design-system'
 import { fetchSiteConfigLite } from '../../../../../lib/site-config-fetch'
+import { resolvePublishedRedirect } from '../../../../../lib/preview'
 
 export const runtime = 'nodejs'
 // No 'force-dynamic': route is dynamic (params + DB) but the explicit Cache-Control
@@ -153,7 +154,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     .eq('status', 'published')
     .single()
 
-  if (!post) return new Response('Post not found', { status: 404 })
+  if (!post) {
+    // Renamed/removed posts: honour the user-managed 301s (SEO Optimizer → Strumenti)
+    // so old /blog/<slug> URLs Google still knows don't end in a 404.
+    const host = _req.headers.get('x-original-host')
+    const target = host ? resolvePublishedRedirect([], config.redirects as Array<{ from: string; to: string }> | undefined, `blog/${postSlug}`, host) : null
+    if (target) return Response.redirect(target, 301)
+    return new Response('Post not found', { status: 404 })
+  }
 
   // Related posts: manual picks (post.related_post_ids) → fallback by category. Up to 6.
   const { data: relCandidates } = await supabase
