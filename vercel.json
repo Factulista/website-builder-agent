@@ -1,6 +1,9 @@
 {
   "buildCommand": "next build",
   "installCommand": "npm install",
+  "regions": [
+    "dub1"
+  ],
   "crons": [
     {
       "path": "/api/cron/workflow-check",
