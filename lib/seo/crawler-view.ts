@@ -61,13 +61,18 @@ export function extractFaqSchema(html: string, siteUrl: string): string | null {
   }
 
   if (pairs.length === 0) {
-    const detailsRe = /<details[^>]*>([\s\S]*?)<\/details>/gi
+    const detailsRe = /<details([^>]*)>([\s\S]*?)<\/details>/gi
     while ((m = detailsRe.exec(html)) !== null) {
-      const inner = m[1]
+      // The mobile drawer groups menu links in <details class="mobile-fn"> — navigation, not Q&A
+      if (/class="[^"]*mobile-fn/i.test(m[1])) continue
+      const inner = m[2]
       const summaryMatch = inner.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
       if (!summaryMatch) continue
       const q = stripTags(summaryMatch[1])
-      const a = stripTags(inner.replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, ''))
+      const body = inner.replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, '')
+      // A body made only of links is a menu/link list, not an answer
+      if (!stripTags(body.replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, ''))) continue
+      const a = stripTags(body)
       if (q && a) pairs.push({ q, a })
     }
   }
@@ -238,6 +243,27 @@ export function applySeoMeta(html: string, ctx: SeoMetaContext): string {
 }
 </script>`
     result = result.replace(/<\/head>/i, `${breadcrumbSchema}\n</head>`)
+  }
+
+  // ── WebPage JSON-LD ──
+  // Builder pages are landing / product / legal pages, not articles: say so explicitly,
+  // otherwise content classifiers (Ahrefs AI Indexability, LLM crawlers) guess "Article"
+  // and expect author + dates. No dateModified: site_pages.updated_at moves on every save.
+  result = result.replace(/<script[^>]+type=["']application\/ld\+json["'][^>]*>\s*\{\s*"@context"\s*:\s*"https:\/\/schema\.org"\s*,\s*"@type"\s*:\s*"WebPage"[\s\S]*?<\/script>\s*/gi, '')
+  if (/<\/head>/i.test(result)) {
+    const webPage: Record<string, unknown> = {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      '@id': `${canonicalUrl}#webpage`,
+      url: canonicalUrl,
+      name: (ogTitle?.trim() || titleFromHtml || pageSlug).replace(/\s+/g, ' ').trim(),
+      inLanguage: langFromHtml,
+      isPartOf: { '@type': 'WebSite', name: siteName || undefined, url: `${siteUrl}/` },
+      publisher: { '@type': 'Organization', name: siteName || undefined, url: `${siteUrl}/` },
+    }
+    if (descFromHtml) webPage.description = descFromHtml
+    const webPageJson = JSON.stringify(webPage, null, 2).replace(/</g, '\\u003c')
+    result = result.replace(/<\/head>/i, `<script type="application/ld+json">\n${webPageJson}\n</script>\n</head>`)
   }
 
   // ── Robots meta ──

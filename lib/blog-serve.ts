@@ -730,6 +730,15 @@ export function buildBlogListPage(
       { '@type': 'ListItem', 'position': 2, 'name': 'Blog' },
     ],
   })}</script>
+  <script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    '@id': `${canonicalUrl}#webpage`,
+    'url': canonicalUrl,
+    'name': title,
+    'description': metaDescription || undefined,
+    'inLanguage': lang,
+  }).replace(/</g, '\\u003c')}</script>
   ${faviconUrl ? `<link rel="icon" href="${safeUrl(faviconUrl)}">` : ''}
   ${injectPoints?.head ?? ''}
   ${siteStyle}
