@@ -590,6 +590,16 @@ function prepareHtml(html: string, base: string, siteUrl: string, isStaging: boo
   // inject the (idempotent) toggle script. Self-guards on hamburger presence.
   html = ensureMobileNav(html, megaPages ?? [])
 
+  // Step 0g: strip Turnstile widget DOM baked into stored HTML. The builder saves the
+  // rendered DOM, so each save can leave a stale widget (hidden input with an expired
+  // token + challenge iframe) inside <div class="cf-turnstile">. Form scripts read the
+  // FIRST [name=cf-turnstile-response], i.e. the stale token → /api/forms 400.
+  // The container must be empty so api.js renders exactly one fresh widget.
+  html = html.replace(
+    /(<div\b[^>]*class="[^"]*\bcf-turnstile\b[^"]*"[^>]*>)([\s\S]*?)(<\/div>\s*)(?=<button\b|<\/form>)/gi,
+    (m, open: string, inner: string) => (/cf-turnstile-response|<iframe\b/i.test(inner) ? `${open}</div>` : m)
+  )
+
   // Step 1: fix root-relative internal links before base href takes effect
   let result = normalizeInternalLinks(html, knownSlugs)
 
